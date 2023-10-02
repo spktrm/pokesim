@@ -1,0 +1,4 @@
+socket_path: /tmp/pokesim
+encoding: utf-8
+timeout: 100
+server_update_freq: 8
