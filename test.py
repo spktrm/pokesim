@@ -4,7 +4,8 @@ import socket
 import numpy as np
 import multiprocessing as mp
 
-from typing import NamedTuple
+from tqdm import tqdm
+from typing import NamedTuple, Tuple
 
 NUM_WORKERS = 20
 
@@ -15,10 +16,13 @@ SOCKET_PATH = CONFIG["socket_path"]
 ENCODING = CONFIG["encoding"]
 
 
-def read(sock: socket.socket) -> bytes:
+def read(sock: socket.socket) -> Tuple[int, bytes]:
     num_states = int.from_bytes(sock.recv(1), "big")
-    data = sock.recv(518 * num_states)
-    return data
+    data = b""
+    while len(data) < num_states * 518:
+        remaining = (518 * num_states) - len(data)
+        data += sock.recv(remaining)
+    return num_states, data
 
 
 TURN_OFFSET = 0
@@ -104,7 +108,7 @@ class Environment:
         self.sock.connect(socket_address)
 
     def read_stdout(self):
-        out = read(self.sock)
+        num_states, out = read(self.sock)
         arr = np.frombuffer(out, dtype=np.int8)
         return arr.reshape(-1, 518)
 
@@ -144,6 +148,9 @@ def run_environment():
     buffer = {i: [] for i in range(NUM_WORKERS)}
     dones = {i: 0 for i in range(NUM_WORKERS)}
 
+    progress1 = tqdm()
+    progress2 = tqdm()
+
     obs = env.reset()
     while True:
         states = obs.get_state()
@@ -163,11 +170,13 @@ def run_environment():
 
             if dones[worker_index] >= 2:
                 trajectory = np.stack(buffer[worker_index])
+                progress1.update(1)
+                progress2.update(len(trajectory))
 
                 buffer[worker_index] = []
                 dones[worker_index] = 0
 
-        probs = model.forward(np.ones_like(states[..., :128]), legal)
+        probs = model.forward(State(states[..., :128]).dense(), legal)
         actions = []
 
         for worker_index, player_index, prob in zip(

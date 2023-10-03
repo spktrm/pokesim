@@ -18,7 +18,7 @@ const serverUpdateFreq = config.server_update_freq as number;
 const workers: Worker[] = [];
 const buffers: Int8Array[] = [];
 
-const debug = true;
+const debug = false;
 
 let throughput = 0;
 
@@ -42,7 +42,7 @@ function getConcatenatedBuffer() {
         stateSize = buffers[0].length;
     }
     const concatenatedBuffer = new Buffer(
-        buffers.length * stateSize, //+ stopBytes.length
+        buffers.length * stateSize //+ stopBytes.length
     );
     let offset = 0;
     for (const buffer of buffers) {
@@ -108,26 +108,27 @@ function start() {
 //     sendBuffers();
 // }, timeout);
 
+let prevTime = Date.now();
+let throughputs: number[] = [];
+
+setInterval(() => {
+    let currTime = Date.now();
+    const average = (1000 * throughput) / (currTime - prevTime);
+    throughputs.push(average);
+    while (throughputs.length > 5 * serverUpdateFreq) {
+        throughputs.shift();
+    }
+    const totalAverage =
+        throughputs.reduce((a, b) => a + b) / throughputs.length;
+    const formattedAverage = totalAverage.toFixed(2).padStart(8); // Adjust the number 8 according to your desired width
+    process.stdout.write(`\rThroughput: ${formattedAverage} steps / sec`);
+    throughput = 0;
+    prevTime = currTime;
+}, 1000 / serverUpdateFreq);
+
 if (debug) {
     start();
 } else {
-    let prevTime = Date.now();
-    let throughputs: number[] = [];
-
-    setInterval(() => {
-        let currTime = Date.now();
-        const average = Math.floor((1000 * throughput) / (currTime - prevTime));
-        throughputs.push(average);
-        while (throughputs.length > 5 * serverUpdateFreq) {
-            throughputs.shift();
-        }
-        const totalAverage =
-            throughputs.reduce((a, b) => a + b) / throughputs.length;
-        process.stdout.write(`\rThroughput: ${totalAverage} steps / sec`);
-        throughput = 0;
-        prevTime = currTime;
-    }, 1000 / serverUpdateFreq);
-
     const decoder = new TextDecoder("utf-8");
     const server = net.createServer((client) => {
         console.log("Client connected");
