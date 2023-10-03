@@ -176,7 +176,7 @@ def run_environment():
                 buffer[worker_index] = []
                 dones[worker_index] = 0
 
-        probs = model.forward(State(states[..., :128]).dense(), legal)
+        probs = model.forward(np.ones_like(states[..., :128]), legal)
         actions = []
 
         for worker_index, player_index, prob in zip(
