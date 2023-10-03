@@ -13,13 +13,12 @@ const config = yaml.load(fs.readFileSync("config.yml", "utf-8")) as Config;
 console.log(config);
 
 const socketPath = config.socket_path as string;
-const timeout = config.timeout as number;
 const serverUpdateFreq = config.server_update_freq as number;
 
 const workers: Worker[] = [];
 const buffers: Int8Array[] = [];
 
-const debug = false;
+const debug = true;
 
 let throughput = 0;
 
@@ -58,6 +57,8 @@ function sendConcatenatedBuffers(concatenatedBuffers: Buffer) {
     if (clientSocket) {
         clientSocket.write(Buffer.from([buffers.length]));
         clientSocket.write(concatenatedBuffers);
+    } else if (debug) {
+        // process.stdout.write(concatenatedBuffers);
     } else {
         console.error("Client socket is not connected");
     }
@@ -107,47 +108,51 @@ function start() {
 //     sendBuffers();
 // }, timeout);
 
-let prevTime = Date.now();
-let throughputs: number[] = [];
-
-setInterval(() => {
-    let currTime = Date.now();
-    const average = Math.floor((1000 * throughput) / (currTime - prevTime));
-    throughputs.push(average);
-    while (throughputs.length > 5 * serverUpdateFreq) {
-        throughputs.shift();
-    }
-    const totalAverage =
-        throughputs.reduce((a, b) => a + b) / throughputs.length;
-    process.stdout.write(`\rThroughput: ${totalAverage} steps / sec`);
-    throughput = 0;
-    prevTime = currTime;
-}, 1000 / serverUpdateFreq);
-
-const decoder = new TextDecoder("utf-8");
-const server = net.createServer((client) => {
-    console.log("Client connected");
+if (debug) {
     start();
-    clientSocket = client; // Store the client socket for later use
+} else {
+    let prevTime = Date.now();
+    let throughputs: number[] = [];
 
-    client.on("data", (data) => {
-        let splitCmds = decoder.decode(data).split("\n");
-        for (let cmd of splitCmds) {
-            processInput(cmd);
+    setInterval(() => {
+        let currTime = Date.now();
+        const average = Math.floor((1000 * throughput) / (currTime - prevTime));
+        throughputs.push(average);
+        while (throughputs.length > 5 * serverUpdateFreq) {
+            throughputs.shift();
         }
+        const totalAverage =
+            throughputs.reduce((a, b) => a + b) / throughputs.length;
+        process.stdout.write(`\rThroughput: ${totalAverage} steps / sec`);
+        throughput = 0;
+        prevTime = currTime;
+    }, 1000 / serverUpdateFreq);
+
+    const decoder = new TextDecoder("utf-8");
+    const server = net.createServer((client) => {
+        console.log("Client connected");
+        start();
+        clientSocket = client; // Store the client socket for later use
+
+        client.on("data", (data) => {
+            let splitCmds = decoder.decode(data).split("\n");
+            for (let cmd of splitCmds) {
+                processInput(cmd);
+            }
+        });
+
+        client.on("end", () => {
+            console.log("Client disconnected");
+            clientSocket = null; // Clear the client socket when the client disconnects
+            workers.splice(workers.length);
+        });
     });
 
-    client.on("end", () => {
-        console.log("Client disconnected");
-        clientSocket = null; // Clear the client socket when the client disconnects
-        workers.splice(workers.length);
+    server.listen(socketPath, () => {
+        console.log("Server listening on", socketPath);
     });
-});
 
-server.listen(socketPath, () => {
-    console.log("Server listening on", socketPath);
-});
-
-server.on("error", (err) => {
-    console.error(err);
-});
+    server.on("error", (err) => {
+        console.error(err);
+    });
+}

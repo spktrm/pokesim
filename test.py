@@ -21,13 +21,79 @@ def read(sock: socket.socket) -> bytes:
     return data
 
 
-class Step(NamedTuple):
-    states: np.ndarray
-    legal_actions: np.ndarray
-    dones: np.ndarray
-    rewards: np.ndarray
-    worker_indices: np.ndarray
-    player_indices: np.ndarray
+TURN_OFFSET = 0
+TURN_SIZE = 1
+
+TEAM_OFFSET = TURN_OFFSET + TURN_SIZE
+TEAM_SIZE = 3 * 6 * 22
+
+SIDE_CONDITION_OFFSET = TEAM_OFFSET + TEAM_SIZE
+SIDE_CONDITION_SIZE = 2 * 15
+
+VOLATILE_STATUS_OFFSET = SIDE_CONDITION_OFFSET + SIDE_CONDITION_SIZE
+VOLATILE_STATUS_SIZE = 2 * 20
+
+BOOSTS_OFFSET = VOLATILE_STATUS_OFFSET + VOLATILE_STATUS_SIZE
+BOOSTS_SIZE = 2 * 7
+
+FIELD_OFFSET = BOOSTS_OFFSET + BOOSTS_SIZE
+FIELD_SIZE = 9 + 6
+
+HISTORY_OFFSET = FIELD_OFFSET + FIELD_SIZE
+
+
+class State(NamedTuple):
+    raw: np.ndarray
+
+    def dense(self):
+        batch_size = self.raw.shape[0]
+        turn = self.raw[..., 0].reshape(batch_size, TURN_SIZE)
+        teams = np.frombuffer(
+            self.raw[..., TEAM_OFFSET:SIDE_CONDITION_OFFSET].tobytes(), dtype=np.int16
+        ).reshape(batch_size, 3, 6, -1)
+        side_conditions = self.raw[
+            ..., SIDE_CONDITION_OFFSET:VOLATILE_STATUS_OFFSET
+        ].reshape(batch_size, 2, -1)
+        volatile_status = self.raw[..., VOLATILE_STATUS_OFFSET:BOOSTS_OFFSET].reshape(
+            batch_size, 2, -1
+        )
+        boosts = self.raw[..., BOOSTS_OFFSET:FIELD_OFFSET].reshape(batch_size, 2, -1)
+        field = self.raw[..., FIELD_OFFSET:HISTORY_OFFSET].reshape(
+            batch_size, FIELD_SIZE
+        )
+        history = self.raw[..., HISTORY_OFFSET:].reshape(batch_size, -1, 2)
+        return (
+            self.raw,
+            turn,
+            teams,
+            side_conditions,
+            volatile_status,
+            boosts,
+            field,
+            history,
+        )
+
+
+class Observation(NamedTuple):
+    obs: np.ndarray
+
+    def get_state(self):
+        return self.obs[..., 4:-10]
+
+    def get_legal_moves(self):
+        return self.obs[..., -10:]
+
+    def get_worker_index(self):
+        return self.obs[..., 0]
+
+    def get_player_index(self):
+        return self.obs[..., 1]
+
+    def get_done(self):
+        return self.obs[..., 2]
+
+    def get_reward(self):
+        return self.obs[..., 3]
 
 
 class Environment:
@@ -42,35 +108,57 @@ class Environment:
         arr = np.frombuffer(out, dtype=np.int8)
         return arr.reshape(-1, 518)
 
-    def reset(self) -> Step:
+    def reset(self) -> Observation:
         arr = self.read_stdout()
-        states = arr[..., 4:-10]
-        legal_actions = arr[..., -10:]
-        worker_indices = arr[..., 0]
-        player_indices = arr[..., 1]
-        dones = arr[..., 2]
-        rewards = arr[..., 3]
-        return Step(
-            states, legal_actions, dones, rewards, worker_indices, player_indices
-        )
+        return Observation(arr)
 
-    def step(self, action: str) -> Step:
+    def step(self, action: str) -> Observation:
         self.sock.sendall(action.encode(ENCODING))
         return self.reset()
 
 
+class Model:
+    def __init__(self):
+        self.w1 = np.random.random((128, 128))
+        self.w2 = np.random.random((128, 128))
+        self.w3 = np.random.random((128, 128))
+        self.w4 = np.random.random((128, 10))
+
+    def forward(self, state: np.ndarray, legal: np.ndarray):
+        x = state @ self.w1
+        x = x @ self.w2
+        x = x @ self.w3
+        logit = x @ self.w4
+
+        logit = np.where(legal, logit, 0)
+        exp_logit = logit
+        exp_logit_sum = exp_logit.sum(axis=-1, keepdims=True)
+        prob = exp_logit / exp_logit_sum
+        return prob
+
+
 def run_environment():
     env = Environment()
+    model = Model()
 
     buffer = {i: [] for i in range(NUM_WORKERS)}
     dones = {i: 0 for i in range(NUM_WORKERS)}
 
     obs = env.reset()
     while True:
-        actions = []
+        states = obs.get_state()
+        legal = obs.get_legal_moves()
+        worker_indices = obs.get_worker_index()
+        player_indices = obs.get_player_index()
 
-        for state, legal, done, reward, worker_index, player_index in zip(*obs):
-            buffer[worker_index].append(state)
+        for state_index, (done, worker_index, player_index) in enumerate(
+            zip(
+                obs.get_done(),
+                worker_indices,
+                player_indices,
+            )
+        ):
+            buffer[worker_index].append(states[state_index])
             dones[worker_index] += done
 
             if dones[worker_index] >= 2:
@@ -79,7 +167,13 @@ def run_environment():
                 buffer[worker_index] = []
                 dones[worker_index] = 0
 
-            action = random.choices(range(10), weights=legal.tolist())
+        probs = model.forward(np.ones_like(states[..., :128]), legal)
+        actions = []
+
+        for worker_index, player_index, prob in zip(
+            worker_indices, player_indices, probs.tolist()
+        ):
+            action = random.choices(range(10), weights=prob)
             actions.append(f"{worker_index}|{player_index}|{action[0]}")
 
         actions = "\n".join(actions)

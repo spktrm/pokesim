@@ -1,4 +1,4 @@
-import { Battle, Pokemon, Side } from "@pkmn/client";
+import { Pokemon, Side } from "@pkmn/client";
 import { AnyObject } from "@pkmn/sim";
 import {
     abilityMapping,
@@ -404,7 +404,7 @@ export class Int8State {
             state.set(datum, offset);
             offset += datum.length;
         }
-        this.handler.battles[0].request = undefined;
+        // this.handler.battles[0].request = undefined;
         return state;
     }
 }

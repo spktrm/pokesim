@@ -24,17 +24,17 @@ function timeout(ms: number) {
 
 function isActionRequired(battle: Battle, chunk: string): boolean {
     const request = (battle.request ?? {}) as AnyObject;
-    if (request === null) {
+    if (request === undefined) {
         return false;
     }
-    if (request?.requestType === "wait") {
+    if (!!request.wait) {
         return false;
     }
     if (chunk.includes("|turn")) {
         return true;
     }
     if (!chunk.includes("|request")) {
-        return !!request?.forceSwitch;
+        return !!request.forceSwitch;
     }
     return false;
 }
@@ -80,6 +80,7 @@ function isAction(line: string): boolean {
 }
 
 async function runPlayer(
+    globalStream: ObjectReadWriteStream<string>,
     stream: ObjectReadWriteStream<string>,
     playerIndex: number,
     p1battle: Battle,
@@ -88,12 +89,18 @@ async function runPlayer(
     const log = [];
     const handler = new BattlesHandler([p1battle, p2battle]);
     const turn = p1battle.turn ?? 0;
+    const battle = globalStream;
 
+    let prevChunk: string = "";
+    let prevRequest: AnyObject = {};
     let winner: string = "";
 
     for await (const chunk of stream) {
         // Alternatively: for (const {args, kwArgs} of Protocol.parse(chunk))
         for (const line of chunk.split("\n")) {
+            if (line.startsWith("|error")) {
+                console.error(line);
+            }
             p1battle.add(line);
             log.push(line);
             if (line.startsWith("|win")) {
@@ -109,6 +116,8 @@ async function runPlayer(
         p1battle.update(); // optional, only relevant if stream contains |request|
 
         if (isActionRequired(p1battle, chunk)) {
+            prevChunk = chunk;
+            prevRequest = p1battle.request ?? {};
             state = getState(handler, 0, playerIndex);
             parentPort?.postMessage(state, [state.buffer]);
         }
@@ -119,15 +128,16 @@ async function runPlayer(
 }
 
 async function runGame() {
-    streams = BattleStreams.getPlayerStreams(new BattleStreams.BattleStream());
+    const stream = new BattleStreams.BattleStream();
+    streams = BattleStreams.getPlayerStreams(stream);
     const spec = { formatid };
 
     const p1battle = new Battle(generations);
     const p2battle = new Battle(generations);
 
     const players = Promise.all([
-        runPlayer(streams.p1, 0, p1battle, p2battle),
-        runPlayer(streams.p2, 1, p2battle, p1battle),
+        runPlayer(stream, streams.p1, 0, p1battle, p2battle),
+        runPlayer(stream, streams.p2, 1, p2battle, p1battle),
     ]);
 
     const p1spec = {
