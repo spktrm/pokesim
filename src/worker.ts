@@ -1,8 +1,13 @@
 import { parentPort, workerData } from "node:worker_threads";
 
-import { AnyObject, BattleStreams, Teams } from "@pkmn/sim";
+import {
+    AnyObject,
+    Battle as simBattle,
+    BattleStreams,
+    Teams,
+} from "@pkmn/sim";
 import { TeamGenerators } from "@pkmn/randoms";
-import { Battle } from "@pkmn/client";
+import { Battle as clientBattle } from "@pkmn/client";
 import { Generations } from "@pkmn/data";
 import { Dex } from "@pkmn/dex";
 import { ObjectReadWriteStream } from "@pkmn/streams";
@@ -12,17 +17,61 @@ import { formatid } from "./data";
 
 Teams.setGeneratorFactory(TeamGenerators);
 
-let state: Uint8Array;
 const workerIndex: number = workerData.workerIndex;
 const generations = new Generations(Dex);
 
+let state: Uint8Array;
 let streams: BattleStreamsType;
 
-function timeout(ms: number) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+const delay = (t: number | undefined, val: any = 0) =>
+    new Promise((resolve) => setTimeout(resolve, t, val));
+
+class AsyncQueue {
+    private queue: string[];
+    private resolveQueue: ((value: string) => void)[];
+
+    constructor() {
+        this.queue = [];
+        this.resolveQueue = [];
+    }
+
+    public enqueue(item: string): void {
+        if (this.resolveQueue.length > 0) {
+            const resolve = this.resolveQueue.shift();
+            if (resolve) {
+                resolve(item);
+                return;
+            }
+        }
+
+        this.queue.push(item);
+    }
+
+    public async dequeue(): Promise<string> {
+        if (this.queue.length > 0) {
+            return this.queue.shift() as string;
+        }
+
+        return new Promise<string>((resolve) => {
+            this.resolveQueue.push(resolve);
+        });
+    }
 }
 
-function isActionRequired(battle: Battle, chunk: string): boolean {
+class QueueManager {
+    p1Queue: AsyncQueue;
+    p2Queue: AsyncQueue;
+    queues: AsyncQueue[];
+    constructor() {
+        this.p1Queue = new AsyncQueue();
+        this.p2Queue = new AsyncQueue();
+        this.queues = [this.p1Queue, this.p2Queue];
+    }
+}
+
+const queueManager = new QueueManager();
+
+function isActionRequired(battle: clientBattle, chunk: string): boolean {
     const request = (battle.request ?? {}) as AnyObject;
     if (request === undefined) {
         return false;
@@ -40,9 +89,9 @@ function isActionRequired(battle: Battle, chunk: string): boolean {
 }
 
 export class BattlesHandler {
-    battles: Battle[];
+    battles: clientBattle[];
     turns: AnyObject;
-    constructor(battles: Battle[]) {
+    constructor(battles: clientBattle[]) {
         this.battles = battles;
         this.turns = {};
     }
@@ -52,14 +101,14 @@ function getState(
     handler: BattlesHandler,
     done: number,
     playerIndex: number,
-    reward: number = 0,
+    reward: number = 0
 ) {
     const stateHandler = new Int8State(
         handler,
         playerIndex,
         workerIndex,
         done,
-        reward,
+        reward
     );
     const state = stateHandler.getState();
     const stateBuffer = Buffer.from(state.buffer);
@@ -80,19 +129,14 @@ function isAction(line: string): boolean {
 }
 
 async function runPlayer(
-    globalStream: ObjectReadWriteStream<string>,
     stream: ObjectReadWriteStream<string>,
     playerIndex: number,
-    p1battle: Battle,
-    p2battle: Battle,
+    p1battle: clientBattle,
+    p2battle: clientBattle
 ) {
-    const log = [];
     const handler = new BattlesHandler([p1battle, p2battle]);
     const turn = p1battle.turn ?? 0;
-    const battle = globalStream;
 
-    let prevChunk: string = "";
-    let prevRequest: AnyObject = {};
     let winner: string = "";
 
     for await (const chunk of stream) {
@@ -102,7 +146,6 @@ async function runPlayer(
                 console.error(line);
             }
             p1battle.add(line);
-            log.push(line);
             if (line.startsWith("|win")) {
                 winner = line.split("|")[2];
             }
@@ -113,13 +156,16 @@ async function runPlayer(
                 handler.turns[turn].push(line);
             }
         }
-        p1battle.update(); // optional, only relevant if stream contains |request|
+        if (chunk.includes("|request")) {
+            p1battle.update(); // optional, only relevant if stream contains |request|
+        }
 
         if (isActionRequired(p1battle, chunk)) {
-            prevChunk = chunk;
-            prevRequest = p1battle.request ?? {};
             state = getState(handler, 0, playerIndex);
             parentPort?.postMessage(state, [state.buffer]);
+
+            const action = await queueManager.queues[playerIndex].dequeue();
+            stream.write(action);
         }
     }
     const reward = winner === p1battle.sides[playerIndex].name ? 1 : -1;
@@ -132,12 +178,13 @@ async function runGame() {
     streams = BattleStreams.getPlayerStreams(stream);
     const spec = { formatid };
 
-    const p1battle = new Battle(generations);
-    const p2battle = new Battle(generations);
+    const p1battle = new clientBattle(generations);
+
+    const p2battle = new clientBattle(generations);
 
     const players = Promise.all([
-        runPlayer(stream, streams.p1, 0, p1battle, p2battle),
-        runPlayer(stream, streams.p2, 1, p2battle, p1battle),
+        runPlayer(streams.p1, 0, p1battle, p2battle),
+        runPlayer(streams.p2, 1, p2battle, p1battle),
     ]);
 
     const p1spec = {
@@ -166,18 +213,14 @@ function actionIndexToString(actionIndex: number) {
     }
 }
 
-type playerIdType = "p1" | "p2";
-
-parentPort?.on("message", (message) => {
-    const [playerIndex, actionIndex] = message;
-    const playerId = `p${playerIndex + 1}` as playerIdType;
-    const actionString = actionIndexToString(parseInt(actionIndex));
-    const stream = streams[playerId];
-    stream.write(actionString);
-});
-
 (async () => {
     while (true) {
         await runGame();
     }
 })();
+
+parentPort?.on("message", (message) => {
+    const [playerIndex, actionIndex] = message;
+    const actionString = actionIndexToString(parseInt(actionIndex));
+    queueManager.queues[playerIndex].enqueue(actionString);
+});
