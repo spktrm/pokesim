@@ -52,14 +52,14 @@ function getState(
     handler: BattlesHandler,
     done: number,
     playerIndex: number,
-    reward: number = 0
+    reward: number = 0,
 ) {
     const stateHandler = new Int8State(
         handler,
         playerIndex,
         workerIndex,
         done,
-        reward
+        reward,
     );
     const state = stateHandler.getState();
     const stateBuffer = Buffer.from(state.buffer);
@@ -84,7 +84,7 @@ async function runPlayer(
     stream: ObjectReadWriteStream<string>,
     playerIndex: number,
     p1battle: Battle,
-    p2battle: Battle
+    p2battle: Battle,
 ) {
     const log = [];
     const handler = new BattlesHandler([p1battle, p2battle]);
