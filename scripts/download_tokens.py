@@ -1,6 +1,7 @@
 import json
 import aiohttp
 import asyncio
+import uvloop
 
 from typing import List, Mapping, Any
 from tqdm import tqdm
@@ -32,6 +33,7 @@ async def download_all(urls: List[str]):
 
 
 def main():
+    uvloop.install()
     data = {key: value for key, value in zip(KEYS, asyncio.run(download_all(URLS)))}
     extra_moves = [
         f"hiddenpower{type}{bp}"

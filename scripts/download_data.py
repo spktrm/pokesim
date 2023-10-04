@@ -2,6 +2,7 @@ import re
 import json
 import aiohttp
 import asyncio
+import uvloop
 
 from tqdm import tqdm
 from typing import Sequence, Mapping
@@ -86,6 +87,7 @@ async def download_all(urls):
 
 
 def main():
+    uvloop.install()
     src = "\n".join(asyncio.run(download_all(URLS)))
 
     volatile_status = set()
