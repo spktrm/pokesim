@@ -88,6 +88,8 @@ function sendBuffers() {
     }
 }
 
+const trigger = Math.max(1, numWorkers - 2);
+
 function start() {
     for (let workerIndex = 0; workerIndex < numWorkers; workerIndex++) {
         const worker = new Worker(path.resolve(__dirname, "worker.js"), {
@@ -96,7 +98,7 @@ function start() {
         worker.on("message", (message) => {
             buffers.push(message);
 
-            if (buffers.length == numWorkers) {
+            if (buffers.length === trigger) {
                 sendBuffers();
             }
         });
