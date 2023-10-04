@@ -43,7 +43,7 @@ function getConcatenatedBuffer() {
         stateSize = buffers[0].length;
     }
     const concatenatedBuffer = new Buffer(
-        buffers.length * stateSize //+ stopBytes.length
+        buffers.length * stateSize, //+ stopBytes.length
     );
     let offset = 0;
     for (const buffer of buffers) {
@@ -90,7 +90,7 @@ function sendBuffers() {
                 workerIndex = buffer[0];
                 playerIndex = buffer[1];
                 processInput(
-                    `${workerIndex}|${playerIndex}|${randomActionToken()}`
+                    `${workerIndex}|${playerIndex}|${randomActionToken()}`,
                 );
             }
         }
