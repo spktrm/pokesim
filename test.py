@@ -176,6 +176,8 @@ def run_environment():
                 buffer[worker_index] = []
                 dones[worker_index] = 0
 
+        State(states).dense()
+
         probs = model.forward(np.ones_like(states[..., :128]), legal)
         actions = []
 

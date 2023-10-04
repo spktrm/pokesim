@@ -14,6 +14,8 @@ import { ObjectReadWriteStream } from "@pkmn/streams";
 import { BattleStreamsType } from "./types";
 import { Int8State } from "./state";
 import { formatid } from "./data";
+import { getRandomAction } from "./random";
+import { actionIndexToString } from "./helpers";
 
 Teams.setGeneratorFactory(TeamGenerators);
 
@@ -28,32 +30,28 @@ const delay = (t: number | undefined, val: any = 0) =>
 
 class AsyncQueue {
     private queue: string[];
-    private resolveQueue: ((value: string) => void)[];
+    private resolveWaitingDequeue?: (value: string) => void;
 
     constructor() {
         this.queue = [];
-        this.resolveQueue = [];
     }
 
-    public enqueue(item: string): void {
-        if (this.resolveQueue.length > 0) {
-            const resolve = this.resolveQueue.shift();
-            if (resolve) {
-                resolve(item);
-                return;
-            }
+    async enqueue(item: string): Promise<void> {
+        if (this.resolveWaitingDequeue) {
+            this.resolveWaitingDequeue(item);
+            this.resolveWaitingDequeue = undefined;
+        } else {
+            this.queue.push(item);
         }
-
-        this.queue.push(item);
     }
 
-    public async dequeue(): Promise<string> {
+    async dequeue(): Promise<string> {
         if (this.queue.length > 0) {
-            return this.queue.shift() as string;
+            return this.queue.shift()!;
         }
 
         return new Promise<string>((resolve) => {
-            this.resolveQueue.push(resolve);
+            this.resolveWaitingDequeue = resolve;
         });
     }
 }
@@ -128,6 +126,17 @@ function isAction(line: string): boolean {
     }
 }
 
+const defaultWorkerIndex = 18;
+const randomWorkerIndex = 19;
+
+function isEvalPlayer(workerIndex: number, playerIndex: number): boolean {
+    if (workerIndex >= 18 && playerIndex === 1) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 async function runPlayer(
     stream: ObjectReadWriteStream<string>,
     playerIndex: number,
@@ -136,7 +145,9 @@ async function runPlayer(
 ) {
     const handler = new BattlesHandler([p1battle, p2battle]);
     const turn = p1battle.turn ?? 0;
+    const isEval = isEvalPlayer(workerIndex, playerIndex);
 
+    let action: string = "";
     let winner: string = "";
 
     for await (const chunk of stream) {
@@ -161,10 +172,26 @@ async function runPlayer(
         }
 
         if (isActionRequired(p1battle, chunk)) {
-            state = getState(handler, 0, playerIndex);
-            parentPort?.postMessage(state, [state.buffer]);
-
-            const action = await queueManager.queues[playerIndex].dequeue();
+            if (!isEval) {
+                state = getState(handler, 0, playerIndex);
+                parentPort?.postMessage(state, [state.buffer]);
+                action = await queueManager.queues[playerIndex].dequeue();
+            } else {
+                if (workerIndex === defaultWorkerIndex) {
+                    action = "default";
+                } else if (workerIndex === randomWorkerIndex) {
+                    const stateHandler = new Int8State(
+                        handler,
+                        playerIndex,
+                        workerIndex,
+                        0,
+                        0
+                    );
+                    action = getRandomAction(stateHandler.getLegalMask());
+                } else {
+                    action = "default";
+                }
+            }
             stream.write(action);
         }
     }
@@ -203,24 +230,14 @@ async function runGame() {
     return await players;
 }
 
-function actionIndexToString(actionIndex: number) {
-    if (0 <= actionIndex && actionIndex <= 3) {
-        return `move ${actionIndex + 1}`;
-    } else if (3 < actionIndex && actionIndex <= 10) {
-        return `switch ${actionIndex - 4 + 1}`;
-    } else {
-        return `default`;
-    }
-}
-
 (async () => {
     while (true) {
         await runGame();
     }
 })();
 
-parentPort?.on("message", (message) => {
+parentPort?.on("message", async (message) => {
     const [playerIndex, actionIndex] = message;
     const actionString = actionIndexToString(parseInt(actionIndex));
-    queueManager.queues[playerIndex].enqueue(actionString);
+    await queueManager.queues[playerIndex].enqueue(actionString);
 });
