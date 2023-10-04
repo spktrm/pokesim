@@ -15,7 +15,7 @@ import { BattleStreamsType } from "./types";
 import { Int8State } from "./state";
 import { formatid } from "./data";
 import { getRandomAction } from "./random";
-import { actionIndexToString } from "./helpers";
+import { actionCharToString } from "./helpers";
 
 Teams.setGeneratorFactory(TeamGenerators);
 
@@ -175,7 +175,10 @@ async function runPlayer(
             if (!isEval) {
                 state = getState(handler, 0, playerIndex);
                 parentPort?.postMessage(state, [state.buffer]);
-                action = await queueManager.queues[playerIndex].dequeue();
+                const actionChar = await queueManager.queues[
+                    playerIndex
+                ].dequeue();
+                action = actionCharToString(actionChar);
             } else {
                 if (workerIndex === defaultWorkerIndex) {
                     action = "default";
@@ -187,7 +190,8 @@ async function runPlayer(
                         0,
                         0
                     );
-                    action = getRandomAction(stateHandler.getLegalMask());
+                    const legalMask = stateHandler.getLegalMask();
+                    action = getRandomAction(legalMask);
                 } else {
                     action = "default";
                 }
@@ -206,7 +210,6 @@ async function runGame() {
     const spec = { formatid };
 
     const p1battle = new clientBattle(generations);
-
     const p2battle = new clientBattle(generations);
 
     const players = Promise.all([
@@ -237,7 +240,6 @@ async function runGame() {
 })();
 
 parentPort?.on("message", async (message) => {
-    const [playerIndex, actionIndex] = message;
-    const actionString = actionIndexToString(parseInt(actionIndex));
-    await queueManager.queues[playerIndex].enqueue(actionString);
+    const [playerIndex, actionChar] = message;
+    await queueManager.queues[playerIndex].enqueue(actionChar);
 });

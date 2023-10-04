@@ -1,4 +1,4 @@
-import { actionIndexToString } from "./helpers";
+import { actionCharToString } from "./helpers";
 
 function weightedRandomSample(
     options: any[],
@@ -29,7 +29,7 @@ function weightedRandomSample(
     return res;
 }
 
-function arange(start: number, stop: number, step?: number): number[] {
+export function arange(start: number, stop: number, step?: number): number[] {
     const stepSize = step ?? 1;
 
     if (step === 0) {
@@ -58,7 +58,7 @@ export function getRandomAction(legalMask: Int8Array): string {
         new Array(...legalMask),
         1
     );
-    return actionIndexToString(`${randIndex}`.charCodeAt(0));
+    return actionCharToString(`${randIndex}`);
 }
 
 // console.log(getRandomAction(new Int8Array([1, 1, 1, 1, 0, 0, 0, 0, 0, 0])));

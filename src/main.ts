@@ -4,6 +4,7 @@ import { Worker } from "node:worker_threads";
 import * as net from "net";
 import * as fs from "fs";
 import * as yaml from "js-yaml";
+import { arange } from "./random";
 
 const numWorkers = Math.max(parseInt(process.argv[2] ?? 1), 1);
 console.log(`Num Workers: ${numWorkers}`);
@@ -31,9 +32,9 @@ let clientSocket: net.Socket | null = null;
 let stateSize: number | undefined = undefined;
 
 function processInput(input: string) {
-    const [workIndex, playerIndex, actionIndex] = input.split("|");
+    const [workIndex, playerIndex, actionChar] = input.split("|");
     const worker = workers[parseInt(workIndex)];
-    const message = [parseInt(playerIndex), actionIndex.charCodeAt(0)];
+    const message = [parseInt(playerIndex), actionChar];
     worker.postMessage(message);
 }
 
@@ -68,6 +69,14 @@ function incremetThroughput(_throughput: number) {
     throughput += _throughput;
 }
 
+const validActionTokens = ["r", "d"];
+
+function randomActionToken(): string {
+    return validActionTokens[
+        Math.round(Math.random() * validActionTokens.length)
+    ];
+}
+
 function sendBuffers() {
     if (buffers.length > 0) {
         incremetThroughput(buffers.length);
@@ -80,7 +89,9 @@ function sendBuffers() {
             for (let buffer of buffers) {
                 workerIndex = buffer[0];
                 playerIndex = buffer[1];
-                processInput(`${workerIndex}|${playerIndex}|a`);
+                processInput(
+                    `${workerIndex}|${playerIndex}|${randomActionToken()}`
+                );
             }
         }
 
