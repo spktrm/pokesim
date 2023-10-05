@@ -4,11 +4,32 @@ import pickle
 import msgpack
 import msgpack_numpy as m
 
-from typing import List, Dict, NamedTuple
+from typing import List, Dict, NamedTuple, Sequence
 
 from pokesim.utils import get_arr
 from pokesim.types import TensorType
 from pokesim.constants import _NUM_HISTORY
+from pokesim.data import (
+    POSTIONAL_ENCODING_MATRIX,
+    TEAM_OFFSET,
+    FIELD_OFFSET,
+    BOOSTS_OFFSET,
+    HISTORY_OFFSET,
+    SIDE_CONDITION_OFFSET,
+    TURN_OFFSET,
+    VOLATILE_STATUS_OFFSET,
+    TURN_SIZE,
+    FIELD_SIZE,
+    NUM_SPECIES,
+    NUM_ITEMS,
+    NUM_ABILITIES,
+    NUM_MOVES,
+    NUM_TYPES,
+    MAX_HP,
+    NUM_HP_BUCKETS,
+    NUM_STATUS,
+    NUM_BOOSTS,
+)
 
 _r = lambda arr: arr.reshape(1, 1, -1)
 
@@ -201,3 +222,122 @@ class Batch(Trajectory):
             }
 
         return cls(**data)
+
+
+def onehot_encode(data: np.ndarray, num_features: int = None):
+    if num_features is None:
+        num_features = np.max(data) + 1
+    data = data.astype(int)
+    og_shape = data.shape[:-1]
+    num_samples = np.prod(og_shape)
+    flattened_data = data.reshape((num_samples, data.shape[-1]))
+    multi_hot_encoded = np.zeros((num_samples, num_features), dtype=np.float32)
+    multi_hot_encoded[np.arange(num_samples)[:, None], flattened_data] = 1
+    return multi_hot_encoded.reshape((*og_shape, num_features))
+
+
+class State(NamedTuple):
+    raw: np.ndarray
+
+    def get_turn(self, leading_dims: Sequence[int]):
+        return POSTIONAL_ENCODING_MATRIX[
+            self.raw[..., TURN_OFFSET:TEAM_OFFSET]
+        ].reshape(*leading_dims, -1)
+
+    def get_teams(self, leading_dims: Sequence[int]):
+        teams = np.frombuffer(
+            self.raw[..., TEAM_OFFSET:SIDE_CONDITION_OFFSET].tobytes(), dtype=np.int16
+        ).reshape(*leading_dims, 3, 6, -1)
+        teamsp1 = teams + 1
+        species_onehot = onehot_encode(teamsp1[..., 0, None], NUM_SPECIES + 1)[..., 1:]
+        item_onehot = onehot_encode(teamsp1[..., 1, None], NUM_ITEMS + 1)[..., 1:]
+        ability_onehot = onehot_encode(teamsp1[..., 2, None], NUM_ABILITIES + 1)[
+            ..., 1:
+        ]
+        moves_onehot = onehot_encode(teamsp1[..., -4:], NUM_MOVES + 1)[..., 1:]
+        hp_value = teams[..., 3, None] / MAX_HP
+        hp_onehot = onehot_encode(np.sqrt(teams[..., 3, None]), NUM_HP_BUCKETS)[..., 1:]
+        active = teams[..., 4, None]
+        fainted = teams[..., 5, None]
+        status_onehot = onehot_encode(teamsp1[..., 6, None], NUM_STATUS + 1)[..., 1:]
+        return np.concatenate(
+            (
+                species_onehot,
+                item_onehot,
+                ability_onehot,
+                moves_onehot,
+                hp_value,
+                hp_onehot,
+                active,
+                fainted,
+                status_onehot,
+            ),
+            axis=-1,
+        )
+
+    def get_side_conditions(self, leading_dims: Sequence[int]):
+        side_conditions = self.raw[
+            ..., SIDE_CONDITION_OFFSET:VOLATILE_STATUS_OFFSET
+        ].reshape(*leading_dims, 2, -1)
+        return side_conditions
+
+    def get_volatile_status(self, leading_dims: Sequence[int]):
+        volatile_status = self.raw[..., VOLATILE_STATUS_OFFSET:BOOSTS_OFFSET].reshape(
+            *leading_dims, 2, -1
+        )
+        return volatile_status
+
+    def get_boosts(self, leading_dims: Sequence[int]):
+        boosts = self.raw[..., BOOSTS_OFFSET:FIELD_OFFSET].reshape(*leading_dims, 2, -1)
+        return boosts
+
+    def get_field(self, leading_dims: Sequence[int]):
+        field = self.raw[..., FIELD_OFFSET:HISTORY_OFFSET].reshape(
+            *leading_dims, FIELD_SIZE
+        )
+        return field
+
+    def get_history(self, leading_dims: Sequence[int]):
+        history = self.raw[..., HISTORY_OFFSET:].reshape(*leading_dims, -1, 2)
+        return history
+
+    def dense(self):
+        leading_dims = self.raw.shape[:-1]
+        turn_enc = self.get_turn(leading_dims)
+        teams_enc = self.get_teams(leading_dims)
+        side_conditions_enc = self.get_side_conditions(leading_dims)
+        volatile_status_enc = self.get_volatile_status(leading_dims)
+        boosts_enc = self.get_boosts(leading_dims)
+        field_enc = self.get_field(leading_dims)
+        history_enc = self.get_history(leading_dims)
+        return {
+            "turn": turn_enc,
+            "teams": teams_enc,
+            "side_conditions": side_conditions_enc,
+            "volatile_status": volatile_status_enc,
+            "boosts": boosts_enc,
+            "field": field_enc,
+            "history": history_enc,
+        }
+
+
+class Observation(NamedTuple):
+    obs: np.ndarray
+
+    def get_state(self):
+        return self.obs[..., 4:-10]
+
+    def get_legal_moves(self):
+        return self.obs[..., -10:]
+
+    def get_worker_index(self):
+        return self.obs[..., 0]
+
+    def get_player_index(self):
+        return self.obs[..., 1]
+
+    def get_done(self):
+        return self.obs[..., 2]
+
+    def get_reward(self):
+        return self.obs[..., 3]
