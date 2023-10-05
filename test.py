@@ -1,19 +1,37 @@
-import yaml
+import os
+
+from git import Sequence
+
+from pokesim.constants import _NUM_HISTORY
+
+os.environ["OMP_NUM_THREADS"] = "1"
+
+import torch
+import wandb
 import random
 import socket
+import threading
+
 import numpy as np
+import torch.nn as nn
 import multiprocessing as mp
 
 from tqdm import tqdm
-from typing import NamedTuple, Tuple
+from typing import Tuple, List
+from pokesim.data import SOCKET_PATH, ENCODING, NUM_WORKERS
+from pokesim.structs import Observation, State
 
-NUM_WORKERS = 20
+from pokesim.manager import Manager
+from pokesim.actor import (
+    SelfplayActor,
+    DefaultEvalActor,
+    RandomEvalActor,
+    MaxdmgEvalActor,
+)
+from pokesim.structs import Batch, Trajectory
+from pokesim.learner import Learner
 
-with open("./config.yml", "r") as f:
-    CONFIG = yaml.safe_load(f)
-
-SOCKET_PATH = CONFIG["socket_path"]
-ENCODING = CONFIG["encoding"]
+torch.set_float32_matmul_precision("high")
 
 
 def read(sock: socket.socket) -> Tuple[int, bytes]:
@@ -23,81 +41,6 @@ def read(sock: socket.socket) -> Tuple[int, bytes]:
         remaining = (518 * num_states) - len(data)
         data += sock.recv(remaining)
     return num_states, data
-
-
-TURN_OFFSET = 0
-TURN_SIZE = 1
-
-TEAM_OFFSET = TURN_OFFSET + TURN_SIZE
-TEAM_SIZE = 3 * 6 * 22
-
-SIDE_CONDITION_OFFSET = TEAM_OFFSET + TEAM_SIZE
-SIDE_CONDITION_SIZE = 2 * 15
-
-VOLATILE_STATUS_OFFSET = SIDE_CONDITION_OFFSET + SIDE_CONDITION_SIZE
-VOLATILE_STATUS_SIZE = 2 * 20
-
-BOOSTS_OFFSET = VOLATILE_STATUS_OFFSET + VOLATILE_STATUS_SIZE
-BOOSTS_SIZE = 2 * 7
-
-FIELD_OFFSET = BOOSTS_OFFSET + BOOSTS_SIZE
-FIELD_SIZE = 9 + 6
-
-HISTORY_OFFSET = FIELD_OFFSET + FIELD_SIZE
-
-
-class State(NamedTuple):
-    raw: np.ndarray
-
-    def dense(self):
-        batch_size = self.raw.shape[0]
-        turn = self.raw[..., 0].reshape(batch_size, TURN_SIZE)
-        teams = np.frombuffer(
-            self.raw[..., TEAM_OFFSET:SIDE_CONDITION_OFFSET].tobytes(), dtype=np.int16
-        ).reshape(batch_size, 3, 6, -1)
-        side_conditions = self.raw[
-            ..., SIDE_CONDITION_OFFSET:VOLATILE_STATUS_OFFSET
-        ].reshape(batch_size, 2, -1)
-        volatile_status = self.raw[..., VOLATILE_STATUS_OFFSET:BOOSTS_OFFSET].reshape(
-            batch_size, 2, -1
-        )
-        boosts = self.raw[..., BOOSTS_OFFSET:FIELD_OFFSET].reshape(batch_size, 2, -1)
-        field = self.raw[..., FIELD_OFFSET:HISTORY_OFFSET].reshape(
-            batch_size, FIELD_SIZE
-        )
-        history = self.raw[..., HISTORY_OFFSET:].reshape(batch_size, -1, 2)
-        return (
-            self.raw,
-            turn,
-            teams,
-            side_conditions,
-            volatile_status,
-            boosts,
-            field,
-            history,
-        )
-
-
-class Observation(NamedTuple):
-    obs: np.ndarray
-
-    def get_state(self):
-        return self.obs[..., 4:-10]
-
-    def get_legal_moves(self):
-        return self.obs[..., -10:]
-
-    def get_worker_index(self):
-        return self.obs[..., 0]
-
-    def get_player_index(self):
-        return self.obs[..., 1]
-
-    def get_done(self):
-        return self.obs[..., 2]
-
-    def get_reward(self):
-        return self.obs[..., 3]
 
 
 class Environment:
@@ -141,15 +84,19 @@ class Model:
         return prob
 
 
-def run_environment():
+def stacknpad(array_stack: Sequence[np.ndarray], num_padding: int):
+    stack = np.stack(array_stack)
+    return np.concatenate(
+        (stack, np.tile(stack[-1, None], (num_padding - stack.shape[0], 1)))
+    )
+
+
+def run_environment(model: nn.Module, learn_queue: mp.Queue):
     env = Environment()
-    model = Model()
 
     buffer = {i: [] for i in range(NUM_WORKERS)}
     dones = {i: 0 for i in range(NUM_WORKERS)}
-
-    progress1 = tqdm()
-    progress2 = tqdm()
+    hist = {i: {0: [], 1: []} for i in range(NUM_WORKERS)}
 
     obs = env.reset()
     while True:
@@ -158,6 +105,8 @@ def run_environment():
         worker_indices = obs.get_worker_index()
         player_indices = obs.get_player_index()
 
+        batch = []
+
         for state_index, (done, worker_index, player_index) in enumerate(
             zip(
                 obs.get_done(),
@@ -165,22 +114,38 @@ def run_environment():
                 player_indices,
             )
         ):
-            buffer[worker_index].append(states[state_index])
+            state = states[state_index]
+            observation = obs.obs[state_index]
+            hist[worker_index][player_index].append(observation)
+
+            state_stack = stacknpad(
+                hist[worker_index][player_index][-_NUM_HISTORY:], _NUM_HISTORY
+            )
+
+            num_states = len(hist[worker_index][player_index][-_NUM_HISTORY:])
+            item = (state_stack, num_states)
+
+            buffer[worker_index].append(item)
+            batch.append(item)
+
             dones[worker_index] += done
 
             if dones[worker_index] >= 2:
-                trajectory = np.stack(buffer[worker_index])
-                progress1.update(1)
-                progress2.update(len(trajectory))
+                trajectory, stack_lengths = list(zip(*buffer[worker_index]))
+
+                trajectory = np.stack(trajectory)
+                stack_lengths = np.concatenate(stack_lengths)
 
                 buffer[worker_index] = []
+                hist[worker_index] = {0: [], 1: []}
                 dones[worker_index] = 0
 
-        State(states).dense()
+        batch, stack_lengths = list(zip(*batch))
+        state = State(np.stack(batch)).dense()
 
-        probs = model.forward(np.ones_like(states[..., :128]), legal)
+        probs = model(**state, legal=legal)
+
         actions = []
-
         for worker_index, player_index, prob in zip(
             worker_indices, player_indices, probs.tolist()
         ):
@@ -191,13 +156,90 @@ def run_environment():
         obs = env.step(actions)
 
 
+def learn(learner: Learner, batch: Batch, lock=threading.Lock()):
+    with lock:
+        alpha, update_target_net = learner._entropy_schedule(learner.learner_steps)
+        logs = learner.update_parameters(batch, alpha, update_target_net)
+
+        learner.learner_steps += 1
+
+        logs["avg_length"] = batch.valid.sum(0).mean()
+        logs["learner_steps"] = learner.learner_steps
+        return logs
+
+
+class ReplayBuffer:
+    def __init__(self, queue: mp.Queue, max_buffer_size: int = 512):
+        self.queue = queue
+        self.max_buffer_size = max_buffer_size
+
+        self.buffer = []
+
+    def sample(self, batch_size: int = 16, lock=threading.Lock()):
+        with lock:
+            batch = [self.queue.get() for _ in range(batch_size)]
+
+        self.buffer += batch
+        if len(self.buffer) > self.max_buffer_size:
+            self.buffer = self.buffer[-self.max_buffer_size :]
+
+        return Batch.from_trajectories(
+            [
+                Trajectory.deserialize(self.buffer[index])
+                for index in random.sample(range(len(self.buffer)), batch_size)
+            ]
+        )
+
+
+def learn_loop(learner: Learner, queue: mp.Queue):
+    # progress = tqdm(desc="Learning")
+    env_steps = 0
+
+    replay_buffer = ReplayBuffer(queue)
+
+    while True:
+        batch = replay_buffer.sample(learner.config.batch_size)
+        env_steps += batch.valid.sum()
+
+        logs = learn(learner, batch)
+        # logs["env_steps"] = env_steps
+
+        wandb.log(logs)
+
+
 def main():
+    init = None
+    learner = Learner(init)
+
+    wandb.init(
+        # set the wandb project where this run will be logged
+        project="pokesim",
+        # track hyperparameters and run metadata
+        config=learner.get_config(),
+    )
+
     processes = []
+    learn_queue = mp.Queue(maxsize=max(36, learner.config.batch_size))
 
     for i in range(1):
-        proc = mp.Process(target=run_environment)
+        proc = mp.Process(
+            target=run_environment,
+            args=(
+                learner.params_actor,
+                learn_queue,
+            ),
+        )
         proc.start()
         processes.append(proc)
+
+    learn_threads: List[threading.Thread] = []
+    for _ in range(1):
+        learn_thread = threading.Thread(
+            target=learn_loop,
+            args=(learner, learn_queue),
+        )
+        learn_threads.append(learn_thread)
+        learn_thread.start()
 
     for proc in processes:
         proc.join()

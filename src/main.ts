@@ -4,13 +4,14 @@ import { Worker } from "node:worker_threads";
 import * as net from "net";
 import * as fs from "fs";
 import * as yaml from "js-yaml";
-import { arange } from "./random";
 
 const numWorkers = Math.max(parseInt(process.argv[2] ?? 1), 1);
 console.log(`Num Workers: ${numWorkers}`);
 
 type Config = { [k: string]: any };
-const config = yaml.load(fs.readFileSync("config.yml", "utf-8")) as Config;
+const config = yaml.load(
+    fs.readFileSync(path.resolve("config.yml"), "utf-8")
+) as Config;
 console.log(config);
 
 const socketPath = config.socket_path as string;
@@ -43,7 +44,7 @@ function getConcatenatedBuffer() {
         stateSize = buffers[0].length;
     }
     const concatenatedBuffer = new Buffer(
-        buffers.length * stateSize, //+ stopBytes.length
+        buffers.length * stateSize //+ stopBytes.length
     );
     let offset = 0;
     for (const buffer of buffers) {
@@ -90,7 +91,7 @@ function sendBuffers() {
                 workerIndex = buffer[0];
                 playerIndex = buffer[1];
                 processInput(
-                    `${workerIndex}|${playerIndex}|${randomActionToken()}`,
+                    `${workerIndex}|${playerIndex}|${randomActionToken()}`
                 );
             }
         }

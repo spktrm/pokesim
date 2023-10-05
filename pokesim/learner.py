@@ -10,7 +10,7 @@ from copy import deepcopy
 from typing import Any, List, Mapping
 
 from pokesim.constants import _NUM_PLAYERS
-from pokesim.model.main import Model
+from pokesim.model import Model
 from pokesim.structs import Batch
 from pokesim.utils import preprocess, optimized_forward
 from pokesim.rl_utils import (

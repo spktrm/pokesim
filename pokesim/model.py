@@ -10,7 +10,6 @@ from typing import Sequence
 
 from pokesim.structs import ModelOutput
 from pokesim.rl_utils import _legal_log_policy, _legal_policy
-from pokesim.model.embedding import EntityEmbedding
 
 _USE_LAYER_NORM = False
 
@@ -431,12 +430,9 @@ class ConvPointerLogits(nn.Module):
 class Model(nn.Module):
     def __init__(self, entity_size: int = 32, vector_size: int = 128):
         super().__init__()
-        self.embedding = EntityEmbedding()
 
         self.switch_embedding = nn.Parameter(torch.randn(entity_size))
-        self.move_embeddings = _layer_init(
-            nn.Embedding(self.embedding.moves_shape[1] + 1, entity_size)
-        )
+        self.move_embeddings = _layer_init(nn.Embedding(100, entity_size))
         self.hp_onehot = nn.Embedding.from_pretrained(
             F.one_hot(
                 (torch.floor(torch.log10(torch.arange(1001))).clamp(-1).long() + 1), 5
