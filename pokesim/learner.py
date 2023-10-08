@@ -9,10 +9,10 @@ import torch.optim as optim
 from copy import deepcopy
 from typing import Any, List, Mapping
 
-from pokesim.constants import _NUM_PLAYERS
+from pokesim.data import MODEL_INPUT_KEYS, NUM_PLAYERS
 from pokesim.model import Model
-from pokesim.structs import Batch
-from pokesim.utils import preprocess, optimized_forward
+from pokesim.structs import Batch, State
+from pokesim.utils import optimized_forward
 from pokesim.rl_utils import (
     EntropySchedule,
     SGDTowardsModel,
@@ -161,7 +161,7 @@ class Learner:
         self.params = Model()
         if init is not None:
             self.params.load_state_dict(init, strict=False)
-        self.params_actor = deepcopy(self.params).share_memory()
+        self.params_actor = deepcopy(self.params)
         self.params_target = deepcopy(self.params)
         self.params_prev = deepcopy(self.params)
         self.params_prev_ = deepcopy(self.params)
@@ -210,33 +210,16 @@ class Learner:
         return torch.from_numpy(arr).to(device, non_blocking=True)
 
     def loss(self, batch: Batch, alpha: float) -> float:
-        obs = {k: torch.from_numpy(t) for k, t in preprocess(batch.raw_obs).items()}
-        mask = torch.from_numpy(batch.legal.astype(np.bool_))
-        policy_select = torch.from_numpy(batch.policy_select)
+        state = {
+            **State(batch.state).dense(),
+            "history_mask": batch.history_mask,
+            "legal": batch.legal,
+        }
 
-        move_mask = mask[..., :4]
-        switch_mask = mask[..., 4:]
-        action_type_mask = torch.cat(
-            (
-                move_mask.sum(-1, keepdim=True) > 0,
-                switch_mask.sum(-1, keepdim=True) > 0,
-            ),
-            dim=-1,
-        )
-        move_mask += ~action_type_mask[..., 0].unsqueeze(-1)
-        switch_mask += ~action_type_mask[..., 1].unsqueeze(-1)
-        mask = torch.cat(
-            (
-                action_type_mask * (policy_select == 0),
-                move_mask * (policy_select == 1),
-                switch_mask * (policy_select == 2),
-            ),
-            dim=-1,
-        )
+        forward_batch = {key: torch.from_numpy(state[key]) for key in MODEL_INPUT_KEYS}
 
         t_callback = lambda t: t.to("cuda", non_blocking=True)
 
-        forward_batch = {**obs, "mask": mask}
         with torch.no_grad():
             pi, log_pi, logit, v, *_ = optimized_forward(
                 self.params, forward_batch, t_callback
@@ -266,11 +249,11 @@ class Learner:
 
         valid = self._to_torch(batch.valid)
         player_id = self._to_torch(batch.player_id)
-        legal = t_callback(mask)
+        legal = self._to_torch(batch.legal)
 
         action_oh = np.eye(pi.shape[-1])[batch.action]
 
-        for player in range(_NUM_PLAYERS):
+        for player in range(NUM_PLAYERS):
             reward = _rewards[:, :, player]  # [T, B, Player]
             v_target_, has_played, policy_target_ = v_trace(
                 _v_target,
@@ -305,7 +288,7 @@ class Learner:
             _policy_ratio(_pi, batch.policy, action_oh, batch.valid)
         )
         is_vector = torch.unsqueeze(self._to_torch(policy_ratio), axis=-1)
-        importance_sampling_correction = [torch.clamp(is_vector, max=1)] * _NUM_PLAYERS
+        importance_sampling_correction = [torch.clamp(is_vector, max=1)] * NUM_PLAYERS
 
         has_played_p1 = has_played_list[0].sum()
         has_played_p2 = has_played_list[1].sum()
@@ -334,7 +317,7 @@ class Learner:
                 p_loss = 0
 
                 loss_v = get_loss_v(
-                    [v] * _NUM_PLAYERS,
+                    [v] * NUM_PLAYERS,
                     [v_target[ts:tf, bs:bf] for v_target in v_target_list],
                     [has_played[ts:tf, bs:bf] for has_played in has_played_list],
                 )
@@ -343,8 +326,8 @@ class Learner:
 
                 # Uses v-trace to define q-values for Nerd
                 loss_nerd = get_loss_nerd(
-                    [logit] * _NUM_PLAYERS,
-                    [pi] * _NUM_PLAYERS,
+                    [logit] * NUM_PLAYERS,
+                    [pi] * NUM_PLAYERS,
                     [vtpt[ts:tf, bs:bf] for vtpt in v_trace_policy_target_list],
                     minibatch_valid,
                     player_id[ts:tf, bs:bf],

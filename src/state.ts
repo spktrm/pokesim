@@ -27,7 +27,7 @@ function formatKey(key: string): string {
 function getMappingValue(
     pokemon: AnyObject,
     mapping: AnyObject,
-    key: string,
+    key: string
 ): number {
     let suffix: string = "";
     if (key === "asone") {
@@ -42,13 +42,15 @@ function getMappingValue(
 }
 
 function logKeyError(key: string, mapping: AnyObject) {
-    // console.error(`${key} not in ${JSON.stringify(mapping).slice(0, 30)}`);
+    if (key !== undefined && key !== "") {
+        console.error(`${key} not in ${JSON.stringify(mapping).slice(0, 30)}`);
+    }
 }
 
 function getMappingValueWrapper(
     pokemon: AnyObject,
     mapping: AnyObject,
-    key: string,
+    key: string
 ): number {
     const stringKey = key ?? "";
     if (stringKey === "") {
@@ -67,29 +69,29 @@ function getMappingValueWrapper(
 function getPokemon(
     pokemon: AnyObject,
     active: boolean,
-    buckets: number = 1024,
+    buckets: number = 1024
 ): Int8Array {
     let moveTokens = [];
     for (let i = 0; i < 4; i++) {
         moveTokens.push(
-            getMappingValueWrapper(pokemon, moveMapping, pokemon.moves[i]),
+            getMappingValueWrapper(pokemon, moveMapping, pokemon.moves[i])
         );
     }
     const formatedPokemonName = formatKey(pokemon.name);
     const speciesToken = getMappingValueWrapper(
         pokemon,
         pokemonMapping,
-        formatedPokemonName,
+        formatedPokemonName
     );
     const itemToken = getMappingValueWrapper(
         pokemon,
         itemMapping,
-        pokemon.item,
+        pokemon.item
     );
     const abilityToken = getMappingValueWrapper(
         pokemon,
         abilityMapping,
-        pokemon.ability,
+        pokemon.ability
     );
     const hpToken =
         pokemon.maxhp !== undefined
@@ -122,7 +124,7 @@ export class Int8State {
         playerIndex: number,
         workerIndex: number,
         done: number,
-        reward: number,
+        reward: number
     ) {
         this.handler = handler;
         this.playerIndex = playerIndex;
@@ -134,7 +136,7 @@ export class Int8State {
     actionToVector(actionLine: string): Int8Array {
         const room = this.handler.battles[0];
         if (actionLine === undefined) {
-            return new Int8Array([-1, -1]);
+            return new Int8Array([-1, -1, -1, -1]);
         }
         const splitString = actionLine.split("|");
         const actionType = splitString[1];
@@ -153,7 +155,7 @@ export class Int8State {
             userIndex >= 6 ? userIndex + 6 : userIndex,
             actionIndex,
         ];
-        return new Int8Array(actionVector);
+        return new Int8Array(new Int16Array(actionVector).buffer);
     }
 
     getMyBoosts(): Int8Array {
@@ -167,14 +169,14 @@ export class Int8State {
 
     getBoosts(actives: (Pokemon | null)[]): Int8Array {
         const boostsVector = new Int8Array(
-            actives.length * boostsEntries.length,
+            actives.length * boostsEntries.length
         );
         boostsVector.fill(0);
 
         for (const [activeIndex, activePokemon] of actives.entries()) {
             if (activePokemon !== null) {
                 for (const [boost, value] of Object.entries(
-                    activePokemon.boosts,
+                    activePokemon.boosts
                 )) {
                     boostsVector[
                         activeIndex + boostsMapping[boost as BoostID]
@@ -188,8 +190,9 @@ export class Int8State {
     getField(): Int8Array {
         const field = this.handler.battles[0].field;
         const fieldVector = new Int8Array(9 + 6);
+        fieldVector.fill(-1);
         for (const [index, [name, pseudoWeather]] of Object.entries(
-            field.pseudoWeather,
+            field.pseudoWeather
         ).entries()) {
             fieldVector[index] = pseudoWeatherMapping[name];
             fieldVector[index + 1] = pseudoWeather.minDuration;
@@ -215,10 +218,11 @@ export class Int8State {
 
     getVolatileStatus(actives: (Pokemon | null)[]): Int8Array {
         const volatileStatusVector = new Int8Array(actives.length * 20);
+        volatileStatusVector.fill(-1);
         for (const [activeIndex, activePokemon] of actives.entries()) {
             if (activePokemon !== null) {
                 for (const [volatileIndex, volatileStatus] of Object.values(
-                    activePokemon.volatiles,
+                    activePokemon.volatiles
                 ).entries()) {
                     volatileStatusVector[activeIndex + volatileIndex] =
                         volatileStatusMapping[volatileStatus.id];
@@ -241,7 +245,7 @@ export class Int8State {
 
     getSideConditions(sideConditions: SideConditions): Int8Array {
         const sideConditionVector = new Int8Array(
-            Object.keys(sideConditionsMapping).length,
+            Object.keys(sideConditionsMapping).length
         );
         for (const [name, sideCondition] of Object.entries(sideConditions)) {
             sideConditionVector[sideConditionsMapping[name]] =
@@ -294,7 +298,7 @@ export class Int8State {
             } else {
                 pokemonArray = getPokemon(
                     team[i],
-                    activeIdents.includes(team[i].ident),
+                    activeIdents.includes(team[i].ident)
                 );
                 teamArray.set(pokemonArray, i * fillPokemon.length);
             }
@@ -306,66 +310,63 @@ export class Int8State {
         const request = this.handler.battles[0].request as AnyObject;
         const actionMask = new Int8Array(10);
         actionMask.fill(0);
-
-        if (request === undefined || this.done) {
-            actionMask[4] = 1;
+        if (request === undefined || this.done || request.wait) {
+            if (this.done) {
+                actionMask.fill(1);
+            }
+            return actionMask;
         } else {
-            if (request.wait) {
-            } else if (request.forceSwitch) {
-                const pokemon = request.side.pokemon;
-                const forceSwitchLength = request.forceSwitch.length;
-                const isReviving = !!pokemon[0].reviving;
+            let forceSwitchLength = -1;
+            if (request.forceSwitch) {
+                forceSwitchLength = request.forceSwitch.length;
+            }
 
-                for (let j = 1; j <= 6; j++) {
-                    const currentPokemon = pokemon[j - 1];
-                    if (
-                        currentPokemon &&
-                        j > forceSwitchLength &&
-                        (isReviving ? 1 : 0) ^
-                            (currentPokemon.condition.endsWith(" fnt") ? 0 : 1)
-                    ) {
-                        actionMask[j + 3] = 1;
-                    }
+            const sidePokemon = request.side.pokemon;
+            const active = (request.active ?? [])[0] ?? {};
+            const possibleMoves = active.moves ?? [];
+            const isReviving = !!sidePokemon[0].reviving;
+
+            const moveMask = new Int8Array(4);
+            for (
+                let moveIndex = 0;
+                moveIndex < possibleMoves.length;
+                moveIndex++
+            ) {
+                const currentMove = possibleMoves[moveIndex];
+                if (!currentMove.disabled) {
+                    moveMask[moveIndex] = 1;
                 }
-            } else if (request.active) {
-                const pokemon = request.side.pokemon;
-                const active = request.active[0];
-                const possibleMoves = active.moves ?? [];
-                const canSwitch = [];
-
-                for (let j = 1; j <= possibleMoves.length; j++) {
-                    const currentMove = possibleMoves[j - 1];
-                    if (!currentMove.disabled) {
-                        actionMask[j - 1] = 1;
-                    }
-                }
-
-                for (let j = 1; j <= 6; j++) {
-                    const currentPokemon = pokemon[j - 1];
+            }
+            const switchMask = new Int8Array(6);
+            if (!(active.trapped || active.maybeTrapped)) {
+                for (
+                    let switchIndex = 0;
+                    switchIndex < sidePokemon.length;
+                    switchIndex++
+                ) {
+                    const currentPokemon = sidePokemon[switchIndex];
                     if (
                         currentPokemon &&
                         !currentPokemon.active &&
-                        !currentPokemon.condition.endsWith(" fnt")
+                        !currentPokemon.condition.endsWith(" fnt") &&
+                        switchIndex >= forceSwitchLength &&
+                        (isReviving ? 1 : 0) ^
+                            (currentPokemon.condition.endsWith(" fnt") ? 0 : 1)
                     ) {
-                        canSwitch.push(j);
+                        switchMask[switchIndex] = 1;
                     }
                 }
-
-                const switches =
-                    active.trapped || active.maybeTrapped ? [] : canSwitch;
-
-                for (let i = 0; i < switches.length; i++) {
-                    const slot = switches[i];
-                    actionMask[slot + 3] = 1;
-                }
             }
-        }
 
-        return actionMask;
+            actionMask.set(moveMask, 0);
+            actionMask.set(switchMask, 4);
+
+            return actionMask;
+        }
     }
 
     getState(): Int8Array {
-        const turn = this.handler.battles[0].turn - 1 ?? 0;
+        const turn = Math.min(127, this.handler.battles[0].turn - 1 ?? 0);
         const actionLines = this.handler.turns[turn] ?? [];
         const data = [
             new Int8Array([
@@ -395,7 +396,7 @@ export class Int8State {
             stateSize = data.reduce(
                 (accumulator, currentValue) =>
                     accumulator + currentValue.length,
-                0,
+                0
             );
         }
         const state = new Int8Array(stateSize);

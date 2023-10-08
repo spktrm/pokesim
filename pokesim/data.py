@@ -1,5 +1,4 @@
 import os
-from sympy import false
 import yaml
 import json
 
@@ -68,6 +67,12 @@ NUM_ITEMS = len(TOKENS["items"])
 NUM_MOVES = len(TOKENS["moves"])
 NUM_TYPES = len(TOKENS["types"])
 
+NUM_TERRAIN = len(DATA["terrain"])
+NUM_VOLATILE_STATUS = len(DATA["volatileStatus"])
+NUM_WEATHER = len(DATA["weathers"])
+NUM_SIDE_CONDITIONS = len(DATA["sideConditions"])
+NUM_PSEUDOWEATHER = len(DATA["pseudoWeather"])
+
 MAX_HP = 1024
 NUM_HP_BUCKETS = int(MAX_HP**0.5 + 1)
 
@@ -83,8 +88,26 @@ def get_positional_encoding_matrix(
     pe = np.zeros((max_len, d_model))
     pe[:, 0::2] = np.sin(position * div_term)
     pe[:, 1::2] = np.cos(position * div_term)
-    return pe
+    return pe.astype(np.float32)
 
 
-POSTIONAL_ENCODING_MATRIX = get_positional_encoding_matrix(64, 100)
+TURN_ENC_SIZE = 64
+TURN_MAX = 100
+POSTIONAL_ENCODING_MATRIX = get_positional_encoding_matrix(TURN_ENC_SIZE, TURN_MAX + 1)
 POSTIONAL_ENCODING_MATRIX.setflags(write=False)
+
+NUM_PLAYERS = 2
+NUM_HISTORY = 8
+
+MODEL_INPUT_KEYS = {
+    "turn",
+    "active_moveset",
+    "teams",
+    "side_conditions",
+    "volatile_status",
+    "boosts",
+    "field",
+    "legal",
+    "history",
+    "history_mask",
+}
