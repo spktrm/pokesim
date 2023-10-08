@@ -462,7 +462,7 @@ class Model(nn.Module):
         self.to_vector = ToVector(entity_size, [vector_size])
 
         boosts_size = NUM_BOOSTS + 12 * NUM_BOOSTS
-        field_size = NUM_PSEUDOWEATHER + NUM_WEATHER + NUM_TERRAIN
+        field_size = NUM_PSEUDOWEATHER + NUM_WEATHER + NUM_TERRAIN + 2
         side_condition_size = NUM_SIDE_CONDITIONS + 2 + 3
         self.context_embedding = MLP(
             [
