@@ -470,7 +470,7 @@ class Model(nn.Module):
         self.volatile_status_onehot = nn.Embedding.from_pretrained(
             torch.eye(NUM_VOLATILE_STATUS + 1)[..., 1:]
         )
-        self.boosts_onehot = nn.Embedding.from_pretrained(torch.eye(13)[..., 1:])
+        self.boosts_onehot = nn.Embedding.from_pretrained(torch.eye(13))
         self.pseudoweathers_onehot = nn.Embedding.from_pretrained(
             torch.eye(NUM_PSEUDOWEATHER + 1)[..., 1:]
         )
@@ -502,7 +502,7 @@ class Model(nn.Module):
         self.to_vector = ToVector(entity_size, [vector_size])
 
         boosts_size = NUM_BOOSTS + 12 * NUM_BOOSTS
-        field_size = NUM_PSEUDOWEATHER + NUM_WEATHER + NUM_TERRAIN + 2
+        field_size = NUM_PSEUDOWEATHER + NUM_WEATHER + NUM_TERRAIN
         side_condition_size = NUM_SIDE_CONDITIONS + 2 + 3
         self.context_embedding = MLP(
             [
@@ -617,7 +617,7 @@ class Model(nn.Module):
         tspikes = self.tspikes_onehot(side_conditions[..., 13])
         return torch.cat((other, spikes, tspikes), -1)
 
-    def encode_volatile_status(self, volatile_status: torch.Tensor):
+    def encode_volatile_status(self, volatile_status: torch.Tensor) -> torch.Tensor:
         volatile_status_id = volatile_status[..., 0, :]
         volatile_status_level = volatile_status[..., 1, :]
         return self.volatile_status_onehot(volatile_status_id + 1).sum(-2)
@@ -626,7 +626,7 @@ class Model(nn.Module):
         boosts_onehot = self.boosts_onehot(boosts + 6)
         boosts_onehot = torch.cat((boosts_onehot[..., :6], boosts_onehot[..., 7:]), -1)
         boosts_scaled = torch.sign(boosts) * torch.sqrt(abs(boosts))
-        return torch.cat((boosts_onehot, boosts_scaled), -1)
+        return torch.cat((boosts_onehot.flatten(-2), boosts_scaled), -1)
 
     def encode_field(self, field):
         field_id = field[..., 0, :]
@@ -684,9 +684,9 @@ class Model(nn.Module):
         field_encoding = self.encode_field(field)
         context_encoding = torch.cat(
             (
-                side_conditions_encoding,
-                volatile_status_encoding,
-                boosts_encoding,
+                side_conditions_encoding.flatten(-2),
+                volatile_status_encoding.flatten(-2),
+                boosts_encoding.flatten(-2),
                 field_encoding,
                 turn,
             ),

@@ -218,7 +218,7 @@ class Learner:
 
         forward_batch = {key: torch.from_numpy(state[key]) for key in MODEL_INPUT_KEYS}
 
-        t_callback = lambda t: t.to("cuda", non_blocking=True)
+        t_callback = lambda t: t.to(self.config.learner_device, non_blocking=True)
 
         with torch.no_grad():
             pi, log_pi, logit, v, *_ = optimized_forward(

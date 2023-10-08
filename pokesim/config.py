@@ -20,7 +20,7 @@ class RNaDConfig:
     """Configuration parameters for the RNaDSolver."""
 
     actor_device = "cpu"
-    learner_device = "cuda"
+    learner_device = "cpu"
 
     # The batch size to use when learning/improving parameters.
     batch_size: int = 8
