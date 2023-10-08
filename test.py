@@ -148,8 +148,7 @@ def main():
     processes: List[mp.Process] = []
     threads: List[threading.Thread] = []
 
-    num_workers = 12
-
+    num_workers = 1
     learn_queue = mp.Queue(maxsize=max(36, learner.config.batch_size))
 
     for worker_index in range(num_workers):
