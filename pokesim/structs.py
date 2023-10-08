@@ -161,11 +161,8 @@ class OneHotCache:
         self.terrain = np.eye(NUM_TERRAIN + 1, dtype=np.float32)[..., 1:]
 
     def onehot_encode(self, data: np.ndarray, feature: str) -> np.ndarray:
-        try:
-            encodings = getattr(self, feature)
-            return encodings[data]
-        except Exception as e:
-            print(feature)
+        encodings = getattr(self, feature)
+        return encodings[data]
 
 
 onehot_cache = OneHotCache()

@@ -138,12 +138,12 @@ def main():
     init = None
     learner = Learner(init)
 
-    # wandb.init(
-    #     # set the wandb project where this run will be logged
-    #     project="pokesim",
-    #     # track hyperparameters and run metadata
-    #     config=learner.get_config(),
-    # )
+    wandb.init(
+        # set the wandb project where this run will be logged
+        project="pokesim",
+        # track hyperparameters and run metadata
+        config=learner.get_config(),
+    )
 
     processes: List[mp.Process] = []
     threads: List[threading.Thread] = []

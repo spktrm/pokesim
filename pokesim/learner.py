@@ -161,7 +161,7 @@ class Learner:
         self.params = Model()
         if init is not None:
             self.params.load_state_dict(init, strict=False)
-        self.params_actor = deepcopy(self.params)
+        self.params_actor = deepcopy(self.params).share_memory()
         self.params_target = deepcopy(self.params)
         self.params_prev = deepcopy(self.params)
         self.params_prev_ = deepcopy(self.params)
