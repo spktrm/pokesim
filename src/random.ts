@@ -1,13 +1,13 @@
 import { actionCharToString } from "./helpers";
 
-function weightedRandomSample(
+export function weightedRandomSample(
     options: any[],
     weights: number[],
-    size: number,
+    size: number
 ): any {
     if (options.length !== weights.length) {
         throw new Error(
-            "The options and weights arrays must be the same length.",
+            "The options and weights arrays must be the same length."
         );
     }
 
@@ -50,13 +50,13 @@ export function arange(start: number, stop: number, step?: number): number[] {
     return output;
 }
 
-const numArange = arange(0, 10);
+export const numArange = arange(0, 10);
 
 export function getRandomAction(legalMask: Int8Array): string {
     const randIndex = weightedRandomSample(
         numArange,
         new Array(...legalMask),
-        1,
+        1
     );
     return actionCharToString(`${randIndex}`);
 }

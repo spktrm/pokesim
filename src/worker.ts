@@ -1,21 +1,15 @@
 import { parentPort, workerData } from "node:worker_threads";
-
-import {
-    AnyObject,
-    Battle as simBattle,
-    BattleStreams,
-    Teams,
-} from "@pkmn/sim";
+import { AnyObject, BattleStreams, Teams } from "@pkmn/sim";
 import { TeamGenerators } from "@pkmn/randoms";
 import { Battle as clientBattle } from "@pkmn/client";
 import { Generations } from "@pkmn/data";
 import { Dex } from "@pkmn/dex";
 import { ObjectReadWriteStream } from "@pkmn/streams";
 import { BattleStreamsType } from "./types";
-import { Int8State } from "./state";
 import { formatid } from "./data";
 import { getRandomAction } from "./random";
 import { actionCharToString } from "./helpers";
+import { Int8State } from "./state";
 
 Teams.setGeneratorFactory(TeamGenerators);
 
@@ -36,7 +30,7 @@ class AsyncQueue {
         this.queue = [];
     }
 
-    async enqueue(item: string): Promise<void> {
+    enqueue(item: string): void {
         if (this.resolveWaitingDequeue) {
             this.resolveWaitingDequeue(item);
             this.resolveWaitingDequeue = undefined;
@@ -99,14 +93,14 @@ function getState(
     handler: BattlesHandler,
     done: number,
     playerIndex: number,
-    reward: number = 0,
+    reward: number = 0
 ) {
     const stateHandler = new Int8State(
         handler,
         playerIndex,
         workerIndex,
         done,
-        reward,
+        reward
     );
     const state = stateHandler.getState();
     const stateBuffer = Buffer.from(state.buffer);
@@ -141,11 +135,13 @@ async function runPlayer(
     stream: ObjectReadWriteStream<string>,
     playerIndex: number,
     p1battle: clientBattle,
-    p2battle: clientBattle,
+    p2battle: clientBattle
 ) {
     const handler = new BattlesHandler([p1battle, p2battle]);
     const turn = p1battle.turn ?? 0;
     const isEval = isEvalPlayer(workerIndex, playerIndex);
+
+    const log = [];
 
     let action: string = "";
     let winner: string = "";
@@ -160,6 +156,7 @@ async function runPlayer(
             if (line.startsWith("|win")) {
                 winner = line.split("|")[2];
             }
+            log.push(line);
             if (isAction(line)) {
                 if (handler.turns[turn] === undefined) {
                     handler.turns[turn] = [];
@@ -175,8 +172,9 @@ async function runPlayer(
             if (!isEval) {
                 state = getState(handler, 0, playerIndex);
                 parentPort?.postMessage(state, [state.buffer]);
-                const actionChar =
-                    await queueManager.queues[playerIndex].dequeue();
+                const actionChar = await queueManager.queues[
+                    playerIndex
+                ].dequeue();
                 action = actionCharToString(actionChar);
             } else {
                 if (workerIndex === defaultWorkerIndex) {
@@ -187,7 +185,7 @@ async function runPlayer(
                         playerIndex,
                         workerIndex,
                         0,
-                        0,
+                        0
                     );
                     const legalMask = stateHandler.getLegalMask();
                     action = getRandomAction(legalMask);
@@ -232,13 +230,20 @@ async function runGame() {
     return await players;
 }
 
+const startQueue = new AsyncQueue();
+
 (async () => {
     while (true) {
         await runGame();
+        await startQueue.dequeue();
     }
 })();
 
-parentPort?.on("message", async (message) => {
-    const [playerIndex, actionChar] = message;
-    await queueManager.queues[playerIndex].enqueue(actionChar);
+parentPort?.on("message", (message) => {
+    if (message === "s") {
+        startQueue.enqueue(message);
+    } else {
+        const [playerIndex, actionChar] = message;
+        queueManager.queues[playerIndex].enqueue(actionChar);
+    }
 });

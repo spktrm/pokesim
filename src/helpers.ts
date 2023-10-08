@@ -6,9 +6,9 @@ export function actionCharToString(actionChar: string): string {
     const actionIndexMinusOffset = actionIndex - zeroAsciiCode;
     // assuming its the string "0-9"
 
-    if (0 <= actionIndex && actionIndex <= 3) {
+    if (0 <= actionIndexMinusOffset && actionIndexMinusOffset <= 3) {
         return `move ${actionIndexMinusOffset + 1}`;
-    } else if (3 < actionIndex && actionIndex <= 9) {
+    } else if (3 < actionIndexMinusOffset && actionIndexMinusOffset <= 9) {
         return `switch ${actionIndexMinusOffset - 3}`;
     } else if (actionIndex === d_AsciiCode) {
         return `default`;
