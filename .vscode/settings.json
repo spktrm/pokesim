@@ -1,6 +1,6 @@
 {
     "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter"
+        "editor.defaultFormatter": "ms-python.python"
     },
     "python.testing.pytestArgs": ["tests"],
     "python.testing.unittestEnabled": false,
@@ -8,5 +8,9 @@
     "notebook.formatOnSave.enabled": true,
     "terminal.integrated.env.linux": {
         "PYTHONPATH": "${workspaceFolder}"
-    }
+    },
+    "terminal.integrated.env.osx": {
+        "PYTHONPATH": "${workspaceFolder}"
+    },
+    "python.formatting.provider": "black"
 }

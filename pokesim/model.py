@@ -680,8 +680,17 @@ class Model(nn.Module):
 
         side_conditions_encoding = self.encode_side_conditions(side_conditions)
         volatile_status_encoding = self.encode_volatile_status(volatile_status)
+        boosts_encoding = self.encode_boosts(boosts)
+        field_encoding = self.encode_field(field)
         context_encoding = torch.cat(
-            (side_conditions, volatile_status, boosts, field, turn), dim=-1
+            (
+                side_conditions_encoding,
+                volatile_status_encoding,
+                boosts_encoding,
+                field_encoding,
+                turn,
+            ),
+            dim=-1,
         )
         context_embedding = self.context_embedding(context_encoding)
 
