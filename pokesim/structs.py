@@ -8,10 +8,6 @@ from typing import List, Dict, NamedTuple, Sequence
 
 from pokesim.types import TensorType
 from pokesim.data import (
-    NUM_PSEUDOWEATHER,
-    NUM_TERRAIN,
-    NUM_VOLATILE_STATUS,
-    NUM_WEATHER,
     POSTIONAL_ENCODING_MATRIX,
     TEAM_OFFSET,
     FIELD_OFFSET,
@@ -21,20 +17,7 @@ from pokesim.data import (
     TURN_MAX,
     TURN_OFFSET,
     VOLATILE_STATUS_OFFSET,
-    TURN_SIZE,
-    FIELD_SIZE,
-    NUM_SPECIES,
-    NUM_ITEMS,
-    NUM_ABILITIES,
-    NUM_MOVES,
-    NUM_TYPES,
-    MAX_HP,
-    NUM_HP_BUCKETS,
-    NUM_STATUS,
-    NUM_BOOSTS,
 )
-
-_r = lambda arr: arr.reshape(1, 1, -1)
 
 
 class EnvStep(NamedTuple):
@@ -158,7 +141,7 @@ class State(NamedTuple):
 
     def get_teams(self, leading_dims: Sequence[int]):
         teams = self.view_teams(leading_dims)
-        active_moveset = teams[..., -1, 0, 0, -4:].astype(int)
+        active_moveset = teams[..., -1, 0, 0, -4:].astype(int) + 1
         return active_moveset, teams
 
     def get_side_conditions(self, leading_dims: Sequence[int]):
