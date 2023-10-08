@@ -144,16 +144,31 @@ class Batch(Trajectory):
         return cls(**data)
 
 
-def onehot_encode(data: np.ndarray, num_features: int = None):
-    if num_features is None:
-        num_features = np.max(data) + 1
-    data = data.astype(int)
-    og_shape = data.shape[:-1]
-    num_samples = np.prod(og_shape)
-    flattened_data = data.reshape((num_samples, data.shape[-1]))
-    multi_hot_encoded = np.zeros((num_samples, num_features), dtype=np.float32)
-    multi_hot_encoded[np.arange(num_samples)[:, None], flattened_data] = 1
-    return multi_hot_encoded.reshape((*og_shape, num_features))
+class OneHotCache:
+    def __init__(self):
+        self.species = np.eye(NUM_SPECIES + 1, dtype=np.float32)[..., 1:]
+        self.items = np.eye(NUM_ITEMS + 1, dtype=np.float32)[..., 1:]
+        self.abilities = np.eye(NUM_ABILITIES + 1, dtype=np.float32)[..., 1:]
+        self.moves = np.eye(NUM_MOVES + 1, dtype=np.float32)[..., 1:]
+        self.hp_buckets = np.eye(NUM_HP_BUCKETS + 1, dtype=np.float32)[..., 1:]
+        self.status = np.eye(NUM_STATUS + 1, dtype=np.float32)[..., 1:]
+        self.spikes = np.eye(4, dtype=np.float32)[..., 1:]
+        self.tspikes = np.eye(3, dtype=np.float32)[..., 1:]
+        self.volatile_status = np.eye(NUM_VOLATILE_STATUS + 1, dtype=np.float32)
+        self.boosts = np.eye(13, dtype=np.float32)
+        self.pseudoweathers = np.eye(NUM_PSEUDOWEATHER + 1, dtype=np.float32)[..., 1:]
+        self.weathers = np.eye(NUM_WEATHER + 1, dtype=np.float32)[..., 1:]
+        self.terrain = np.eye(NUM_TERRAIN + 1, dtype=np.float32)[..., 1:]
+
+    def onehot_encode(self, data: np.ndarray, feature: str) -> np.ndarray:
+        try:
+            encodings = getattr(self, feature)
+            return encodings[data]
+        except Exception as e:
+            print(feature)
+
+
+onehot_cache = OneHotCache()
 
 
 class State(NamedTuple):
@@ -171,17 +186,16 @@ class State(NamedTuple):
     def get_teams(self, leading_dims: Sequence[int]):
         teams = self.view_teams(leading_dims)
         teamsp1 = teams + 1
-        species_onehot = onehot_encode(teamsp1[..., 0, None], NUM_SPECIES + 1)[..., 1:]
-        item_onehot = onehot_encode(teamsp1[..., 1, None], NUM_ITEMS + 1)[..., 1:]
-        ability_onehot = onehot_encode(teamsp1[..., 2, None], NUM_ABILITIES + 1)[
-            ..., 1:
-        ]
-        moves_onehot = onehot_encode(teamsp1[..., -4:], NUM_MOVES + 1)[..., 1:]
+        species_onehot = onehot_cache.onehot_encode(teamsp1[..., 0], "species")
+        item_onehot = onehot_cache.onehot_encode(teamsp1[..., 1], "items")
+        ability_onehot = onehot_cache.onehot_encode(teamsp1[..., 2], "abilities")
+        moves_onehot = onehot_cache.onehot_encode(teamsp1[..., -4:], "moves").sum(-2)
         hp_value = (teams[..., 3, None] / MAX_HP).astype(np.float32)
-        hp_onehot = onehot_encode(np.sqrt(teams[..., 3, None]), NUM_HP_BUCKETS)[..., 1:]
+        hp_bucket = np.sqrt(teams[..., 3]).astype(int)
+        hp_onehot = onehot_cache.onehot_encode(hp_bucket, "hp_buckets")
         active = teams[..., 4, None].astype(np.float32)
         fainted = teams[..., 5, None].astype(np.float32)
-        status_onehot = onehot_encode(teamsp1[..., 6, None], NUM_STATUS + 1)[..., 1:]
+        status_onehot = onehot_cache.onehot_encode(teamsp1[..., 6], "status")
         active_moveset = teamsp1[..., -1, 0, 0, -4:].astype(int)
 
         entity_encodings = np.concatenate(
@@ -207,8 +221,8 @@ class State(NamedTuple):
         ].reshape(*leading_dims, 2, -1)
 
         other = side_conditions > 0
-        spikes = onehot_encode(side_conditions[..., 9, None], 4)[..., 1:]
-        tspikes = onehot_encode(side_conditions[..., 13, None], 3)[..., 1:]
+        spikes = onehot_cache.onehot_encode(side_conditions[..., 9], "spikes")
+        tspikes = onehot_cache.onehot_encode(side_conditions[..., 13], "tspikes")
 
         side_conditions = np.concatenate((other, spikes, tspikes), axis=-1)
         return side_conditions.reshape(*leading_dims, -1).astype(np.float32)
@@ -219,14 +233,14 @@ class State(NamedTuple):
         )
         volatile_status_id = volatile_status[..., 0, :]
         volatile_status_level = volatile_status[..., 1, :]
-        volatile_status = onehot_encode(
-            volatile_status_id + 1, NUM_VOLATILE_STATUS + 1
-        )[..., 1:]
+        volatile_status = onehot_cache.onehot_encode(
+            volatile_status_id + 1, "volatile_status"
+        ).sum(-2)
         return volatile_status.reshape(*leading_dims, -1).astype(np.float32)
 
     def get_boosts(self, leading_dims: Sequence[int]):
         boosts = self.raw[..., BOOSTS_OFFSET:FIELD_OFFSET].reshape(*leading_dims, 2, -1)
-        boosts_onehot = onehot_encode(boosts[..., None] + 6, 13)
+        boosts_onehot = onehot_cache.onehot_encode(boosts + 6, "boosts")
         boosts_onehot = np.concatenate((boosts_onehot[..., :6], boosts_onehot[..., 7:]))
         boosts_scaled = np.sign(boosts) * np.sqrt(abs(boosts))
         boosts = np.concatenate(
@@ -242,13 +256,13 @@ class State(NamedTuple):
         field = self.raw[..., FIELD_OFFSET:HISTORY_OFFSET].reshape(*leading_dims, 3, 5)
         field_id = field[..., 0, :]
         pseudoweathers = field_id[..., :3]
-        pseudoweathers_onehot = onehot_encode(
-            pseudoweathers + 1, NUM_PSEUDOWEATHER + 1
-        )[..., 1:]
-        weather = field_id[..., 3, None]
-        weather_onehot = onehot_encode(weather + 1, NUM_WEATHER + 1)[..., 1:]
-        terrain = field_id[..., 4, None]
-        terrain_onehot = onehot_encode(terrain + 1, NUM_TERRAIN + 1)[..., 1:]
+        pseudoweathers_onehot = onehot_cache.onehot_encode(
+            pseudoweathers + 1, "pseudoweathers"
+        ).sum(-2)
+        weather = field_id[..., 3]
+        weather_onehot = onehot_cache.onehot_encode(weather + 1, "weathers")
+        terrain = field_id[..., 4]
+        terrain_onehot = onehot_cache.onehot_encode(terrain + 1, "terrain")
         field_min_durr = field[..., 1, :]
         field_max_durr = field[..., 2, :]
         field = np.concatenate(

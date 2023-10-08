@@ -446,7 +446,7 @@ class Model(nn.Module):
         self.side_embedding = nn.Embedding(2, embedding_dim=entity_size)
         self.public_embedding = nn.Embedding(2, embedding_dim=entity_size)
 
-        self.units_lin1 = _layer_init(nn.Linear(3288, entity_size))
+        self.units_lin1 = _layer_init(nn.Linear(3289, entity_size))
         # self.units_lin2 = _layer_init(nn.Linear(entity_size, entity_size))
 
         # self.entity_transformer = Transformer(
