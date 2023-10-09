@@ -9,7 +9,7 @@ def optimized_forward(
     module: nn.Module,
     inputs: Dict[str, torch.Tensor],
     t_callback: Callable,
-    batch_size: int = 256,
+    batch_size: int = 512,
 ):
     results = []
 
