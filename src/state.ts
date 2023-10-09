@@ -66,7 +66,7 @@ function getMappingValueWrapper(
     }
 }
 
-function getPokemon(
+function getPublicPokemon(
     pokemon: AnyObject,
     active: boolean,
     buckets: number = 1024
@@ -110,7 +110,51 @@ function getPokemon(
     return new Int8Array(new Int16Array(pokemonArray).buffer);
 }
 
-const fillPokemon = getPokemon({ name: "", moves: [] }, false);
+function getPrivatePokemon(
+    pokemon: AnyObject,
+    buckets: number = 1024
+): Int8Array {
+    let moveTokens = [];
+    for (let i = 0; i < 4; i++) {
+        moveTokens.push(
+            getMappingValueWrapper(pokemon, moveMapping, pokemon.moves[i])
+        );
+    }
+    const formatedPokemonName = formatKey(pokemon.name);
+    const speciesToken = getMappingValueWrapper(
+        pokemon,
+        pokemonMapping,
+        formatedPokemonName
+    );
+    const itemToken = getMappingValueWrapper(
+        pokemon,
+        itemMapping,
+        pokemon.item
+    );
+    const abilityToken = getMappingValueWrapper(
+        pokemon,
+        abilityMapping,
+        pokemon.ability
+    );
+    const hpToken =
+        pokemon.maxhp !== undefined
+            ? Math.floor(buckets * (pokemon.hp / pokemon.maxhp))
+            : buckets;
+    const pokemonArray = [
+        speciesToken,
+        itemToken,
+        abilityToken,
+        hpToken,
+        pokemon.active ? 1 : 0,
+        pokemon.fainted ? 1 : 0,
+        statusMapping[pokemon.status] ?? -1,
+        ...moveTokens,
+    ];
+    return new Int8Array(new Int16Array(pokemonArray).buffer);
+}
+
+const fillPokemonObj = { name: "", moves: [] };
+const fillPokemonArray = getPublicPokemon(fillPokemonObj, false);
 const boostsEntries = Object.entries(boostsMapping);
 
 export class Int8State {
@@ -159,7 +203,7 @@ export class Int8State {
     }
 
     getMyBoosts(): Int8Array {
-        const side = this.getMyPrivateSide();
+        const side = this.getMyPublicSide();
         return this.getBoosts(side.active);
     }
     getOppBoosts(): Int8Array {
@@ -208,7 +252,7 @@ export class Int8State {
     }
 
     getMyVolatileStatus(): Int8Array {
-        const side = this.getMyPrivateSide();
+        const side = this.getMyPublicSide();
         return this.getVolatileStatus(side.active);
     }
     getOppVolatileStatus(): Int8Array {
@@ -235,7 +279,7 @@ export class Int8State {
     }
 
     getMySideConditions(): Int8Array {
-        const side = this.getMyPrivateSide();
+        const side = this.getMyPublicSide();
         return this.getSideConditions(side.sideConditions);
     }
     getOppSideConditions(): Int8Array {
@@ -254,11 +298,11 @@ export class Int8State {
         return sideConditionVector;
     }
 
-    getMyPrivateSide(): Side {
-        return this.handler.battles[0].sides[this.playerIndex];
+    getMyPrivateSide(): AnyObject {
+        return (this.handler.battles[0].request ?? {}) as AnyObject;
     }
 
-    getMyPublicide(): Side {
+    getMyPublicSide(): Side {
         return this.handler.battles[1].sides[this.playerIndex];
     }
 
@@ -267,102 +311,125 @@ export class Int8State {
     }
 
     getMyPrivateTeam(): Int8Array {
-        const side = this.getMyPrivateSide();
-        return this.getTeam(side.team, side.active);
+        const side = this.handler.battles[0].sides[this.playerIndex];
+        const request = this.getMyPrivateSide();
+        return this.getPrivateTeam(request, side.team);
     }
 
     getMyPublicTeam(): Int8Array {
-        const side = this.getMyPublicide();
-        return this.getTeam(side.team, side.active);
+        const side = this.getMyPublicSide();
+        return this.getPublicTeam(side.team, side.active);
     }
 
     getOppTeam(): Int8Array {
         const side = this.getOppSide();
-        return this.getTeam(side.team, side.active);
+        return this.getPublicTeam(side.team, side.active);
     }
 
-    getTeam(team: Pokemon[], actives: (Pokemon | null)[]): Int8Array {
-        let teamArray = new Int8Array(fillPokemon.length * 6);
-        let pokemonArray: Int8Array;
-        let ident: string;
+    getPublicTeam(team: Pokemon[], actives: (Pokemon | null)[]): Int8Array {
+        const teamArray = new Int8Array(fillPokemonArray.length * 6);
         const activeIdents = [];
+
         for (let i = 0; i < actives.length; i++) {
-            ident = (actives[i] ?? {}).ident ?? "";
+            const ident = (actives[i] ?? {}).ident ?? "";
             if (ident !== undefined) {
                 activeIdents.push(ident);
             }
         }
         for (let i = 0; i < 6; i++) {
             if (team[i] === undefined) {
-                teamArray.set(fillPokemon, i * fillPokemon.length);
+                teamArray.set(fillPokemonArray, i * fillPokemonArray.length);
             } else {
-                pokemonArray = getPokemon(
-                    team[i],
-                    activeIdents.includes(team[i].ident)
+                teamArray.set(
+                    getPublicPokemon(
+                        team[i],
+                        activeIdents.includes(team[i].ident)
+                    ),
+                    i * fillPokemonArray.length
                 );
-                teamArray.set(pokemonArray, i * fillPokemon.length);
             }
+        }
+        return teamArray;
+    }
+
+    getPrivateTeam(request: AnyObject, team: Pokemon[]): Int8Array {
+        const requestSide = (request?.side ?? { pokemon: [] }).pokemon;
+        const teamArray = new Int8Array(fillPokemonArray.length * 6);
+        for (let i = 0; i < 6; i++) {
+            const amalgam = {
+                ...fillPokemonObj,
+                ...team[i],
+                ...(requestSide[i] ?? {}),
+            };
+            teamArray.set(
+                getPrivatePokemon(amalgam),
+                i * fillPokemonArray.length
+            );
         }
         return teamArray;
     }
 
     getLegalMask(): Int8Array {
         const request = this.handler.battles[0].request as AnyObject;
-        const actionMask = new Int8Array(10);
-        actionMask.fill(0);
-        if (request === undefined || this.done || request.wait) {
-            if (this.done) {
-                actionMask.fill(1);
-            }
-            return actionMask;
+        const mask = new Int8Array(10);
+        if (request === undefined || this.done) {
+            mask.fill(1);
+            // mask[4] = 0;
         } else {
-            let forceSwitchLength = -1;
-            if (request.forceSwitch) {
-                forceSwitchLength = request.forceSwitch.length;
-            }
+            mask.fill(0);
 
-            const sidePokemon = request.side.pokemon;
-            const active = (request.active ?? [])[0] ?? {};
-            const possibleMoves = active.moves ?? [];
-            const isReviving = !!sidePokemon[0].reviving;
+            if (request.wait) {
+            } else if (request.forceSwitch) {
+                const pokemon = request.side.pokemon;
+                const forceSwitchLength = request.forceSwitch.length;
+                const isReviving = !!pokemon[0].reviving;
 
-            const moveMask = new Int8Array(4);
-            for (
-                let moveIndex = 0;
-                moveIndex < possibleMoves.length;
-                moveIndex++
-            ) {
-                const currentMove = possibleMoves[moveIndex];
-                if (!currentMove.disabled) {
-                    moveMask[moveIndex] = 1;
-                }
-            }
-            const switchMask = new Int8Array(6);
-            if (!(active.trapped || active.maybeTrapped)) {
-                for (
-                    let switchIndex = 0;
-                    switchIndex < sidePokemon.length;
-                    switchIndex++
-                ) {
-                    const currentPokemon = sidePokemon[switchIndex];
+                for (let j = 1; j <= 6; j++) {
+                    const currentPokemon = pokemon[j - 1];
                     if (
                         currentPokemon &&
-                        !currentPokemon.active &&
-                        !currentPokemon.condition.endsWith(" fnt") &&
-                        switchIndex >= forceSwitchLength &&
+                        j > forceSwitchLength &&
                         (isReviving ? 1 : 0) ^
                             (currentPokemon.condition.endsWith(" fnt") ? 0 : 1)
                     ) {
-                        switchMask[switchIndex] = 1;
+                        mask[j + 3] = 1;
                     }
                 }
+            } else if (request.active) {
+                const pokemon = request.side.pokemon;
+                const active = request.active[0];
+                const possibleMoves = active.moves ?? [];
+                const canSwitch = [];
+
+                for (let j = 1; j <= possibleMoves.length; j++) {
+                    const currentMove = possibleMoves[j - 1];
+                    if (!currentMove.disabled) {
+                        mask[j - 1] = 1;
+                    }
+                }
+
+                for (let j = 1; j <= 6; j++) {
+                    const currentPokemon = pokemon[j - 1];
+                    if (
+                        currentPokemon &&
+                        !currentPokemon.active &&
+                        !currentPokemon.condition.endsWith(" fnt")
+                    ) {
+                        canSwitch.push(j);
+                    }
+                }
+
+                const switches =
+                    active.trapped || active.maybeTrapped ? [] : canSwitch;
+
+                for (let i = 0; i < switches.length; i++) {
+                    const slot = switches[i];
+                    mask[slot + 3] = 1;
+                }
             }
-
-            actionMask.set(moveMask, 0);
-            actionMask.set(switchMask, 4);
-
-            return actionMask;
         }
+
+        return mask;
     }
 
     getState(): Int8Array {

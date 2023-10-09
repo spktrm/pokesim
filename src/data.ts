@@ -1,6 +1,6 @@
 import * as fs from "fs";
 
-export const formatid = "gen3randombattle";
+export const formatid = "gen9randombattle";
 
 const data = fs.readFileSync("./src/data.json");
 const {

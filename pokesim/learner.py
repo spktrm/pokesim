@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from copy import deepcopy
-from typing import Any, List, Mapping
+from typing import Any, List, Mapping, Sequence
 
 from pokesim.data import MODEL_INPUT_KEYS, NUM_PLAYERS
 from pokesim.model import Model
@@ -37,7 +37,7 @@ def get_loss_v(
     v_list: List[torch.Tensor],
     v_target_list: List[torch.Tensor],
     mask_list: List[torch.Tensor],
-) -> torch.Tensor:
+) -> Sequence[torch.Tensor]:
     """Define the loss function for the critic."""
     loss_v_list = []
     for v_n, v_target, mask in zip(v_list, v_target_list, mask_list):
@@ -109,7 +109,7 @@ def get_loss_nerd(
     importance_sampling_correction: List[torch.Tensor],
     clip: float = 100,
     threshold: float = 2,
-) -> torch.Tensor:
+) -> Sequence[torch.Tensor]:
     """Define the nerd loss."""
     loss_pi_list = []
     for k, (logit_pi, pi, q_vr, is_c) in enumerate(

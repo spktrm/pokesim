@@ -5,4 +5,4 @@ clean:
 
 start: 
 	tsc
-	node dist/main.js 20
+	node dist/main.js 14

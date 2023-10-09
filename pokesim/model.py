@@ -443,21 +443,13 @@ class ConvPointerLogits(nn.Module):
 
 
 class Model(nn.Module):
-    def __init__(self, entity_size: int = 32, vector_size: int = 128):
+    def __init__(self, entity_size: int = 128, vector_size: int = 512):
         super().__init__()
 
-        self.species_onehot = nn.Embedding.from_pretrained(
-            torch.eye(NUM_SPECIES + 1)[..., 1:]
-        )
-        self.item_onehot = nn.Embedding.from_pretrained(
-            torch.eye(NUM_ITEMS + 1)[..., 1:]
-        )
-        self.ability_onehot = nn.Embedding.from_pretrained(
-            torch.eye(NUM_ABILITIES + 1)[..., 1:]
-        )
-        self.moves_onehot = nn.Embedding.from_pretrained(
-            torch.eye(NUM_MOVES + 1)[..., 1:]
-        )
+        self.species_onehot = nn.Embedding(NUM_SPECIES + 1, 256)
+        self.item_onehot = nn.Embedding(NUM_ITEMS + 1, 256)
+        self.ability_onehot = nn.Embedding(NUM_ABILITIES + 1, 256)
+        self.moves_onehot = nn.Embedding(NUM_MOVES + 1, 256)
         self.hp_onehot = nn.Embedding.from_pretrained(
             torch.eye(NUM_HP_BUCKETS + 1)[..., 1:]
         )
@@ -483,10 +475,29 @@ class Model(nn.Module):
 
         self.action_embeddings = _layer_init(nn.Embedding(NUM_MOVES + 1, entity_size))
 
+        side_token = torch.zeros(18, dtype=torch.long).view(-1, 6)
+        side_token[-1] = 1
+        self.register_buffer("side_token", side_token)
+
+        public_token = torch.zeros(18, dtype=torch.long).view(-1, 6)
+        public_token[1:] = 1
+        self.register_buffer("public_token", public_token)
+
         self.side_embedding = nn.Embedding(2, embedding_dim=entity_size)
         self.public_embedding = nn.Embedding(2, embedding_dim=entity_size)
 
-        self.units_lin1 = _layer_init(nn.Linear(3289, entity_size))
+        self.units_lin1 = _layer_init(
+            nn.Linear(
+                self.species_onehot.weight.shape[-1]
+                + self.item_onehot.weight.shape[-1]
+                + self.ability_onehot.weight.shape[-1]
+                + self.moves_onehot.weight.shape[-1]
+                + self.hp_onehot.weight.shape[-1]
+                + self.status_onehot.weight.shape[-1]
+                + 3,
+                entity_size,
+            )
+        )
         # self.units_lin2 = _layer_init(nn.Linear(entity_size, entity_size))
 
         # self.entity_transformer = Transformer(
@@ -655,17 +666,13 @@ class Model(nn.Module):
     ):
         T, B, H, *_ = teams.shape
 
-        side_token = torch.zeros_like(teams[..., 0], dtype=torch.long)
-        side_token[..., 2:, :] = 1
-
-        public_token = torch.zeros_like(teams[..., 0], dtype=torch.long)
-        public_token[..., 1:, :] = 1
-
         entity_encodings = self.encode_teams(teams)
         entity_embeddings = (
             self.units_lin1(entity_encodings)
-            + self.public_embedding(public_token)
-            + self.side_embedding(side_token)
+            + self.public_embedding(
+                self.public_token[(None,) * 3].expand(T, B, H, 3, 6)
+            )
+            + self.side_embedding(self.side_token[(None,) * 3].expand(T, B, H, 3, 6))
         )
         # entity_embeddings = self.encode_units(entity_embeddings, public_token)
 

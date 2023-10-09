@@ -111,3 +111,11 @@ MODEL_INPUT_KEYS = {
     "history",
     "history_mask",
 }
+
+DEFAULT_WORKER_INDEX = 12
+RANDOM_WORKER_INDEX = 13
+
+EVAL_MAPPING = {
+    DEFAULT_WORKER_INDEX: "default",
+    RANDOM_WORKER_INDEX: "random",
+}

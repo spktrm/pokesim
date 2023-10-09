@@ -40,6 +40,7 @@ class ModelOutput(NamedTuple):
 class ActorStep(NamedTuple):
     policy: np.ndarray
     action: np.ndarray
+    rewards: np.ndarray
 
 
 class TimeStep(NamedTuple):
@@ -49,7 +50,7 @@ class TimeStep(NamedTuple):
 
 
 actor_fields = set(ActorStep._fields)
-env_fields = {"player_id", "state", "rewards", "valid", "legal", "history_mask"}
+env_fields = {"player_id", "state", "valid", "legal", "history_mask"}
 _FIELDS_TO_STORE = actor_fields | env_fields
 
 
@@ -110,21 +111,26 @@ class Trajectory(NamedTuple):
 class Batch(Trajectory):
     @classmethod
     def from_trajectories(cls, batch: List[Trajectory]) -> "Batch":
-        store = {k: [] for k in Trajectory._fields}
-        for trajectory in batch:
+        lengths = np.array([len(t) for t in batch])
+        max_index = lengths.argmax(-1)
+        batch_size = len(batch)
+
+        store = {}
+        for k in Trajectory._fields:
+            value = getattr(batch[max_index], k)[:, None]
+            new_shape = (1, batch_size, *((1,) * len(value.shape[2:])))
+            store[k] = np.tile(value, new_shape)
+
+        for batch_index, trajectory in enumerate(batch):
+            if batch_index == max_index:
+                continue
+            trajectory_length = len(trajectory)
             for key, values in trajectory._asdict().items():
-                store[key].append(values)
+                store[key][:trajectory_length, batch_index] = values
+            store["valid"][trajectory_length:, batch_index] = False
+            store["rewards"][trajectory_length:, batch_index] *= 0
 
-        max_size = max(store["valid"], key=lambda x: x.shape[0]).shape[0]
-
-        data = {
-            key: np.stack(
-                [np.resize(sv, (max_size, *sv.shape[1:])) for sv in value], axis=1
-            )
-            for key, value in store.items()
-        }
-
-        return cls(**data)
+        return cls(**store)
 
 
 class State(NamedTuple):
