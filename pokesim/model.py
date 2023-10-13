@@ -443,7 +443,7 @@ class ConvPointerLogits(nn.Module):
 
 
 class Model(nn.Module):
-    def __init__(self, entity_size: int = 32, vector_size: int = 128):
+    def __init__(self, entity_size: int = 64, vector_size: int = 256):
         super().__init__()
 
         side_token = torch.zeros(18, dtype=torch.long).view(-1, 6)
@@ -466,6 +466,18 @@ class Model(nn.Module):
         self.side_onehot = _layer_init(nn.Embedding(2, entity_size))
         self.public_onehot = _layer_init(nn.Embedding(2, entity_size))
 
+        # self.units_lin1 = _layer_init(
+        #     nn.Linear(
+        #         self.species_onehot.weight.shape[-1]
+        #         + self.item_onehot.weight.shape[-1]
+        #         + self.ability_onehot.weight.shape[-1]
+        #         + self.moves_onehot.weight.shape[-1]
+        #         + self.hp_onehot.weight.shape[-1]
+        #         + self.status_onehot.weight.shape[-1]
+        #         + 3,
+        #         entity_size,
+        #     )
+        # )
         self.units_mlp = MLP([entity_size, entity_size], use_layer_norm=_USE_LAYER_NORM)
 
         self.spikes_onehot = nn.Embedding.from_pretrained(torch.eye(4)[..., 1:])
@@ -483,19 +495,6 @@ class Model(nn.Module):
         self.terrain_onehot = nn.Embedding.from_pretrained(
             torch.eye(NUM_TERRAIN + 1)[..., 1:]
         )
-
-        # self.units_lin1 = _layer_init(
-        #     nn.Linear(
-        #         self.species_onehot.weight.shape[-1]
-        #         + self.item_onehot.weight.shape[-1]
-        #         + self.ability_onehot.weight.shape[-1]
-        #         + self.moves_onehot.weight.shape[-1]
-        #         + self.hp_onehot.weight.shape[-1]
-        #         + self.status_onehot.weight.shape[-1]
-        #         + 3,
-        #         entity_size,
-        #     )
-        # )
 
         # self.entity_transformer = Transformer(
         #     transformer_num_layers=1,
