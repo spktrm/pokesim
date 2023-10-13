@@ -12,15 +12,16 @@ from typing import Any, List, Mapping, Sequence
 from pokesim.data import MODEL_INPUT_KEYS, NUM_PLAYERS
 from pokesim.model import Model
 from pokesim.structs import Batch, State
-from pokesim.utils import optimized_forward
-from pokesim.rl_utils import (
+
+from pokesim.rnad.utils import (
     EntropySchedule,
     SGDTowardsModel,
     v_trace,
     _player_others,
     _policy_ratio,
+    optimized_forward,
 )
-from pokesim.config import RNaDConfig
+from pokesim.rnad.config import RNaDConfig
 
 
 def get_loss_v_(

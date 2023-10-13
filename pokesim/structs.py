@@ -1,3 +1,4 @@
+import torch
 import numpy as np
 
 import pickle
@@ -6,7 +7,6 @@ import msgpack_numpy as m
 
 from typing import List, Dict, NamedTuple, Sequence
 
-from pokesim.types import TensorType
 from pokesim.data import (
     POSTIONAL_ENCODING_MATRIX,
     TEAM_OFFSET,
@@ -31,10 +31,10 @@ class EnvStep(NamedTuple):
 
 
 class ModelOutput(NamedTuple):
-    policy: TensorType
-    log_policy: TensorType
-    logits: TensorType
-    value: TensorType
+    policy: torch.Tensor
+    log_policy: torch.Tensor
+    logits: torch.Tensor
+    value: torch.Tensor
 
 
 class ActorStep(NamedTuple):
@@ -56,16 +56,16 @@ _FIELDS_TO_STORE = actor_fields | env_fields
 
 class Trajectory(NamedTuple):
     # Env fields
-    player_id: TensorType
-    state: TensorType
-    rewards: TensorType
-    valid: TensorType
-    legal: TensorType
-    history_mask: TensorType
+    player_id: np.ndarray
+    state: np.ndarray
+    rewards: np.ndarray
+    valid: np.ndarray
+    legal: np.ndarray
+    history_mask: np.ndarray
 
     # Actor fields
-    policy: TensorType
-    action: TensorType
+    policy: np.ndarray
+    action: np.ndarray
 
     def __len__(self):
         return max(self.valid.sum(0, keepdims=True))
