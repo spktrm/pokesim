@@ -6,9 +6,9 @@ import { Generations } from "@pkmn/data";
 import { Dex } from "@pkmn/dex";
 import { ObjectReadWriteStream } from "@pkmn/streams";
 import { BattleStreamsType } from "./types";
-import { formatid } from "./data";
+import { formatId } from "./data";
 import { getRandomAction } from "./random";
-import { actionCharToString } from "./helpers";
+import { AsyncQueue, actionCharToString, delay } from "./helpers";
 import { Int8State } from "./state";
 
 Teams.setGeneratorFactory(TeamGenerators);
@@ -18,37 +18,6 @@ const generations = new Generations(Dex);
 
 let state: Uint8Array;
 let streams: BattleStreamsType;
-
-const delay = (t: number | undefined, val: any = 0) =>
-    new Promise((resolve) => setTimeout(resolve, t, val));
-
-class AsyncQueue {
-    private queue: string[];
-    private resolveWaitingDequeue?: (value: string) => void;
-
-    constructor() {
-        this.queue = [];
-    }
-
-    enqueue(item: string): void {
-        if (this.resolveWaitingDequeue) {
-            this.resolveWaitingDequeue(item);
-            this.resolveWaitingDequeue = undefined;
-        } else {
-            this.queue.push(item);
-        }
-    }
-
-    async dequeue(): Promise<string> {
-        if (this.queue.length > 0) {
-            return this.queue.shift()!;
-        }
-
-        return new Promise<string>((resolve) => {
-            this.resolveWaitingDequeue = resolve;
-        });
-    }
-}
 
 class QueueManager {
     p1Queue: AsyncQueue;
@@ -120,8 +89,8 @@ function isAction(line: string): boolean {
     }
 }
 
-const defaultWorkerIndex = 12;
-const randomWorkerIndex = 13;
+const defaultWorkerIndex = workerData.config.default_worker_index as number;
+const randomWorkerIndex = workerData.config.random_worker_index as number;
 
 function isEvalPlayer(workerIndex: number, playerIndex: number): boolean {
     if (workerIndex >= defaultWorkerIndex && playerIndex === 1) {
@@ -206,7 +175,7 @@ async function runPlayer(
 async function runGame() {
     const stream = new BattleStreams.BattleStream();
     streams = BattleStreams.getPlayerStreams(stream);
-    const spec = { formatid };
+    const spec = { formatid: formatId };
 
     const p1battle = new clientBattle(generations);
     const p2battle = new clientBattle(generations);
@@ -218,11 +187,11 @@ async function runGame() {
 
     const p1spec = {
         name: `Bot${workerIndex}1`,
-        team: Teams.pack(Teams.generate(formatid)),
+        team: Teams.pack(Teams.generate(formatId)),
     };
     const p2spec = {
         name: `Bot${workerIndex}2`,
-        team: Teams.pack(Teams.generate(formatid)),
+        team: Teams.pack(Teams.generate(formatId)),
     };
 
     void streams.omniscient.write(`>start ${JSON.stringify(spec)}
@@ -238,6 +207,12 @@ const startQueue = new AsyncQueue();
     while (true) {
         await runGame();
         await startQueue.dequeue();
+        if (
+            workerIndex === defaultWorkerIndex ||
+            workerIndex === randomWorkerIndex
+        ) {
+            await delay(50);
+        }
     }
 })();
 

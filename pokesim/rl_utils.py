@@ -9,44 +9,22 @@ from jax import lax
 from jax import numpy as jnp
 from jax import tree_util as tree
 
+from functools import partial
 from typing import Any, List, Tuple
 
 
-@torch.jit.script
 def _legal_policy(logits: torch.Tensor, legal_actions: torch.Tensor) -> torch.Tensor:
-    """A soft-max policy that respects legal_actions."""
-    # Fiddle a bit to make sure we don't generate NaNs or Inf in the middle.
-    l_min = logits.min(dim=-1, keepdim=True).values
-    logits = torch.where(legal_actions, logits, l_min)
-    logits -= logits.max(dim=-1, keepdim=True).values
-    logits *= legal_actions
-    exp_logits = torch.where(
-        legal_actions, torch.exp(logits), 0
-    )  # Illegal actions become 0.
-    exp_logits_sum = torch.sum(exp_logits, dim=-1, keepdim=True)
-    return exp_logits / exp_logits_sum
+    return torch.where(legal_actions, logits, float("-inf")).softmax(-1)
 
 
-@torch.jit.script
 def _legal_log_policy(
     logits: torch.Tensor, legal_actions: torch.Tensor
 ) -> torch.Tensor:
-    """Return the log of the policy on legal action, 0 on illegal action."""
-    # logits_masked has illegal actions set to -inf.
-    logits_masked = logits + torch.log(legal_actions)
-    max_legal_logit = logits_masked.max(dim=-1, keepdim=True).values
-    logits_masked = logits_masked - max_legal_logit
-    # exp_logits_masked is 0 for illegal actions.
-    exp_logits_masked = torch.exp(logits_masked)
-
-    baseline = torch.log(torch.sum(exp_logits_masked, dim=-1, keepdim=True))
-    # Subtract baseline from logits. We do not simply return
-    #     logits_masked - baseline
-    # because that has -inf for illegal actions, or
-    #     legal_actions * (logits_masked - baseline)
-    # because that leads to 0 * -inf == nan for illegal actions.
-    log_policy = torch.multiply(legal_actions, (logits - max_legal_logit - baseline))
-    return log_policy
+    return torch.where(
+        legal_actions,
+        torch.where(legal_actions, logits, float("-inf")).log_softmax(-1),
+        0,
+    )
 
 
 class EntropySchedule:
@@ -272,7 +250,7 @@ def _has_played(valid: np.ndarray, player_id: np.ndarray, player: int) -> np.nda
 # out of the box because a trajectory could look like '121211221122'.
 
 
-@jax.jit
+@partial(jax.jit, static_argnames=["eta", "lambda_", "c", "rho", "gamma"])
 def v_trace(
     v: np.ndarray,
     valid: np.ndarray,

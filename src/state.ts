@@ -194,7 +194,7 @@ export class Int8State {
             ...Array(6 - p1keys.length),
         ]);
         const userIndex = keys.indexOf(user);
-        const actionIndex = moveMapping[action] ?? -1;
+        const actionIndex = moveMapping[action] ?? -2;
         const actionVector = [
             userIndex >= 6 ? userIndex + 6 : userIndex,
             actionIndex,

@@ -192,8 +192,8 @@ class Learner:
 
         # self.Bbs = min(2 * bs_sqrt, config.batch_size)
         # self.Tbs = int(bs // self.Bbs) + 1
-        self.Bbs = 16
-        self.Tbs = 16
+        self.Bbs = 32
+        self.Tbs = 32
         print(f"({self.Tbs}, {self.Bbs}) => {self.Bbs * self.Tbs}")
 
     def get_config(self):
@@ -218,90 +218,91 @@ class Learner:
 
         forward_batch = {key: torch.from_numpy(state[key]) for key in MODEL_INPUT_KEYS}
 
-        t_callback = lambda t: t.to(self.config.learner_device, non_blocking=True)
-
         with torch.no_grad():
-            pi, log_pi, logit, v, *_ = optimized_forward(
-                self.params, forward_batch, t_callback
+            params = optimized_forward(self.params, forward_batch, self.config)
+            params_target = optimized_forward(
+                self.params_target, forward_batch, self.config
             )
-            _, _, _, v_target, *_ = optimized_forward(
-                self.params_target, forward_batch, t_callback
+            params_prev = optimized_forward(
+                self.params_prev, forward_batch, self.config
             )
-            _, log_pi_prev, _, _, *_ = optimized_forward(
-                self.params_prev, forward_batch, t_callback
-            )
-            _, log_pi_prev_, _, _, *_ = optimized_forward(
-                self.params_prev_, forward_batch, t_callback
+            params_prev_ = optimized_forward(
+                self.params_prev_, forward_batch, self.config
             )
 
-        # This line creates the reward transform log(pi(a|x)/pi_reg(a|x)).
-        # For the stability reasons, reward changes smoothly between iterations.
-        # The mixing between old and new reward transform is a convex combination
-        # parametrised by alpha.
-        log_policy_reg = log_pi - (alpha * log_pi_prev + (1 - alpha) * log_pi_prev_)
-
-        v_target_list, has_played_list, v_trace_policy_target_list = [], [], []
-
-        _rewards = batch.rewards.astype(np.float32)
-        _v_target = v_target.cpu().numpy()
-        _pi = pi.detach().cpu().numpy()
-        _log_policy_reg = log_policy_reg.detach().cpu().numpy()
-
-        valid = self._to_torch(batch.valid)
-        player_id = self._to_torch(batch.player_id)
-        legal = self._to_torch(batch.legal)
-
-        action_oh = np.eye(pi.shape[-1])[batch.action]
-
-        for player in range(NUM_PLAYERS):
-            reward = _rewards[:, :, player]  # [T, B, Player]
-            v_target_, has_played, policy_target_ = v_trace(
-                _v_target,
-                batch.valid,
-                batch.player_id,
-                batch.policy,
-                _pi,
-                _log_policy_reg,
-                _player_others(batch.player_id, batch.valid, player),
-                action_oh,
-                reward,
-                player,
-                lambda_=1.0,
-                c=self.config.c_vtrace,
-                rho=np.inf,
-                eta=self.config.eta_reward_transform,
+            # This line creates the reward transform log(pi(a|x)/pi_reg(a|x)).
+            # For the stability reasons, reward changes smoothly between iterations.
+            # The mixing between old and new reward transform is a convex combination
+            # parametrised by alpha.
+            log_policy_reg = params.log_policy - (
+                alpha * params_prev.log_policy + (1 - alpha) * params_prev_.log_policy
             )
-            v_target_ = self._to_torch(np.array(v_target_))
-            has_played = self._to_torch(np.array(has_played))
-            policy_target_ = self._to_torch(np.array(policy_target_))
+            # log_policy_reg = torch.zeros_like(params.log_policy)
 
-            v_target_list.append(v_target_)
-            has_played_list.append(has_played)
-            v_trace_policy_target_list.append(policy_target_)
+            v_target_list, has_played_list, v_trace_policy_target_list = [], [], []
+
+            _rewards = batch.rewards.astype(np.float32)
+            _v_target = params_target.value.cpu().numpy()
+            _policy_pprocessed = self.params._threshold(
+                params.policy.detach().cpu(), forward_batch["legal"]
+            ).numpy()
+            _log_policy_reg = log_policy_reg.detach().cpu().numpy()
+
+            valid = self._to_torch(batch.valid)
+            player_id = self._to_torch(batch.player_id)
+            legal = self._to_torch(batch.legal)
+
+            action_oh = np.eye(params.policy.shape[-1])[batch.action]
+
+            for player in range(NUM_PLAYERS):
+                reward = _rewards[:, :, player]  # [T, B, Player]
+                v_target_, has_played, policy_target_ = v_trace(
+                    _v_target,
+                    batch.valid,
+                    batch.player_id,
+                    batch.policy,
+                    _policy_pprocessed,
+                    _log_policy_reg,
+                    _player_others(batch.player_id, batch.valid, player),
+                    action_oh,
+                    reward,
+                    player,
+                    lambda_=1.0,
+                    c=self.config.c_vtrace,
+                    rho=self.config.rho,
+                    eta=self.config.eta_reward_transform,
+                )
+                v_target_ = self._to_torch(np.array(v_target_))
+                has_played = self._to_torch(np.array(has_played))
+                policy_target_ = self._to_torch(np.array(policy_target_))
+
+                v_target_list.append(v_target_)
+                has_played_list.append(has_played)
+                v_trace_policy_target_list.append(policy_target_)
+
+            policy_ratio = np.array(
+                _policy_ratio(_policy_pprocessed, batch.policy, action_oh, batch.valid)
+            )
+            is_vector = torch.unsqueeze(self._to_torch(policy_ratio), axis=-1)
+            importance_sampling_correction = [
+                torch.clamp(is_vector, max=1)
+            ] * NUM_PLAYERS
+
+            num_valid_p1 = has_played_list[0].sum()
+            num_valid_p2 = has_played_list[1].sum()
+
+        tv_loss = 0
+        tp_loss = 0
 
         T, B, *_ = batch.valid.shape
 
         Tnum = math.ceil(T / self.Tbs)
         Bnum = math.ceil(B / self.Bbs)
 
-        policy_ratio = np.array(
-            _policy_ratio(_pi, batch.policy, action_oh, batch.valid)
-        )
-        is_vector = torch.unsqueeze(self._to_torch(policy_ratio), axis=-1)
-        importance_sampling_correction = [torch.clamp(is_vector, max=1)] * NUM_PLAYERS
-
-        has_played_p1 = has_played_list[0].sum()
-        has_played_p2 = has_played_list[1].sum()
-
-        policy_target_norm_p1 = (valid * (player_id == 0)).sum()
-        policy_target_norm_p2 = (valid * (player_id == 1)).sum()
-
-        tv_loss = 0
-        tp_loss = 0
-
         for ti in range(Tnum):
+            ts, tf = self.Tbs * ti, self.Tbs * (ti + 1)
+
             for bi in range(Bnum):
-                ts, tf = self.Tbs * ti, self.Tbs * (ti + 1)
                 bs, bf = self.Bbs * bi, self.Bbs * (bi + 1)
 
                 minibatch_valid = valid[ts:tf, bs:bf]
@@ -309,20 +310,16 @@ class Learner:
                     continue
 
                 minibatch = {
-                    k: t_callback(v[ts:tf, bs:bf]) for k, v in forward_batch.items()
+                    k: v[ts:tf, bs:bf].to(self.config.learner_device, non_blocking=True)
+                    for k, v in forward_batch.items()
                 }
                 pi, _, logit, v, *_ = self.params(**minibatch)
-
-                v_loss = 0
-                p_loss = 0
 
                 loss_v = get_loss_v(
                     [v] * NUM_PLAYERS,
                     [v_target[ts:tf, bs:bf] for v_target in v_target_list],
                     [has_played[ts:tf, bs:bf] for has_played in has_played_list],
                 )
-                v_loss += loss_v[0] / has_played_p1
-                v_loss += loss_v[1] / has_played_p2
 
                 # Uses v-trace to define q-values for Nerd
                 loss_nerd = get_loss_nerd(
@@ -336,14 +333,19 @@ class Learner:
                     clip=self.config.nerd.clip,
                     threshold=self.config.nerd.beta,
                 )
-                p_loss += loss_nerd[0] / policy_target_norm_p1
-                p_loss += loss_nerd[1] / policy_target_norm_p2
 
-                loss = v_loss + p_loss
+                loss = 0
+                for value_loss, policy_loss, scale in zip(
+                    loss_v, loss_nerd, [num_valid_p1, num_valid_p2]
+                ):
+                    loss += (value_loss + policy_loss) / scale
                 loss.backward()
 
-                tv_loss += v_loss.item()
-                tp_loss += p_loss.item()
+                tv_loss += sum(loss_v).item()
+                tp_loss += sum(loss_nerd).item()
+
+        tv_loss /= num_valid_p1.item()
+        tp_loss /= num_valid_p2.item()
 
         return {
             "v_loss": tv_loss,

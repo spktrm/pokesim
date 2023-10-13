@@ -68,7 +68,7 @@ class Trajectory(NamedTuple):
     action: TensorType
 
     def __len__(self):
-        return self.valid.sum()
+        return max(self.valid.sum(0, keepdims=True))
 
     def save(self, fpath: str):
         print(f"Saving `{fpath}`")
@@ -110,18 +110,18 @@ class Trajectory(NamedTuple):
 
 class Batch(Trajectory):
     @classmethod
-    def from_trajectories(cls, batch: List[Trajectory]) -> "Batch":
-        lengths = np.array([len(t) for t in batch])
+    def from_trajectories(cls, traj_list: List[Trajectory]) -> "Batch":
+        lengths = np.array([len(t) for t in traj_list])
         max_index = lengths.argmax(-1)
-        batch_size = len(batch)
+        batch_size = len(traj_list)
 
         store = {}
         for k in Trajectory._fields:
-            value = getattr(batch[max_index], k)[:, None]
+            value = getattr(traj_list[max_index], k)[:, None]
             new_shape = (1, batch_size, *((1,) * len(value.shape[2:])))
             store[k] = np.tile(value, new_shape)
 
-        for batch_index, trajectory in enumerate(batch):
+        for batch_index, trajectory in enumerate(traj_list):
             if batch_index == max_index:
                 continue
             trajectory_length = len(trajectory)
@@ -147,7 +147,7 @@ class State(NamedTuple):
 
     def get_teams(self, leading_dims: Sequence[int]):
         teams = self.view_teams(leading_dims)
-        active_moveset = teams[..., -1, 0, 0, -4:].astype(int) + 1
+        active_moveset = teams[..., -1, 0, 0, -4:].astype(int) + 2
         return active_moveset, teams
 
     def get_side_conditions(self, leading_dims: Sequence[int]):
@@ -160,7 +160,7 @@ class State(NamedTuple):
     def get_volatile_status(self, leading_dims: Sequence[int]):
         return (
             self.raw[..., VOLATILE_STATUS_OFFSET:BOOSTS_OFFSET]
-            .reshape(*leading_dims, 2, 2, -1)
+            .reshape(*leading_dims, 2, -1, 2)
             .astype(int)
         )
 
@@ -174,7 +174,7 @@ class State(NamedTuple):
     def get_field(self, leading_dims: Sequence[int]):
         return (
             self.raw[..., FIELD_OFFSET:HISTORY_OFFSET]
-            .reshape(*leading_dims, 3, 5)
+            .reshape(*leading_dims, 5, 3)
             .astype(int)
         )
 
