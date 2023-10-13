@@ -1,4 +1,5 @@
 import wandb
+import argparse
 import pandas as pd
 
 
@@ -23,7 +24,8 @@ def main(run_id: str, window: int, num_samples: int = int(200e3)):
 
 
 if __name__ == "__main__":
-    run_id = "jtwin/pokesim/w8erff3y"
-    window = 1000
-
-    main(run_id, window)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run-id", required=True, type=str, help="The ID of the run.")
+    parser.add_argument("--window", type=int, default=100, help="The window size.")
+    args = parser.parse_args()
+    main(args.run_id, args.window)

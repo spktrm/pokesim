@@ -62,7 +62,7 @@ class Environment:
     def step(self, action_index: int):
         if action_index > 1:
             if not self.is_current_player_done():
-                action = f"{self.current_player}|{action_index-2}"
+                action = f"{self.current_player}|{action_index-2}\n"
                 self.sock.sendall(action.encode(ENCODING))
             self.policy_select = 0
             self.recvenv()
@@ -80,6 +80,9 @@ class Environment:
             state = self.observation.get_state()
             self.reward[self.current_player] = self.observation.get_reward()
             self.history[self.current_player].append(state)
+            self.history[self.current_player] = self.history[self.current_player][
+                -NUM_HISTORY:
+            ]
             num_states = len(self.history[self.current_player][-NUM_HISTORY:])
             state_stack = State(
                 stacknpad(self.history[self.current_player][-NUM_HISTORY:], NUM_HISTORY)

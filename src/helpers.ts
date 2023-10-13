@@ -16,3 +16,34 @@ export function actionCharToString(actionChar: string): string {
         return `default`;
     }
 }
+
+export class AsyncQueue {
+    private queue: string[];
+    private resolveWaitingDequeue?: (value: string) => void;
+
+    constructor() {
+        this.queue = [];
+    }
+
+    enqueue(item: string): void {
+        if (this.resolveWaitingDequeue) {
+            this.resolveWaitingDequeue(item);
+            this.resolveWaitingDequeue = undefined;
+        } else {
+            this.queue.push(item);
+        }
+    }
+
+    async dequeue(): Promise<string> {
+        if (this.queue.length > 0) {
+            return this.queue.shift()!;
+        }
+
+        return new Promise<string>((resolve) => {
+            this.resolveWaitingDequeue = resolve;
+        });
+    }
+}
+
+export const delay = (t: number | undefined, val: any = 0) =>
+    new Promise((resolve) => setTimeout(resolve, t, val));
