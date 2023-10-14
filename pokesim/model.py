@@ -24,7 +24,7 @@ from pokesim.data import (
 )
 
 from pokesim.structs import ModelOutput
-from pokesim.rl_utils import _legal_log_policy, _legal_policy
+from pokesim.utils import _legal_log_policy, _legal_policy
 
 _USE_LAYER_NORM = False
 
