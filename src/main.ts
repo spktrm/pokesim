@@ -51,9 +51,7 @@ function createWorker(
     const worker = new Worker(path.resolve(__dirname, "worker.js"), {
         workerData: { workerIndex, config },
     });
-    worker.on("message", (message: Int8Array) => {
-        const buffer = Buffer.from(message);
-
+    worker.on("message", (buffer: Buffer) => {
         const workerIndex = buffer[0];
         const done = buffer[2];
 

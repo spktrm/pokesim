@@ -107,7 +107,6 @@ async function runPlayer(
     p2battle: clientBattle
 ) {
     const handler = new BattlesHandler([p1battle, p2battle]);
-    const turn = p1battle.turn ?? 0;
     const isEval = isEvalPlayer(workerIndex, playerIndex);
 
     const log = [];
@@ -116,6 +115,8 @@ async function runPlayer(
     let winner: string = "";
 
     for await (const chunk of stream) {
+        const turn = p1battle.turn ?? 0;
+
         // Alternatively: for (const {args, kwArgs} of Protocol.parse(chunk))
         for (const line of chunk.split("\n")) {
             if (line.startsWith("|error")) {

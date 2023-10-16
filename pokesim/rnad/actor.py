@@ -48,7 +48,7 @@ def run_environment(
             prev_env_step = env_step
 
             model_input = {
-                key: torch.from_numpy(obs[key][None, None, ...])
+                key: torch.from_numpy(np.array(obs[key][None, None, ...]))
                 for key in MODEL_INPUT_KEYS
             }
             with torch.no_grad():

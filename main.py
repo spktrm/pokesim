@@ -1,5 +1,6 @@
 import os
 
+
 os.environ["OMP_NUM_THREADS"] = "1"
 
 import time
@@ -14,7 +15,6 @@ from tqdm import tqdm
 from typing import List
 
 from pokesim.data import EVAL_MAPPING, NUM_WORKERS
-
 from pokesim.structs import Batch, Trajectory
 
 from pokesim.rnad.learner import Learner
@@ -56,10 +56,12 @@ def learn_loop(learner: Learner, queue: mp.Queue):
 
     while True:
         batch = Batch.from_trajectories(
-            [
-                Trajectory.deserialize(queue.get())
-                for _ in range(learner.config.batch_size)
-            ]
+            tuple(
+                [
+                    Trajectory.deserialize(queue.get())
+                    for _ in range(learner.config.batch_size)
+                ]
+            )
         )
         env_steps += batch.valid.sum()
 
@@ -72,7 +74,7 @@ def learn_loop(learner: Learner, queue: mp.Queue):
 
 def main(debug):
     init = None
-    # init = torch.load("ckpts/027632.pt")
+    # init = torch.load("ckpts/004185.pt")
     learner = Learner(init)
 
     if not debug:
@@ -115,6 +117,10 @@ def main(debug):
 
     try:
         prev_time = time.time()
+
+        if not os.path.exists("ckpts"):
+            os.mkdir("ckpts")
+
         while True:
             time.sleep(1)
 
