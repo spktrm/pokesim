@@ -25,7 +25,7 @@ async def worker(worker_index: int, socket_path: str):
 
     try:
         while True:
-            buffer = await reader.read(526)
+            buffer = await reader.read(534)
             if not buffer:
                 print("Disconnected from server")
                 break

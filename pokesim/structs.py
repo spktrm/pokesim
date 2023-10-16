@@ -5,10 +5,9 @@ import pickle
 import msgpack
 import msgpack_numpy as m
 
-from typing import List, Dict, NamedTuple, Sequence
+from typing import List, Dict, NamedTuple, Sequence, Tuple
 
 from pokesim.data import (
-    POSTIONAL_ENCODING_MATRIX,
     TEAM_OFFSET,
     FIELD_OFFSET,
     BOOSTS_OFFSET,
@@ -110,7 +109,7 @@ class Trajectory(NamedTuple):
 
 class Batch(Trajectory):
     @classmethod
-    def from_trajectories(cls, traj_list: List[Trajectory]) -> "Batch":
+    def from_trajectories(cls, traj_list: Tuple[Trajectory]) -> "Batch":
         lengths = np.array([len(t) for t in traj_list])
         max_index = lengths.argmax(-1)
         batch_size = len(traj_list)
@@ -121,14 +120,14 @@ class Batch(Trajectory):
             new_shape = (1, batch_size, *((1,) * len(value.shape[2:])))
             store[k] = np.tile(value, new_shape)
 
+        traj_list = [traj_list[i] for i in np.argsort(lengths)]
+
         for batch_index, trajectory in enumerate(traj_list):
-            if batch_index == max_index:
-                continue
             trajectory_length = len(trajectory)
             for key, values in trajectory._asdict().items():
                 store[key][:trajectory_length, batch_index] = values
             store["valid"][trajectory_length:, batch_index] = False
-            store["rewards"][trajectory_length:, batch_index] *= 0
+            store["rewards"][trajectory_length:, batch_index] = 0
 
         return cls(**store)
 
@@ -137,9 +136,12 @@ class State(NamedTuple):
     raw: np.ndarray
 
     def get_turn(self, leading_dims: Sequence[int]):
-        return POSTIONAL_ENCODING_MATRIX[
-            self.raw[..., TURN_OFFSET:TEAM_OFFSET].clip(max=TURN_MAX)
-        ].reshape(*leading_dims, -1)
+        return (
+            self.raw[..., TURN_OFFSET:TEAM_OFFSET]
+            .clip(max=TURN_MAX)
+            .reshape(*leading_dims)
+            .astype(int)
+        )
 
     def view_teams(self, leading_dims: Sequence[int]):
         teams = self.raw[..., TEAM_OFFSET:SIDE_CONDITION_OFFSET].view(np.int16)
@@ -179,11 +181,8 @@ class State(NamedTuple):
         )
 
     def _get_history(self, leading_dims: Sequence[int]):
-        teams = np.frombuffer(
-            self.raw[..., HISTORY_OFFSET:].tobytes(),
-            dtype=np.int16,
-        )
-        return teams.reshape(*leading_dims, -1, 2)
+        history = self.raw[..., HISTORY_OFFSET:].view(np.int16)
+        return history.reshape(*leading_dims, -1, 3)
 
     def get_history(self, leading_dims: Sequence[int]):
         history = self._get_history(leading_dims)

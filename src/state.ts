@@ -180,7 +180,7 @@ export class Int8State {
     actionToVector(actionLine: string): Int8Array {
         const room = this.handler.battles[0];
         if (actionLine === undefined) {
-            return new Int8Array([-1, -1, -1, -1]);
+            return new Int8Array(new Int16Array([-1, -1, -1]).buffer);
         }
         const splitString = actionLine.split("|");
         const actionType = splitString[1];
@@ -195,10 +195,7 @@ export class Int8State {
         ]);
         const userIndex = keys.indexOf(user);
         const actionIndex = moveMapping[action] ?? -2;
-        const actionVector = [
-            userIndex >= 6 ? userIndex + 6 : userIndex,
-            actionIndex,
-        ];
+        const actionVector = [userIndex >= 6 ? 1 : 0, userIndex, actionIndex];
         return new Int8Array(new Int16Array(actionVector).buffer);
     }
 

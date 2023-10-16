@@ -22,6 +22,7 @@ from pokesim.rnad.utils import (
     optimized_forward,
 )
 from pokesim.rnad.config import RNaDConfig
+from pokesim.utils import _threshold
 
 
 def get_loss_v_(
@@ -148,6 +149,23 @@ def _print_params(model: nn.Module):
     return trainable_params_count, params_count
 
 
+def get_example(T: int, B: int, device: str):
+    mask = torch.zeros(T, B, 12, dtype=torch.bool, device=device)
+    mask[..., 0] = True
+    return (
+        torch.zeros(T, B, 8, dtype=torch.long, device=device),
+        torch.zeros(T, B, 4, dtype=torch.long, device=device),
+        torch.zeros(T, B, 8, 3, 6, 11, dtype=torch.long, device=device),
+        torch.zeros(T, B, 8, 2, 15, dtype=torch.long, device=device),
+        torch.zeros(T, B, 8, 2, 20, 2, dtype=torch.long, device=device),
+        torch.zeros(T, B, 8, 2, 7, dtype=torch.long, device=device),
+        torch.zeros(T, B, 8, 5, 3, dtype=torch.long, device=device),
+        mask,
+        torch.ones(T, B, 8, 4, 3, dtype=torch.long, device=device),
+        torch.ones(T, B, 8, dtype=torch.bool, device=device),
+    )
+
+
 class Learner:
     def __init__(
         self, init: Mapping[str, Any] = None, config: RNaDConfig = RNaDConfig()
@@ -173,6 +191,15 @@ class Learner:
         self.params_prev.to(self.config.learner_device)
         self.params_prev_.to(self.config.learner_device)
 
+        learner_example = get_example(1, 1, self.config.learner_device)
+        actor_example = get_example(1, 1, self.config.actor_device)
+
+        self.params = torch.jit.trace(self.params, learner_example)
+        self.params_actor = torch.jit.trace(self.params_actor, actor_example)
+        self.params_target = torch.jit.trace(self.params_target, learner_example)
+        self.params_prev = torch.jit.trace(self.params_prev, learner_example)
+        self.params_prev_ = torch.jit.trace(self.params_prev_, learner_example)
+
         # Parameter optimizers.
         self.optimizer = optim.Adam(
             self.params.parameters(),
@@ -184,17 +211,9 @@ class Learner:
         )
         self.learner_steps = 0
 
-        _, params = _print_params(self.params)
-        B_32 = 32
-        TMEM = (12 * 10**9 * 8 - 4 * params * B_32) * 1 / 3
-
-        bs = (TMEM // B_32) // params
-        bs_sqrt = int(bs**0.5) + 1
-
-        # self.Bbs = min(2 * bs_sqrt, config.batch_size)
-        # self.Tbs = int(bs // self.Bbs) + 1
-        self.Bbs = 32
-        self.Tbs = 32
+        _print_params(self.params)
+        self.Bbs = config.batch_size
+        self.Tbs = 1024 // self.Bbs
         print(f"({self.Tbs}, {self.Bbs}) => {self.Bbs * self.Tbs}")
 
     def get_config(self):
@@ -244,7 +263,7 @@ class Learner:
 
             _rewards = batch.rewards.astype(np.float32)
             _v_target = params_target.value.cpu().numpy()
-            _policy_pprocessed = self.params._threshold(
+            _policy_pprocessed = _threshold(
                 params.policy.detach().cpu(), forward_batch["legal"]
             ).numpy()
             _log_policy_reg = log_policy_reg.detach().cpu().numpy()
@@ -300,37 +319,49 @@ class Learner:
         Tnum = math.ceil(T / self.Tbs)
         Bnum = math.ceil(B / self.Bbs)
 
-        for ti in range(Tnum):
-            ts, tf = self.Tbs * ti, self.Tbs * (ti + 1)
+        for bi in range(Bnum):
+            bs, bf = self.Bbs * bi, self.Bbs * (bi + 1)
 
-            for bi in range(Bnum):
-                bs, bf = self.Bbs * bi, self.Bbs * (bi + 1)
+            for ti in range(Tnum):
+                ts, tf = self.Tbs * ti, self.Tbs * (ti + 1)
 
                 minibatch_valid = valid[ts:tf, bs:bf]
+
+                # An optimization to reduce the number of padded
+                # samples being processed in the backward pass.
+                # Only used because batch is sorted by trajectory length
+                mbs = max(
+                    (self.config.batch_size - minibatch_valid.any(0).sum().item()) + bs,
+                    bs,
+                )
+                minibatch_valid = valid[ts:tf, mbs:bf]
+
                 if not minibatch_valid.sum().item():
                     continue
 
                 minibatch = {
-                    k: v[ts:tf, bs:bf].to(self.config.learner_device, non_blocking=True)
+                    k: v[ts:tf, mbs:bf].to(
+                        self.config.learner_device, non_blocking=True
+                    )
                     for k, v in forward_batch.items()
                 }
                 pi, _, logit, v, *_ = self.params(**minibatch)
 
                 loss_v = get_loss_v(
                     [v] * NUM_PLAYERS,
-                    [v_target[ts:tf, bs:bf] for v_target in v_target_list],
-                    [has_played[ts:tf, bs:bf] for has_played in has_played_list],
+                    [v_target[ts:tf, mbs:bf] for v_target in v_target_list],
+                    [has_played[ts:tf, mbs:bf] for has_played in has_played_list],
                 )
 
                 # Uses v-trace to define q-values for Nerd
                 loss_nerd = get_loss_nerd(
                     [logit] * NUM_PLAYERS,
                     [pi] * NUM_PLAYERS,
-                    [vtpt[ts:tf, bs:bf] for vtpt in v_trace_policy_target_list],
+                    [vtpt[ts:tf, mbs:bf] for vtpt in v_trace_policy_target_list],
                     minibatch_valid,
-                    player_id[ts:tf, bs:bf],
-                    legal[ts:tf, bs:bf],
-                    [is_c[ts:tf, bs:bf] for is_c in importance_sampling_correction],
+                    player_id[ts:tf, mbs:bf],
+                    legal[ts:tf, mbs:bf],
+                    [is_c[ts:tf, mbs:bf] for is_c in importance_sampling_correction],
                     clip=self.config.nerd.clip,
                     threshold=self.config.nerd.beta,
                 )
@@ -361,7 +392,7 @@ class Learner:
         loss_vals = self.loss(batch, alpha)
 
         nn.utils.clip_grad.clip_grad_value_(
-            self.params.parameters(), self.config.clip_gradient
+            self.params.parameters(), self.config.clip_gradient, foreach=False
         )
 
         # Update `params`` using the computed gradient.

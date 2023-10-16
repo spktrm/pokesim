@@ -1,6 +1,6 @@
 socket_path: /tmp/pokesim
 encoding: utf-8
-server_update_freq: 0.1
+server_update_freq: 1
 num_workers: 20
 default_worker_index: 18
 random_worker_index: 19

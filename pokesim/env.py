@@ -7,7 +7,7 @@ from pokesim.data import SOCKET_PATH, ENCODING, NUM_HISTORY
 from pokesim.structs import Observation, State
 
 
-def read(sock: socket.socket, state_size: int = 526) -> bytes:
+def read(sock: socket.socket, state_size: int = 534) -> bytes:
     data = b""
     while len(data) < state_size:
         remaining = state_size - len(data)
@@ -23,13 +23,20 @@ def stacknpad(array_stack: Sequence[np.ndarray], num_padding: int):
 
 
 class Environment:
-    def __init__(self, worker_index: int, socket_address: str = SOCKET_PATH):
+    def __init__(
+        self,
+        worker_index: int,
+        socket_address: str = SOCKET_PATH,
+        verbose: bool = False,
+    ):
         self.socket_address = socket_address
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.worker_index = worker_index
-        print(f"Worker {worker_index} Connecting to {socket_address}")
+        if verbose:
+            print(f"Worker {worker_index} Connecting to {socket_address}")
         self.sock.connect(socket_address)
-        print(f"Worker {worker_index} Connected successfully!")
+        if verbose:
+            print(f"Worker {worker_index} Connected successfully!")
         self.reset_env_vars()
 
     def reset_env_vars(self):
@@ -85,7 +92,9 @@ class Environment:
             ]
             num_states = len(self.history[self.current_player][-NUM_HISTORY:])
             state_stack = State(
-                stacknpad(self.history[self.current_player][-NUM_HISTORY:], NUM_HISTORY)
+                stacknpad(
+                    self.history[self.current_player][-NUM_HISTORY:], NUM_HISTORY
+                ).copy()
             )
             history_mask = num_states >= np.arange(1, NUM_HISTORY + 1)
             state = state_stack.dense()

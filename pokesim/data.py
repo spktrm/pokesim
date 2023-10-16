@@ -97,8 +97,6 @@ def get_positional_encoding_matrix(
 
 TURN_ENC_SIZE = 64
 TURN_MAX = 100
-POSTIONAL_ENCODING_MATRIX = get_positional_encoding_matrix(TURN_ENC_SIZE, TURN_MAX + 1)
-POSTIONAL_ENCODING_MATRIX.setflags(write=False)
 
 NUM_PLAYERS = 2
 NUM_HISTORY = 8

@@ -37,8 +37,14 @@ class RNaDConfig:
 
     # RNaD algorithm configuration.
     # Entropy schedule configuration. See EntropySchedule class documentation.
-    entropy_schedule_repeats: List[int] = (1,)
-    entropy_schedule_size: List[int] = (10000,)
+    entropy_schedule_repeats: List[int] = (
+        100,
+        1,
+    )
+    entropy_schedule_size: List[int] = (
+        100,
+        10000,
+    )
     # The weight of the reward regularisation term in RNaD.
     eta_reward_transform: float = 0.2
     nerd: NerdConfig = NerdConfig()

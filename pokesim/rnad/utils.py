@@ -21,7 +21,7 @@ def optimized_forward(
     module: nn.Module,
     inputs: Dict[str, torch.Tensor],
     config: RNaDConfig,
-    batch_size: int = 1024,
+    batch_size: int = 2048,
 ) -> ModelOutput:
     results = []
 
@@ -37,7 +37,7 @@ def optimized_forward(
             )
             for k, v in inputs.items()
         }
-        results.append(module(**minibatch))
+        results.append([t.detach().cpu() for t in module(**minibatch)])
 
     return ModelOutput(*map(lambda x: torch.cat(x).view(T, B, -1), zip(*results)))
 

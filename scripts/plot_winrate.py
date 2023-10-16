@@ -14,12 +14,12 @@ def main(run_id: str, window: int, num_samples: int = int(200e3)):
 
     concat_df = pd.concat(
         [
-            random_values.rolling(window).mean(),
-            default_values.rolling(window).mean(),
+            ((random_values + 1) / 2).rolling(window).mean(),
+            ((default_values + 1) / 2).rolling(window).mean(),
         ],
         axis=1,
     )[window:]
-    fig = ((concat_df + 1) / 2).plot(height=800)
+    fig = concat_df.plot(height=800)
     fig.show()
 
 
