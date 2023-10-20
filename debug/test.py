@@ -1,30 +1,43 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-import torch.autograd.profiler as profiler
+import math
 
 
-from pokesim.model import Model
+def discretize_probs(probs, disc):
+    n = 1 / disc
 
-model = Model()
+    # Sort the probabilities in descending order and also get the indices
+    sorted_probs, indices = torch.sort(probs, descending=True, dim=-1)
+
+    # Calculate the rounded up values, making sure they're multiples of 1/n
+    rounded_probs = torch.ceil(sorted_probs * disc) / disc
+
+    # Calculate the amount needed to reach 1.0
+    correction = 1.0 - rounded_probs.sum(dim=-1)
+
+    for i in reversed(range(probs.shape[-1])):
+        new_probs = (rounded_probs[..., i] + correction).clamp(min=0)
+        correction = (correction + rounded_probs[..., i]).clamp(max=0)
+        rounded_probs[..., i] = new_probs
+
+    # Restore the original order of elements
+    final_probs = torch.zeros_like(probs).scatter_(-1, indices, rounded_probs)
+
+    return final_probs
 
 
-def get_example(T: int, B: int, device: str):
-    return (
-        torch.zeros(T, B, 8, dtype=torch.long, device=device),
-        torch.zeros(T, B, 4, dtype=torch.long, device=device),
-        torch.zeros(T, B, 8, 3, 6, 11, dtype=torch.long, device=device),
-        torch.zeros(T, B, 8, 2, 15, dtype=torch.long, device=device),
-        torch.zeros(T, B, 8, 2, 20, 2, dtype=torch.long, device=device),
-        torch.zeros(T, B, 8, 2, 7, dtype=torch.long, device=device),
-        torch.zeros(T, B, 8, 5, 3, dtype=torch.long, device=device),
-        torch.ones(T, B, 12, dtype=torch.bool, device=device),
-        torch.ones(T, B, 8, 4, 3, dtype=torch.long, device=device),
-        torch.ones(T, B, 8, dtype=torch.bool, device=device),
-    )
+# Test the function with a tensor of action probabilities and n_disc
+probs = torch.randn(8, 5)
 
+mask = torch.randint(0, 2, probs.shape)
+mask[..., 0] = 1
 
-device = "cpu"
-model = model.to(device)
-jit_model = torch.jit.trace(model, get_example(32, 32, device))
+probs = torch.where(mask == 1, probs, float("-inf")).softmax(-1)
+
+n_disc = 16  # you can adjust n_disc based on your requirement
+
+print(probs)
+discretized_probs = discretize_probs(probs, n_disc)
+
+print(discretized_probs)
+
+print(discretized_probs.sum(-1))

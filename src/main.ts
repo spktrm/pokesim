@@ -100,7 +100,7 @@ setInterval(() => {
             value.toString().padEnd(maxStepsLength) +
             " Throughput/sec: " +
             (throughput * serverUpdateFreq)
-                .toFixed(2)
+                .toFixed(0)
                 .padEnd(maxThroughputLength) +
             "\n";
 

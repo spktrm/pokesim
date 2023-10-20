@@ -15,14 +15,13 @@ from pokesim.structs import Batch, State
 
 from pokesim.rnad.utils import (
     EntropySchedule,
-    SGDTowardsModel,
     v_trace,
     _player_others,
-    _policy_ratio,
     optimized_forward,
 )
 from pokesim.rnad.config import RNaDConfig
-from pokesim.utils import _threshold
+
+from pokesim.utils import finetune, _print_params, SGDTowardsModel
 
 
 def get_loss_v_(
@@ -133,22 +132,6 @@ def get_loss_nerd(
     return loss_pi_list
 
 
-def _print_params(model: nn.Module):
-    trainable_params_count = sum(
-        x.numel() for x in model.parameters() if x.requires_grad
-    )
-    lstm_trainable_params_count = sum(
-        x.numel() for x in model.lstm.parameters() if x.requires_grad
-    )
-    params_count = sum(x.numel() for x in model.parameters())
-    print(f"""Total Trainable Params: {trainable_params_count:,}""")
-    print(f"""Total Params: {params_count:,}""")
-    print(
-        f"""Total LSTM Params: {lstm_trainable_params_count:,} - {100 * lstm_trainable_params_count / trainable_params_count:.2f}"""
-    )
-    return trainable_params_count, params_count
-
-
 def get_example(T: int, B: int, device: str):
     mask = torch.zeros(T, B, 12, dtype=torch.bool, device=device)
     mask[..., 0] = True
@@ -168,9 +151,14 @@ def get_example(T: int, B: int, device: str):
 
 class Learner:
     def __init__(
-        self, init: Mapping[str, Any] = None, config: RNaDConfig = RNaDConfig()
+        self,
+        config: RNaDConfig = RNaDConfig(),
+        use_amp: bool = False,
+        trace_nets: bool = True,
+        debug: bool = False,
     ):
         self.config = config
+        self.use_amp = use_amp
         self._entropy_schedule = EntropySchedule(
             sizes=self.config.entropy_schedule_size,
             repeats=self.config.entropy_schedule_repeats,
@@ -178,12 +166,23 @@ class Learner:
 
         # Create initial parameters.
         self.params = Model()
-        if init is not None:
-            self.params.load_state_dict(init, strict=False)
+        self.params.train()
+
+        _print_params(self.params)
+
         self.params_actor = deepcopy(self.params).share_memory()
+        self.params_actor.eval()
+
+        self.params_actor_prev = deepcopy(self.params).share_memory()
+        self.params_actor_prev.eval()
+
         self.params_target = deepcopy(self.params)
         self.params_prev = deepcopy(self.params)
         self.params_prev_ = deepcopy(self.params)
+
+        self.params_target.train()
+        self.params_prev.train()
+        self.params_prev_.train()
 
         self.params.to(self.config.learner_device)
         self.params_actor.to(self.config.actor_device)
@@ -191,14 +190,25 @@ class Learner:
         self.params_prev.to(self.config.learner_device)
         self.params_prev_.to(self.config.learner_device)
 
-        learner_example = get_example(1, 1, self.config.learner_device)
-        actor_example = get_example(1, 1, self.config.actor_device)
+        if not debug and trace_nets:
+            actor_example = get_example(1, 1, self.config.actor_device)
+            self.params_actor = torch.jit.trace(self.params_actor, actor_example)
+            self.params_actor_prev = torch.jit.trace(
+                self.params_actor_prev, actor_example
+            )
+            with torch.autocast(
+                device_type=self.config.learner_device,
+                dtype=torch.float16,
+                enabled=self.use_amp,
+            ):
+                learner_example = get_example(1, 1, self.config.learner_device)
 
-        self.params = torch.jit.trace(self.params, learner_example)
-        self.params_actor = torch.jit.trace(self.params_actor, actor_example)
-        self.params_target = torch.jit.trace(self.params_target, learner_example)
-        self.params_prev = torch.jit.trace(self.params_prev, learner_example)
-        self.params_prev_ = torch.jit.trace(self.params_prev_, learner_example)
+                self.params = torch.jit.trace(self.params, learner_example)
+                self.params_target = torch.jit.trace(
+                    self.params_target, learner_example
+                )
+                self.params_prev = torch.jit.trace(self.params_prev, learner_example)
+                self.params_prev_ = torch.jit.trace(self.params_prev_, learner_example)
 
         # Parameter optimizers.
         self.optimizer = optim.Adam(
@@ -209,12 +219,45 @@ class Learner:
         self.optimizer_target = SGDTowardsModel(
             self.params_target, self.params, self.config.target_network_avg
         )
+
+        self.scaler = torch.cuda.amp.GradScaler()
         self.learner_steps = 0
 
-        _print_params(self.params)
         self.Bbs = config.batch_size
-        self.Tbs = 1024 // self.Bbs
+        self.Tbs = config.backward_batch_size // self.Bbs
         print(f"({self.Tbs}, {self.Bbs}) => {self.Bbs * self.Tbs}")
+
+    def save(self, fpath: str):
+        torch.save(
+            {
+                "config": self.config,
+                "params": self.params.state_dict(),
+                "params_actor": self.params_actor.state_dict(),
+                "params_target": self.params_target.state_dict(),
+                "params_prev": self.params_prev.state_dict(),
+                "params_prev_": self.params_prev_.state_dict(),
+                "optimizer": self.optimizer.state_dict(),
+                "scaler": self.scaler.state_dict(),
+                "learner_steps": self.learner_steps,
+            },
+            fpath,
+        )
+
+    @classmethod
+    def from_fpath(cls, fpath: str, ignore_config: bool = False):
+        obj = cls()
+        ckpt = torch.load(fpath, map_location="cpu")
+        if not ignore_config:
+            obj.config = ckpt["config"]
+        obj.params.load_state_dict(ckpt["params"])
+        obj.params_actor.load_state_dict(ckpt["params_actor"])
+        obj.params_target.load_state_dict(ckpt["params_target"])
+        obj.params_prev.load_state_dict(ckpt["params_prev"])
+        obj.params_prev_.load_state_dict(ckpt["params_prev_"])
+        obj.optimizer.load_state_dict(ckpt["optimizer"])
+        obj.scaler.load_state_dict(ckpt["scaler"])
+        obj.learner_steps = ckpt["learner_steps"]
+        return obj
 
     def get_config(self):
         return {
@@ -239,16 +282,21 @@ class Learner:
         forward_batch = {key: torch.from_numpy(state[key]) for key in MODEL_INPUT_KEYS}
 
         with torch.no_grad():
-            params = optimized_forward(self.params, forward_batch, self.config)
-            params_target = optimized_forward(
-                self.params_target, forward_batch, self.config
-            )
-            params_prev = optimized_forward(
-                self.params_prev, forward_batch, self.config
-            )
-            params_prev_ = optimized_forward(
-                self.params_prev_, forward_batch, self.config
-            )
+            with torch.autocast(
+                device_type=self.config.learner_device,
+                dtype=torch.float16,
+                enabled=self.use_amp,
+            ):
+                params = optimized_forward(self.params, forward_batch, self.config)
+                params_target = optimized_forward(
+                    self.params_target, forward_batch, self.config
+                )
+                params_prev = optimized_forward(
+                    self.params_prev, forward_batch, self.config
+                )
+                params_prev_ = optimized_forward(
+                    self.params_prev_, forward_batch, self.config
+                )
 
             # This line creates the reward transform log(pi(a|x)/pi_reg(a|x)).
             # For the stability reasons, reward changes smoothly between iterations.
@@ -263,7 +311,7 @@ class Learner:
 
             _rewards = batch.rewards.astype(np.float32)
             _v_target = params_target.value.cpu().numpy()
-            _policy_pprocessed = _threshold(
+            _policy_pprocessed = finetune(
                 params.policy.detach().cpu(), forward_batch["legal"]
             ).numpy()
             _log_policy_reg = log_policy_reg.detach().cpu().numpy()
@@ -300,10 +348,11 @@ class Learner:
                 has_played_list.append(has_played)
                 v_trace_policy_target_list.append(policy_target_)
 
-            policy_ratio = np.array(
-                _policy_ratio(_policy_pprocessed, batch.policy, action_oh, batch.valid)
-            )
-            is_vector = torch.unsqueeze(self._to_torch(policy_ratio), axis=-1)
+            # policy_ratio = np.array(
+            #     _policy_ratio(_policy_pprocessed, batch.policy, action_oh, batch.valid)
+            # )
+            # is_vector = torch.unsqueeze(self._to_torch(policy_ratio), axis=-1)
+            is_vector = torch.unsqueeze(torch.ones_like(valid), axis=-1)
             importance_sampling_correction = [
                 torch.clamp(is_vector, max=1)
             ] * NUM_PLAYERS
@@ -313,11 +362,15 @@ class Learner:
 
         tv_loss = 0
         tp_loss = 0
+        te_loss = 0
+        tr_loss = 0
 
         T, B, *_ = batch.valid.shape
 
         Tnum = math.ceil(T / self.Tbs)
         Bnum = math.ceil(B / self.Bbs)
+
+        total_valid = batch.valid.sum().item()
 
         for bi in range(Bnum):
             bs, bf = self.Bbs * bi, self.Bbs * (bi + 1)
@@ -345,58 +398,79 @@ class Learner:
                     )
                     for k, v in forward_batch.items()
                 }
-                pi, _, logit, v, *_ = self.params(**minibatch)
-
-                loss_v = get_loss_v(
-                    [v] * NUM_PLAYERS,
-                    [v_target[ts:tf, mbs:bf] for v_target in v_target_list],
-                    [has_played[ts:tf, mbs:bf] for has_played in has_played_list],
-                )
-
-                # Uses v-trace to define q-values for Nerd
-                loss_nerd = get_loss_nerd(
-                    [logit] * NUM_PLAYERS,
-                    [pi] * NUM_PLAYERS,
-                    [vtpt[ts:tf, mbs:bf] for vtpt in v_trace_policy_target_list],
-                    minibatch_valid,
-                    player_id[ts:tf, mbs:bf],
-                    legal[ts:tf, mbs:bf],
-                    [is_c[ts:tf, mbs:bf] for is_c in importance_sampling_correction],
-                    clip=self.config.nerd.clip,
-                    threshold=self.config.nerd.beta,
-                )
-
-                loss = 0
-                for value_loss, policy_loss, scale in zip(
-                    loss_v, loss_nerd, [num_valid_p1, num_valid_p2]
+                with torch.autocast(
+                    device_type=self.config.learner_device,
+                    dtype=torch.float16,
+                    enabled=self.use_amp,
                 ):
-                    loss += (value_loss + policy_loss) / scale
-                loss.backward()
+                    pi, log_pi, logit, v, step_recon = self.params(**minibatch)
+
+                    loss_v = get_loss_v(
+                        [v] * NUM_PLAYERS,
+                        [v_target[ts:tf, mbs:bf] for v_target in v_target_list],
+                        [has_played[ts:tf, mbs:bf] for has_played in has_played_list],
+                    )
+
+                    # Uses v-trace to define q-values for Nerd
+                    loss_nerd = get_loss_nerd(
+                        [logit] * NUM_PLAYERS,
+                        [pi] * NUM_PLAYERS,
+                        [vtpt[ts:tf, mbs:bf] for vtpt in v_trace_policy_target_list],
+                        minibatch_valid,
+                        player_id[ts:tf, mbs:bf],
+                        legal[ts:tf, mbs:bf],
+                        [
+                            is_c[ts:tf, mbs:bf]
+                            for is_c in importance_sampling_correction
+                        ],
+                        clip=self.config.nerd.clip,
+                        threshold=self.config.nerd.beta,
+                    )
+
+                    loss = 0
+                    for value_loss, policy_loss, scale in zip(
+                        loss_v, loss_nerd, [num_valid_p1, num_valid_p2]
+                    ):
+                        loss += (value_loss + policy_loss) / scale
+
+                    recon_loss = (step_recon * minibatch_valid).sum()
+                    loss += recon_loss / total_valid
+
+                self.scaler.scale(loss).backward()
 
                 tv_loss += sum(loss_v).item()
                 tp_loss += sum(loss_nerd).item()
+                te_loss += (minibatch_valid * (log_pi * -pi).sum(-1)).sum()
+                tr_loss += recon_loss.item()
 
-        tv_loss /= num_valid_p1.item()
-        tp_loss /= num_valid_p2.item()
+        tv_loss /= total_valid
+        tp_loss /= total_valid
+        te_loss /= total_valid
+        tr_loss /= total_valid
 
         return {
             "v_loss": tv_loss,
             "p_loss": tp_loss,
+            "e": te_loss,
+            "r_loss": tr_loss,
         }
 
     def update_parameters(self, batch: Batch, alpha: float, update_target_net: bool):
         """A jitted pure-functional part of the `step`."""
 
-        self.optimizer.zero_grad()
-
         loss_vals = self.loss(batch, alpha)
 
+        self.scaler.unscale_(self.optimizer)
+
         nn.utils.clip_grad.clip_grad_value_(
-            self.params.parameters(), self.config.clip_gradient, foreach=False
+            self.params.parameters(), self.config.clip_gradient
         )
 
         # Update `params`` using the computed gradient.
-        self.optimizer.step()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
+
+        self.optimizer.zero_grad(set_to_none=True)
 
         # Update `params_target` towards `params`.
         self.optimizer_target.step()

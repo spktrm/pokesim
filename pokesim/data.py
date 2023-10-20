@@ -1,21 +1,27 @@
 import os
 import yaml
 import json
-
 import numpy as np
+
+from typing import Any, Dict
 
 
 with open(os.path.abspath("./config.yml"), "r") as f:
-    CONFIG = yaml.safe_load(f)
+    CONFIG: Dict[str, Any] = yaml.safe_load(f)
 
 SOCKET_PATH = CONFIG["socket_path"]
 ENCODING = CONFIG["encoding"]
 NUM_WORKERS = CONFIG["num_workers"]
-DEFAULT_WORKER_INDEX = CONFIG["default_worker_index"]
-RANDOM_WORKER_INDEX = CONFIG["random_worker_index"]
-EVAL_WORKER_INDEX = min(DEFAULT_WORKER_INDEX, RANDOM_WORKER_INDEX)
+DEFAULT_WORKER_INDEX = CONFIG.get("default_worker_index")
+RANDOM_WORKER_INDEX = CONFIG.get("random_worker_index")
+PREV_WORKER_INDEX = CONFIG.get("prev_worker_index")
+EVAL_WORKER_INDEX = min(DEFAULT_WORKER_INDEX, RANDOM_WORKER_INDEX, PREV_WORKER_INDEX)
 
-EVAL_MAPPING = {DEFAULT_WORKER_INDEX: "default", RANDOM_WORKER_INDEX: "random"}
+EVAL_MAPPING = {
+    DEFAULT_WORKER_INDEX: "default",
+    RANDOM_WORKER_INDEX: "random",
+    PREV_WORKER_INDEX: "prev",
+}
 
 TURN_OFFSET = 0
 TURN_SIZE = 1

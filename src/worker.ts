@@ -91,10 +91,18 @@ function isAction(line: string): boolean {
 
 const defaultWorkerIndex = workerData.config.default_worker_index as number;
 const randomWorkerIndex = workerData.config.random_worker_index as number;
+const prevWorkerIndex = workerData.config.prev_worker_index as number;
 
 function isEvalPlayer(workerIndex: number, playerIndex: number): boolean {
-    if (workerIndex >= defaultWorkerIndex && playerIndex === 1) {
-        return true;
+    if (playerIndex === 1) {
+        switch (workerIndex) {
+            case defaultWorkerIndex:
+                return true;
+            case randomWorkerIndex:
+                return true;
+            default:
+                return false;
+        }
     } else {
         return false;
     }
@@ -116,6 +124,9 @@ async function runPlayer(
 
     for await (const chunk of stream) {
         const turn = p1battle.turn ?? 0;
+        if (turn > 200) {
+            break;
+        }
 
         // Alternatively: for (const {args, kwArgs} of Protocol.parse(chunk))
         for (const line of chunk.split("\n")) {
@@ -173,6 +184,15 @@ async function runPlayer(
     p1battle.request = undefined;
 }
 
+const exampleTeam = [
+    "spiritomb||sitrusberry|pressure|shadowball,darkpulse,psychic,sucherpunch||85,,85,85,85,85|N|,0,,,,||78|,,,,,Grass",
+    "roserade||expertbelt|poisonpoint|dazzlinggleam,shadowball,sludgebomb,energyball||85,85,85,85,85,85|N|||80|,,,,,Fighting",
+    "gastrodon||Leftovers|stormdrain|scald,earthquake,slugdebomb,rocktomb||85,85,85,85,85,85|N|||84|,,,,,Steel",
+    "lucario||wiseglasses|innerfocus|aurasphere,dragonpulse,flashcannon,nastyplot||85,85,85,85,85,85||||85|,,,,,Dark",
+    "milotic||flameorb|marvelscale|recover,mirrorcoat,icebeam,scald||85,85,85,85,85,85||||84|,,,,,Ground",
+    "garchomp||yacheberry|roughskin|dragonclaw,earthquake,swordsdance,poisonjab||85,85,85,85,85,85|N|||65|,,,,,Fighting",
+];
+
 async function runGame() {
     const stream = new BattleStreams.BattleStream();
     streams = BattleStreams.getPlayerStreams(stream);
@@ -189,10 +209,12 @@ async function runGame() {
     const p1spec = {
         name: `Bot${workerIndex}1`,
         team: Teams.pack(Teams.generate(formatId)),
+        // team: exampleTeam.join("]"),
     };
     const p2spec = {
         name: `Bot${workerIndex}2`,
         team: Teams.pack(Teams.generate(formatId)),
+        // team: exampleTeam.join("]"),
     };
 
     void streams.omniscient.write(`>start ${JSON.stringify(spec)}

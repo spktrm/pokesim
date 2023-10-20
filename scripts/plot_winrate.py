@@ -9,14 +9,17 @@ def main(run_id: str, window: int, num_samples: int = int(200e3)):
     run = api.run(run_id)
     df = run.history(samples=num_samples)
 
-    random_values = df["random_r"].dropna().reset_index().drop(["index"], axis=1)
-    default_values = df["default_r"].dropna().reset_index().drop(["index"], axis=1)
+    rows = []
+
+    for column in {"prev_r", "random_r", "default_r"}:
+        try:
+            values = df[column].dropna().reset_index().drop(["index"], axis=1)
+            rows.append(values)
+        except:
+            pass
 
     concat_df = pd.concat(
-        [
-            ((random_values + 1) / 2).rolling(window).mean(),
-            ((default_values + 1) / 2).rolling(window).mean(),
-        ],
+        [((values + 1) / 2).rolling(window).mean() for values in rows],
         axis=1,
     )[window:]
     fig = concat_df.plot(height=800)

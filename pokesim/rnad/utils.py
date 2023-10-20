@@ -21,7 +21,6 @@ def optimized_forward(
     module: nn.Module,
     inputs: Dict[str, torch.Tensor],
     config: RNaDConfig,
-    batch_size: int = 2048,
 ) -> ModelOutput:
     results = []
 
@@ -30,6 +29,7 @@ def optimized_forward(
 
     inputs = {k: v.view(T * B, 1, *v.shape[2:]) for k, v in inputs.items()}
 
+    batch_size = config.forward_batch_size
     for i in range(math.ceil(T * B / batch_size)):
         minibatch = {
             k: v[i * batch_size : (i + 1) * batch_size].to(
@@ -145,22 +145,6 @@ class EntropySchedule:
             float(alpha.item()),
             bool(update_target_net.item()),
         )  # pytype: disable=bad-return-type  # jax-types
-
-
-class SGDTowardsModel:
-    def __init__(self, params_target: nn.Module, params: nn.Module, lr: float):
-        self._params_target = params_target
-        self._params = params
-        self._lr = lr
-
-    @torch.no_grad()
-    def step(self):
-        for param_target, param in zip(
-            self._params_target.parameters(), self._params.parameters()
-        ):
-            if param.requires_grad:
-                grad = param_target - param
-                param_target.sub_(grad, alpha=self._lr)
 
 
 def _player_others(
