@@ -34,12 +34,14 @@ class ModelOutput(NamedTuple):
     log_policy: torch.Tensor
     logits: torch.Tensor
     value: torch.Tensor
+    step_recon: torch.Tensor = None
 
 
 class ActorStep(NamedTuple):
     policy: np.ndarray
     action: np.ndarray
     rewards: np.ndarray
+    value: np.ndarray
 
 
 class TimeStep(NamedTuple):
@@ -65,6 +67,7 @@ class Trajectory(NamedTuple):
     # Actor fields
     policy: np.ndarray
     action: np.ndarray
+    value: np.ndarray
 
     def __len__(self):
         return max(self.valid.sum(0, keepdims=True))

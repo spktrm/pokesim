@@ -1,3 +1,4 @@
+from typing import Dict, List
 import torch
 import random
 
@@ -15,7 +16,6 @@ from pokesim.structs import (
 )
 
 from pokesim.structs import Trajectory
-from pokesim.utils import finetune
 
 
 def run_environment(
@@ -45,7 +45,7 @@ def run_environment(
             history_mask=obs["history_mask"],
         )
 
-        timesteps = []
+        timesteps: Dict[int, List[TimeStep]] = {0: [], 1: []}
         with torch.no_grad():
             while True:
                 prev_env_step = env_step
@@ -61,8 +61,6 @@ def run_environment(
                     actor_model = model
 
                 pi, *_, value = actor_model(**model_input)
-                if worker_index >= EVAL_WORKER_INDEX:
-                    pi = finetune(pi, model_input["legal"])
                 pi = pi.cpu().numpy().flatten()
                 value = value.cpu().numpy().flatten()
                 action = random.choices(action_space, weights=pi)[0]
@@ -73,7 +71,7 @@ def run_environment(
                     game_id=worker_index,
                     player_id=player_index,
                     state=obs["raw"],
-                    rewards=reward,
+                    rewards=reward[player_index],
                     valid=not done,
                     legal=obs["legal"],
                     history_mask=obs["history_mask"],
@@ -81,20 +79,34 @@ def run_environment(
 
                 if worker_index < EVAL_WORKER_INDEX:
                     actor_step = ActorStep(
-                        policy=pi, action=action, rewards=env_step.rewards, value=value
+                        policy=pi, action=action, value=value, rewards=env_step.rewards
                     )
                     timestep = TimeStep(id="", actor=actor_step, env=prev_env_step)
-                    timesteps.append(timestep)
+                    timesteps[prev_env_step.player_id].append(timestep)
 
                 if done:
                     if worker_index < EVAL_WORKER_INDEX:
-                        trajectory = Trajectory.from_env_steps(timesteps)
-                        learn_queue.put(trajectory.serialize())
+                        for player_index in range(2):
+                            timesteps[player_index][-1] = TimeStep(
+                                id="",
+                                actor=ActorStep(
+                                    policy=timesteps[player_index][-1].actor.policy,
+                                    action=timesteps[player_index][-1].actor.action,
+                                    value=timesteps[player_index][-1].actor.value,
+                                    rewards=reward[player_index],
+                                ),
+                                env=timesteps[player_index][-1].env,
+                            )
+                            trajectory = Trajectory.from_env_steps(
+                                timesteps[player_index]
+                            )
+                            learn_queue.put(trajectory.serialize())
 
                     else:
-                        eval_queue.put((num_battles, worker_index, env_step.rewards[0]))
+                        eval_queue.put((num_battles, worker_index, reward[0]))
 
-                    del timesteps[:]
+                    for player_index in range(2):
+                        del timesteps[player_index][:]
 
                     num_battles += 1
                     break

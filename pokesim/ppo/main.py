@@ -17,8 +17,8 @@ from typing import List
 from pokesim.data import EVAL_MAPPING, NUM_WORKERS
 from pokesim.structs import Batch, Trajectory
 
-from pokesim.rnad.learner import Learner
-from pokesim.rnad.actor import run_environment
+from pokesim.ppo.learner import Learner
+from pokesim.ppo.actor import run_environment
 
 
 def run_environment_wrapper(*args, **kwargs):
@@ -40,9 +40,7 @@ def read_eval(eval_queue: mp.Queue):
 
 def learn(learner: Learner, batch: Batch, lock=threading.Lock()):
     with lock:
-        alpha, update_target_net = learner._entropy_schedule(learner.learner_steps)
-        logs = learner.update_parameters(batch, alpha, update_target_net)
-
+        logs = learner.update_parameters(batch)
         learner.learner_steps += 1
 
         logs["avg_length"] = batch.valid.sum(0).mean()
@@ -74,8 +72,8 @@ def learn_loop(learner: Learner, queue: mp.Queue):
 
 def main(debug):
     init = None
-    # init = torch.load("ckpts/004185.pt")
-    learner = Learner(init)
+    # init = torch.load("ckpts/010360.pt")
+    learner = Learner(init, debug=debug)
 
     if not debug:
         wandb.init(
@@ -102,7 +100,13 @@ def main(debug):
     for worker_index in range(num_workers):
         process = mp.Process(
             target=run_environment_wrapper,
-            args=(worker_index, learner.params_actor, learn_queue, eval_queue),
+            args=(
+                worker_index,
+                learner.params_actor,
+                learner.params_actor_prev,
+                learn_queue,
+                eval_queue,
+            ),
         )
         process.start()
         processes.append(process)

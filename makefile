@@ -5,4 +5,4 @@ clean:
 
 start: 
 	tsc
-	node dist/main.js
+	node dist/main.js 2> debug/server.err.log

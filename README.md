@@ -5,7 +5,7 @@
 Pokesim provides:
 
 -   A UNIX server written in Node JS wrapped around the [sim](https://github.com/pkmn/ps/tree/main/sim) and [client](https://github.com/pkmn/ps/tree/main/client) packages from [pkmn](https://github.com/pkmn)
--   A reinforcement learning framework for interacting with this server. Currently supports [R-NaD from deepmind](https://github.com/google-deepmind/open_spiel/tree/master/open_spiel/python/algorithms/rnad).
+-   A reinforcement learning framework for interacting with this server. Currently supports [R-NaD from deepmind](https://github.com/google-deepmind/open_spiel/tree/master/open_spiel/python/algorithms/rnad), PPO and SAC.
 
 ## Installation
 
