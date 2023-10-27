@@ -278,10 +278,10 @@ class ToVector(nn.Module):
         self.gate = MLP([input_size, 1], use_layer_norm=use_layer_norm)
         out_layers = [
             nn.ReLU(),
-            _layer_init(nn.Linear(6 * input_size, 6 * input_size)),
+            _layer_init(nn.Linear(2 * input_size, 2 * input_size)),
         ]
         if use_layer_norm:
-            out_layers.insert(0, nn.LayerNorm(6 * input_size))
+            out_layers.insert(0, nn.LayerNorm(2 * input_size))
         self.out = nn.Sequential(*out_layers)
 
     def forward(
@@ -296,8 +296,8 @@ class ToVector(nn.Module):
         reserve_embeddings = reserve_weight @ entity_embeddings
         entity_embeddings = torch.cat(
             (active_embedding, reserve_embeddings), dim=-1
-        ).flatten(-3)
-        return torch.chunk(self.out(entity_embeddings), 3, -1)
+        ).flatten(-2)
+        return torch.chunk(self.out(entity_embeddings), 3, -2)
 
 
 class GatingType(Enum):
@@ -463,53 +463,27 @@ class SimSiam(nn.Module):
 
 
 class Model(nn.Module):
-    def __init__(self, entity_size: int = 64, vector_size: int = 256):
+    def __init__(self, entity_size: int = 256, vector_size: int = 512):
         super().__init__()
+
+        self.entity_size = entity_size
+        self.vector_size = vector_size
 
         side_token = torch.zeros(18, dtype=torch.long).view(-1, 6)
         side_token[-1] = 1
         self.register_buffer("side_token", side_token)
-
-        # public_token = torch.zeros(18, dtype=torch.long).view(-1, 6)
-        # public_token[1:] = 1
-        # self.register_buffer("public_token", public_token)
 
         self.species_onehot = _layer_init(nn.Embedding(NUM_SPECIES + 1, entity_size))
         self.item_onehot = _layer_init(nn.Embedding(NUM_ITEMS + 1, entity_size))
         self.ability_onehot = _layer_init(nn.Embedding(NUM_ABILITIES + 1, entity_size))
         self.moves_onehot = _layer_init(nn.Embedding(NUM_MOVES + 2, entity_size))
         self.hp_onehot = _layer_init(nn.Embedding(NUM_HP_BUCKETS + 1, entity_size))
-        # self.hp_value = _layer_init(nn.Linear(1, entity_size))
         self.status_onehot = _layer_init(nn.Embedding(NUM_STATUS + 1, entity_size))
         self.active_onehot = _layer_init(nn.Embedding(2, entity_size))
         self.fainted_onehot = _layer_init(nn.Embedding(2, entity_size))
         self.side_onehot = _layer_init(nn.Embedding(2, entity_size))
         self.public_onehot = _layer_init(nn.Embedding(2, entity_size))
 
-        # self.hp_onehot = nn.Embedding.from_pretrained(
-        #     torch.eye(NUM_HP_BUCKETS + 1)[..., 1:]
-        # )
-        # self.status_onehot = nn.Embedding.from_pretrained(
-        #     torch.eye(NUM_STATUS + 1)[..., 1:]
-        # )
-        # self.active_onehot = nn.Embedding.from_pretrained(torch.eye(2))
-        # self.fainted_onehot = nn.Embedding.from_pretrained(torch.eye(2))
-        # self.side_onehot = nn.Embedding.from_pretrained(torch.eye(2))
-        # self.public_onehot = nn.Embedding.from_pretrained(torch.eye(2))
-
-        # raw_entity_size = (
-        #     self.species_onehot.weight.shape[-1]
-        #     + self.item_onehot.weight.shape[-1]
-        #     + self.ability_onehot.weight.shape[-1]
-        #     + self.moves_onehot.weight.shape[-1]
-        #     + self.hp_onehot.weight.shape[-1]
-        #     + self.status_onehot.weight.shape[-1]
-        #     + self.active_onehot.weight.shape[-1]
-        #     + self.fainted_onehot.weight.shape[-1]
-        #     + self.side_onehot.weight.shape[-1]
-        #     + self.public_onehot.weight.shape[-1]
-        #     + 1
-        # )
         self.units_mlp = MLP([entity_size, entity_size], use_layer_norm=_USE_LAYER_NORM)
         self.moves_mlp = MLP([entity_size, entity_size], use_layer_norm=_USE_LAYER_NORM)
 
@@ -545,16 +519,16 @@ class Model(nn.Module):
 
         boosts_size = NUM_BOOSTS + 12 * NUM_BOOSTS
         self.boosts_embedding = MLP(
-            [2 * boosts_size, vector_size], use_layer_norm=_USE_LAYER_NORM
+            [boosts_size, vector_size], use_layer_norm=_USE_LAYER_NORM
         )
 
         self.volatile_status_embedding = MLP(
-            [2 * NUM_VOLATILE_STATUS, vector_size], use_layer_norm=_USE_LAYER_NORM
+            [NUM_VOLATILE_STATUS, vector_size], use_layer_norm=_USE_LAYER_NORM
         )
 
         side_condition_size = NUM_SIDE_CONDITIONS + 2 + 3
         self.side_condition_embedding = MLP(
-            [2 * side_condition_size, vector_size], use_layer_norm=_USE_LAYER_NORM
+            [side_condition_size, vector_size], use_layer_norm=_USE_LAYER_NORM
         )
 
         field_size = NUM_PSEUDOWEATHER + NUM_WEATHER + NUM_TERRAIN
@@ -572,9 +546,9 @@ class Model(nn.Module):
         self.side_merge = VectorMerge(
             {
                 "side": 2 * entity_size,
-                "side_conditions": vector_size // 2,
-                "volatile_status": vector_size // 2,
-                "boosts": vector_size // 2,
+                "side_conditions": vector_size,
+                "volatile_status": vector_size,
+                "boosts": vector_size,
             },
             vector_size,
             gating_type=GatingType.NONE,
@@ -603,21 +577,6 @@ class Model(nn.Module):
             num_layers=1,
             batch_first=True,
         )
-
-        self.next_state_merge = VectorMerge(
-            {
-                "state": vector_size,
-                "action": vector_size,
-            },
-            vector_size,
-            gating_type=GatingType.NONE,
-            use_layer_norm=_USE_LAYER_NORM,
-        )
-        self.next_state_rnn = MLP(
-            [vector_size, vector_size, vector_size], use_layer_norm=_USE_LAYER_NORM
-        )
-
-        self.next_state_simsiam = SimSiam(vector_size)
 
         self.action_type_mlp = MLP(
             [vector_size, vector_size, 2], use_layer_norm=_USE_LAYER_NORM
@@ -690,50 +649,35 @@ class Model(nn.Module):
         final_state = final_state.view(T, B, -1)
         return output, final_state
 
-    def pred_next_step(
-        self, prev_step_embeddings: torch.Tensor, actions_embedding: torch.Tensor
-    ):
-        T, B, H, *_ = prev_step_embeddings.shape
-        next_state_merge = self.next_state_merge(
-            {
-                "state": prev_step_embeddings,
-                "action": actions_embedding,
-            }
-        )
-        next_state_embedding = self.next_state_rnn(next_state_merge)
-        return next_state_embedding.view(T, B, H, -1)
-
-    def pred_step_recon(
+    def get_current_entity_embeddings(
         self,
-        next_step_embeddings: torch.Tensor,
-        next_step_embeddings_pred: torch.Tensor,
-        mask: torch.Tensor,
-    ):
-        sim = self.next_state_simsiam(next_step_embeddings_pred, next_step_embeddings)
-
-        mask = mask[..., :-1]
-        mask_sum = mask.sum(-1)
-        sim = (mask * sim).sum(-1) / mask_sum
-
-        return sim
-
-    def get_current_switch_embeddings(
-        self, history_mask: torch.Tensor, entity_embeddings: torch.Tensor
-    ):
+        history_mask: torch.Tensor,
+        entity_embeddings: torch.Tensor,
+        # active_token: torch.Tensor,
+        # ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> torch.Tensor:
         T, B, H = history_mask.shape
-        my_switch_embeddings = entity_embeddings.flatten(0, 1)[:, :, 0]
+
+        my_switch_embeddings = entity_embeddings[:, :, :, 0].transpose(2, -1)
         history_mask_onehot = (
-            F.one_hot(history_mask.sum(-1) - 1, H)
-            .flatten(0, 1)[..., None, None]
-            .transpose(-3, -2)
+            F.one_hot(history_mask.sum(-1) - 1, H)[..., None, None]
+            .transpose(2, -2)
             .detach()
+            .float()
         )
 
-        current_ts_embeddings = (
-            my_switch_embeddings.transpose(-3, -1) @ history_mask_onehot.float()
-        ).transpose(-3, -1)
+        current_ts_embeddings = my_switch_embeddings @ history_mask_onehot
+        current_ts_embeddings = current_ts_embeddings.transpose(-3, -1)
 
-        return current_ts_embeddings.view(T, B, 6, -1)
+        # current_active_token = (
+        #     active_token[:, :, :, 0].transpose(2, -1).float() @ history_mask_onehot
+        # ).transpose(-2, -1)
+
+        current_ts_embeddings = current_ts_embeddings.view(T, B, 6, -1)
+        # current_active_embedding = current_active_token @ current_ts_embeddings
+        # current_active_embedding = current_active_embedding.view(T, B, 1, -1)
+
+        return current_ts_embeddings  # , current_active_embedding
 
     def get_action_mask_context(self, action_mask: torch.Tensor) -> torch.Tensor:
         action_type_select = torch.any(action_mask[..., :2], dim=-1)
@@ -801,7 +745,7 @@ class Model(nn.Module):
         spikes = self.spikes_onehot(side_conditions[..., 9])
         tspikes = self.tspikes_onehot(side_conditions[..., 13])
         encoding = torch.cat((other, spikes, tspikes), -1)
-        return torch.chunk(self.side_condition_embedding(encoding.flatten(-2)), 2, -1)
+        return torch.chunk(self.side_condition_embedding(encoding), 2, -2)
 
     def embed_volatile_status(
         self, volatile_status: torch.Tensor
@@ -809,14 +753,14 @@ class Model(nn.Module):
         volatile_status_id = volatile_status[..., 0]
         volatile_status_level = volatile_status[..., 1]
         encoding = self.volatile_status_onehot(volatile_status_id + 1).sum(-2)
-        return torch.chunk(self.volatile_status_embedding(encoding.flatten(-2)), 2, -1)
+        return torch.chunk(self.volatile_status_embedding(encoding), 2, -2)
 
     def embed_boosts(self, boosts: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         boosts_onehot = self.boosts_onehot(boosts + 6)
         boosts_onehot = torch.cat((boosts_onehot[..., :6], boosts_onehot[..., 7:]), -1)
         boosts_scaled = torch.sign(boosts) * torch.sqrt(abs(boosts))
         encoding = torch.cat((boosts_onehot.flatten(-2), boosts_scaled), -1)
-        return torch.chunk(self.boosts_embedding(encoding.flatten(-2)), 2, -1)
+        return torch.chunk(self.boosts_embedding(encoding), 2, -2)
 
     def softmax_passthrough(self, tensor: torch.Tensor, buckets: int = 16):
         og_shape = tensor.shape
@@ -887,18 +831,18 @@ class Model(nn.Module):
 
         my_side_embedding = self.side_merge(
             {
-                "side": my_private_side_embedding,
-                "side_conditions": my_side_conditions_embedding,
-                "volatile_status": my_volatile_status_embedding,
-                "boosts": my_boosts_embedding,
+                "side": my_private_side_embedding.squeeze(-2),
+                "side_conditions": my_side_conditions_embedding.squeeze(-2),
+                "volatile_status": my_volatile_status_embedding.squeeze(-2),
+                "boosts": my_boosts_embedding.squeeze(-2),
             }
         )
         opp_side_embedding = self.side_merge(
             {
-                "side": opp_side_embedding,
-                "side_conditions": opp_side_conditions_embedding,
-                "volatile_status": opp_volatile_status_embedding,
-                "boosts": opp_boosts_embedding,
+                "side": opp_side_embedding.squeeze(-2),
+                "side_conditions": opp_side_conditions_embedding.squeeze(-2),
+                "volatile_status": opp_volatile_status_embedding.squeeze(-2),
+                "boosts": opp_boosts_embedding.squeeze(-2),
             }
         )
 
@@ -920,7 +864,7 @@ class Model(nn.Module):
                 "oppside": opp_side_embedding,
                 "field": field_embedding,
                 "action": action_hist_embedding,
-                "private": private_information,
+                "private": private_information.squeeze(-2),
                 "turn": turn_embedding,
             }
         )
@@ -929,24 +873,14 @@ class Model(nn.Module):
             step_embeddings, history_mask
         )
 
-        curr_step_embeddings = step_embeddings[:, :, :-1]
-        next_step_embeddings = step_embeddings[:, :, 1:]
-        curr_action = action_hist_embedding[:, :, 1:]
-
-        next_step_pred_embeddings = self.pred_next_step(
-            curr_step_embeddings, curr_action
-        )
-        pred_step_recon = self.pred_step_recon(
-            next_step_embeddings, next_step_pred_embeddings, history_mask
-        )
-
         state_embedding_w_context = state_embedding + self.get_action_mask_context(
             legal
         )
         # state_embedding_w_context = self.softmax_passthrough(state_embedding_w_context)
 
-        switch_embeddings = self.get_current_switch_embeddings(
-            history_mask, entity_embeddings
+        active_token = teams[..., 4]
+        switch_embeddings = self.get_current_entity_embeddings(
+            history_mask, entity_embeddings  # , active_token
         )
         # switch_embeddings = self.softmax_passthrough(switch_embeddings)
 
@@ -963,8 +897,8 @@ class Model(nn.Module):
         switch_logits = self.switch_pointer(switch_query, switch_embeddings).flatten(2)
 
         logits = torch.cat((action_type_logits, move_logits, switch_logits), dim=-1)
-        policy = _legal_policy(logits, legal)
 
+        policy = _legal_policy(logits, legal)
         log_policy = _legal_log_policy(logits, legal)
 
         value = self.value_mlp(self.value_resnet(state_embedding_w_context))
@@ -974,5 +908,4 @@ class Model(nn.Module):
             policy=policy,
             log_policy=log_policy,
             value=value,
-            step_recon=pred_step_recon,
         )

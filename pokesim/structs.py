@@ -34,7 +34,6 @@ class ModelOutput(NamedTuple):
     log_policy: torch.Tensor
     logits: torch.Tensor
     value: torch.Tensor
-    step_recon: torch.Tensor = None
 
 
 class ActorStep(NamedTuple):
@@ -55,6 +54,25 @@ env_fields = {"player_id", "state", "valid", "legal", "history_mask"}
 _FIELDS_TO_STORE = actor_fields | env_fields
 
 
+def _fix_rewards(rewards: np.ndarray):
+    count = 0
+    length = len(rewards)
+    new_rewards = np.zeros_like(rewards)
+
+    for index, step in enumerate(reversed(rewards)):
+        if np.any(step != 0):
+            if count == 0:
+                r = step.copy()
+                count += 1
+
+            elif count == 1:
+                r += step
+                new_rewards[length - index - 1] = r
+                count = 0
+
+    return new_rewards
+
+
 class Trajectory(NamedTuple):
     # Env fields
     player_id: np.ndarray
@@ -69,7 +87,7 @@ class Trajectory(NamedTuple):
     action: np.ndarray
     value: np.ndarray
 
-    def __len__(self):
+    def get_length(self):
         return max(self.valid.sum(0, keepdims=True))
 
     def save(self, fpath: str):
@@ -87,16 +105,19 @@ class Trajectory(NamedTuple):
         return self.valid.sum() > 0
 
     @classmethod
-    def from_env_steps(cls, traj: List[TimeStep]) -> "Trajectory":
+    def from_env_steps(
+        cls, traj: List[TimeStep], fix_rewards: bool = True
+    ) -> "Trajectory":
         store = {k: [] for k in _FIELDS_TO_STORE}
         for _, actor_step, env_step in traj:
             for key in actor_fields:
                 store[key].append(getattr(actor_step, key))
             for key in env_fields:
                 store[key].append(getattr(env_step, key))
-        return cls(
-            **{key: np.stack(value) for key, value in store.items()},
-        )
+        elements = {key: np.stack(value) for key, value in store.items()}
+        if fix_rewards:
+            elements["rewards"] = _fix_rewards(elements["rewards"])
+        return cls(**elements)
 
     def serialize(self):
         return {
@@ -113,7 +134,7 @@ class Trajectory(NamedTuple):
 class Batch(Trajectory):
     @classmethod
     def from_trajectories(cls, traj_list: Tuple[Trajectory]) -> "Batch":
-        lengths = np.array([len(t) for t in traj_list])
+        lengths = np.array([t.get_length() for t in traj_list])
         max_index = lengths.argmax(-1)
         batch_size = len(traj_list)
 
@@ -126,9 +147,9 @@ class Batch(Trajectory):
         traj_list = [traj_list[i] for i in np.argsort(lengths)]
 
         for batch_index, trajectory in enumerate(traj_list):
-            trajectory_length = len(trajectory)
+            trajectory_length = trajectory.get_length()
             for key, values in trajectory._asdict().items():
-                store[key][:trajectory_length, batch_index] = values
+                store[key][:trajectory_length, batch_index] = values[:trajectory_length]
             store["valid"][trajectory_length:, batch_index] = False
             store["rewards"][trajectory_length:, batch_index] = 0
 

@@ -1,5 +1,5 @@
 import { parentPort, workerData } from "node:worker_threads";
-import { AnyObject, BattleStreams, Teams } from "@pkmn/sim";
+import { BattleStreams, Teams } from "@pkmn/sim";
 import { TeamGenerators } from "@pkmn/randoms";
 import { Battle as clientBattle } from "@pkmn/client";
 import { Generations } from "@pkmn/data";
@@ -8,7 +8,15 @@ import { ObjectReadWriteStream } from "@pkmn/streams";
 import { BattleStreamsType } from "./types";
 import { formatId } from "./data";
 import { getRandomAction } from "./random";
-import { AsyncQueue, actionCharToString, delay } from "./helpers";
+import {
+    AsyncQueue,
+    BattlesHandler,
+    actionCharToString,
+    delay,
+    getState,
+    isAction,
+    isActionRequired,
+} from "./helpers";
 import { Int8State } from "./state";
 
 Teams.setGeneratorFactory(TeamGenerators);
@@ -31,63 +39,6 @@ class QueueManager {
 }
 
 const queueManager = new QueueManager();
-
-function isActionRequired(battle: clientBattle, chunk: string): boolean {
-    const request = (battle.request ?? {}) as AnyObject;
-    if (request === undefined) {
-        return false;
-    }
-    if (!!request.wait) {
-        return false;
-    }
-    if (chunk.includes("|turn")) {
-        return true;
-    }
-    if (!chunk.includes("|request")) {
-        return !!request.forceSwitch;
-    }
-    return false;
-}
-
-export class BattlesHandler {
-    battles: clientBattle[];
-    turns: AnyObject;
-    constructor(battles: clientBattle[]) {
-        this.battles = battles;
-        this.turns = {};
-    }
-}
-
-function getState(
-    handler: BattlesHandler,
-    done: number,
-    playerIndex: number,
-    reward: number = 0
-) {
-    const stateHandler = new Int8State(
-        handler,
-        playerIndex,
-        workerIndex,
-        done,
-        reward
-    );
-    const state = stateHandler.getState();
-    const stateBuffer = Buffer.from(state.buffer);
-    return stateBuffer;
-}
-
-function isAction(line: string): boolean {
-    const splitString = line.split("|");
-    const actionType = splitString[1];
-    switch (actionType) {
-        case "move":
-            return true;
-        case "switch":
-            return true;
-        default:
-            return false;
-    }
-}
 
 const defaultWorkerIndex = workerData.config.default_worker_index as number;
 const randomWorkerIndex = workerData.config.random_worker_index as number;
@@ -114,13 +65,20 @@ async function runPlayer(
     p1battle: clientBattle,
     p2battle: clientBattle
 ) {
-    const handler = new BattlesHandler([p1battle, p2battle]);
+    // const handler = new BattlesHandler([p1battle, p2battle]);
+    const handler = new BattlesHandler([p1battle]);
     const isEval = isEvalPlayer(workerIndex, playerIndex);
 
     const log = [];
 
     let action: string = "";
     let winner: string = "";
+
+    let myCurrentFainted = 0;
+    let myPrevFainted = 0;
+    let oppCurrentFainted = 0;
+    let oppPrevFainted = 0;
+    let reward = 0;
 
     for await (const chunk of stream) {
         const turn = p1battle.turn ?? 0;
@@ -139,10 +97,7 @@ async function runPlayer(
             }
             log.push(line);
             if (isAction(line)) {
-                if (handler.turns[turn] === undefined) {
-                    handler.turns[turn] = [];
-                }
-                handler.turns[turn].push(line);
+                handler.appendTurnLine(turn, line);
             }
         }
         if (chunk.includes("|request")) {
@@ -150,8 +105,14 @@ async function runPlayer(
         }
 
         if (isActionRequired(p1battle, chunk)) {
+            myCurrentFainted = handler.getNumFainted(playerIndex);
+            oppCurrentFainted = handler.getNumFainted(1 - playerIndex);
+            reward =
+                oppCurrentFainted -
+                oppPrevFainted -
+                (myCurrentFainted - myPrevFainted);
             if (!isEval) {
-                state = getState(handler, 0, playerIndex);
+                state = getState(handler, 0, playerIndex, workerIndex); //, reward);
                 parentPort?.postMessage(state, [state.buffer]);
                 const actionChar = await queueManager.queues[
                     playerIndex
@@ -176,10 +137,16 @@ async function runPlayer(
             }
             stream.write(action);
             p1battle.request = undefined;
+            myPrevFainted = myCurrentFainted;
+            oppPrevFainted = oppCurrentFainted;
         }
     }
-    const reward = winner === p1battle.sides[playerIndex].name ? 1 : -1;
-    state = getState(handler, 1, playerIndex, reward);
+    // myCurrentFainted = handler.getNumFainted(playerIndex);
+    // oppCurrentFainted = handler.getNumFainted(1 - playerIndex);
+    // reward =
+    //     oppCurrentFainted - oppPrevFainted - (myCurrentFainted - myPrevFainted);
+    reward = winner === p1battle.sides[playerIndex].name ? 1 : -1;
+    state = getState(handler, 1, playerIndex, workerIndex, reward);
     parentPort?.postMessage(state, [state.buffer]);
     p1battle.request = undefined;
 }

@@ -3,7 +3,7 @@ import numpy as np
 
 from typing import Sequence, Tuple, Dict
 
-from pokesim.data import SOCKET_PATH, ENCODING, NUM_HISTORY
+from pokesim.data import EVAL_WORKER_INDEX, SOCKET_PATH, ENCODING, NUM_HISTORY
 from pokesim.structs import Observation, State
 
 
@@ -74,18 +74,25 @@ class Environment:
             self.policy_select = 0
             self.recvenv()
         else:
-            self.policy_select = action_index + 1
+            if not self.is_current_player_done():
+                self.policy_select = action_index + 1
 
-        return self.process_state()
+        state, reward, done, player_index = self.process_state()
+        is_player_done = self.is_current_player_done()
+        if is_player_done and not self.is_done():
+            self.policy_select = 0
+            self.recvenv()
+        return state, reward, done, player_index, is_player_done
 
     def process_state(self) -> Tuple[Dict[str, np.ndarray], int, bool]:
+        reward = np.zeros(2)
         if self.policy_select == 0:
             player_index = self.observation.get_player_index()
             self.current_player = player_index.item()
             done = self.observation.get_done()
             self.dones[self.current_player] |= bool(done)
             state = self.observation.get_state()
-            self.reward[self.current_player] = self.observation.get_reward()
+            reward[self.current_player] = self.observation.get_reward()
             self.history[self.current_player].append(state)
             self.history[self.current_player] = self.history[self.current_player][
                 -NUM_HISTORY:
@@ -105,4 +112,9 @@ class Environment:
         legal_moves = self.observation.get_legal_moves(self.policy_select)
         self.prev_state["legal"] = legal_moves
         is_done = self.is_done()
-        return (self.prev_state, is_done * self.reward, is_done, self.current_player)
+        return (
+            self.prev_state,
+            reward.copy(),  # * is_done,
+            is_done,
+            self.current_player,
+        )

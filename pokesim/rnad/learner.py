@@ -1,5 +1,4 @@
 import math
-import inspect
 import numpy as np
 
 import torch
@@ -7,6 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from copy import deepcopy
+from dataclasses import asdict
 from typing import Any, List, Mapping, Sequence
 
 from pokesim.data import MODEL_INPUT_KEYS, NUM_PLAYERS
@@ -153,6 +153,7 @@ class Learner:
     def __init__(
         self,
         config: RNaDConfig = RNaDConfig(),
+        init: Mapping[str, Any] = None,
         use_amp: bool = False,
         trace_nets: bool = True,
         debug: bool = False,
@@ -166,9 +167,16 @@ class Learner:
 
         # Create initial parameters.
         self.params = Model()
+        if init is not None:
+            self.params.load_state_dict(init)
+
         self.params.train()
 
-        _print_params(self.params)
+        self.extra_config = {
+            "num_params": _print_params(self.params)[0],
+            "entity_size": self.params.entity_size,
+            "vector_size": self.params.vector_size,
+        }
 
         self.params_actor = deepcopy(self.params).share_memory()
         self.params_actor.eval()
@@ -261,10 +269,8 @@ class Learner:
 
     def get_config(self):
         return {
-            **{
-                k: v.__dict__ if inspect.isclass(v) else v
-                for k, v in self.config.__dict__.items()
-            }
+            **asdict(self.config),
+            **self.extra_config,
         }
 
     def _to_torch(self, arr: np.ndarray, device: str = None):
@@ -403,7 +409,7 @@ class Learner:
                     dtype=torch.float16,
                     enabled=self.use_amp,
                 ):
-                    pi, log_pi, logit, v, step_recon = self.params(**minibatch)
+                    pi, log_pi, logit, v, *_ = self.params(**minibatch)
 
                     loss_v = get_loss_v(
                         [v] * NUM_PLAYERS,
@@ -433,15 +439,11 @@ class Learner:
                     ):
                         loss += (value_loss + policy_loss) / scale
 
-                    recon_loss = (step_recon * minibatch_valid).sum()
-                    loss += recon_loss / total_valid
-
                 self.scaler.scale(loss).backward()
 
                 tv_loss += sum(loss_v).item()
                 tp_loss += sum(loss_nerd).item()
                 te_loss += (minibatch_valid * (log_pi * -pi).sum(-1)).sum()
-                tr_loss += recon_loss.item()
 
         tv_loss /= total_valid
         tp_loss /= total_valid
@@ -452,7 +454,6 @@ class Learner:
             "v_loss": tv_loss,
             "p_loss": tp_loss,
             "e": te_loss,
-            "r_loss": tr_loss,
         }
 
     def update_parameters(self, batch: Batch, alpha: float, update_target_net: bool):

@@ -18,12 +18,33 @@ from pokesim.structs import Trajectory
 from pokesim.utils import finetune
 
 
+def handle_verbose(n: int, pi: np.ndarray, action: np.ndarray, value: np.ndarray):
+    nice_probs = [f"{p:.2f}" for p in pi]
+    action_type = " ".join(nice_probs[:2])
+    move = " ".join(nice_probs[2:6])
+    switch = " ".join(nice_probs[6:])
+    v = f"{value.item():.3f}"
+
+    text = "\n".join(
+        [
+            str(n),
+            action_type,
+            move,
+            switch,
+            f"{action}",
+            v,
+        ]
+    )
+    print(text + "\n")
+
+
 def run_environment(
     worker_index: int,
     model: nn.Module,
     model_prev: nn.Module,
     learn_queue: mp.Queue,
     eval_queue: mp.Queue,
+    verbose: bool = False,
 ):
     env = Environment(worker_index)
 
@@ -31,22 +52,23 @@ def run_environment(
 
     action_space = list(range(12))
 
-    while True:
-        obs, player_index = env.reset()
-        reward = np.array([0, 0])
+    with torch.no_grad():
+        while True:
+            n = 0
+            obs, player_index = env.reset()
+            reward = np.array([0, 0])
 
-        env_step = EnvStep(
-            game_id=worker_index,
-            player_id=player_index,
-            state=obs["raw"],
-            rewards=reward,
-            valid=True,
-            legal=obs["legal"],
-            history_mask=obs["history_mask"],
-        )
+            env_step = EnvStep(
+                game_id=worker_index,
+                player_id=player_index,
+                state=obs["raw"],
+                rewards=reward,
+                valid=True,
+                legal=obs["legal"],
+                history_mask=obs["history_mask"],
+            )
 
-        timesteps = []
-        with torch.no_grad():
+            timesteps = []
             while True:
                 prev_env_step = env_step
 
@@ -67,14 +89,17 @@ def run_environment(
                 value = value.cpu().numpy().flatten()
                 action = random.choices(action_space, weights=pi)[0]
 
-                obs, reward, done, player_index = env.step(action)
+                if verbose:
+                    handle_verbose(n, pi, action, value)
+
+                obs, reward, done, player_index, player_is_done = env.step(action)
 
                 env_step = EnvStep(
                     game_id=worker_index,
                     player_id=player_index,
                     state=obs["raw"],
-                    rewards=reward,
-                    valid=not done,
+                    rewards=reward.copy(),
+                    valid=not player_is_done,
                     legal=obs["legal"],
                     history_mask=obs["history_mask"],
                 )
@@ -92,9 +117,14 @@ def run_environment(
                         learn_queue.put(trajectory.serialize())
 
                     else:
-                        eval_queue.put((num_battles, worker_index, env_step.rewards[0]))
+                        final_reward = env_step.rewards[player_index]
+                        if player_index == 1:
+                            final_reward = -final_reward
+                        eval_queue.put((num_battles, worker_index, final_reward))
 
                     del timesteps[:]
 
                     num_battles += 1
                     break
+
+                n += 1

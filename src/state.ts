@@ -15,7 +15,7 @@ import {
 } from "./data";
 import { SideConditions } from "./types";
 import { BoostID } from "@pkmn/dex";
-import { BattlesHandler } from "./worker";
+import { BattlesHandler } from "./helpers";
 
 let stateSize: number | undefined = undefined;
 
@@ -178,7 +178,7 @@ export class Int8State {
     }
 
     actionToVector(actionLine: string): Int8Array {
-        const room = this.handler.battles[0];
+        const room = this.handler.getMyBattle();
         if (actionLine === undefined) {
             return new Int8Array(new Int16Array([-1, -1, -1]).buffer);
         }
@@ -229,7 +229,7 @@ export class Int8State {
     }
 
     getField(): Int8Array {
-        const field = this.handler.battles[0].field;
+        const field = this.handler.getMyBattle().field;
         const fieldVector = new Int8Array(9 + 6);
         fieldVector.fill(-1);
         for (const [index, [name, pseudoWeather]] of Object.entries(
@@ -296,19 +296,19 @@ export class Int8State {
     }
 
     getMyPrivateSide(): AnyObject {
-        return (this.handler.battles[0].request ?? {}) as AnyObject;
+        return (this.handler.getMyBattle().request ?? {}) as AnyObject;
     }
 
     getMyPublicSide(): Side {
-        return this.handler.battles[1].sides[this.playerIndex];
+        return this.handler.getMyBattle().sides[this.playerIndex];
     }
 
     getOppSide(): Side {
-        return this.handler.battles[0].sides[1 - this.playerIndex];
+        return this.handler.getMyBattle().sides[1 - this.playerIndex];
     }
 
     getMyPrivateTeam(): Int8Array {
-        const side = this.handler.battles[0].sides[this.playerIndex];
+        const side = this.getMyPublicSide();
         const request = this.getMyPrivateSide();
         return this.getPrivateTeam(request, side.team);
     }
@@ -367,7 +367,7 @@ export class Int8State {
     }
 
     getLegalMask(): Int8Array {
-        const request = this.handler.battles[0].request as AnyObject;
+        const request = this.handler.getMyBattle().request as AnyObject;
         const mask = new Int8Array(10);
         if (request === undefined || this.done) {
             mask.fill(1);
@@ -430,8 +430,8 @@ export class Int8State {
     }
 
     getState(): Int8Array {
-        const turn = Math.min(127, this.handler.battles[0].turn - 1 ?? 0);
-        const actionLines = this.handler.turns[turn] ?? [];
+        const turn = Math.min(127, this.handler.getMyBattle().turn - 1 ?? 0);
+        const actionLines = this.handler.getTurnLines(turn);
         const data = [
             new Int8Array([
                 this.workerIndex,
@@ -469,7 +469,7 @@ export class Int8State {
             state.set(datum, offset);
             offset += datum.length;
         }
-        this.handler.battles[0].request = undefined;
+        this.handler.getMyBattle().request = undefined;
         return state;
     }
 }

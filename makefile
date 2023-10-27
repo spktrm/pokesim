@@ -6,3 +6,7 @@ clean:
 start: 
 	tsc
 	node dist/main.js 2> debug/server.err.log
+
+start-eval:
+	tsc
+	node dist/eval/worker.js

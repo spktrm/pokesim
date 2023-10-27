@@ -73,15 +73,19 @@ def learn_loop(learner: Learner, queue: mp.Queue):
 
 
 def main(debug):
-    learner = Learner(debug=debug)
-    # learner = Learner.from_fpath("ckpts/006340.pt")
+    # init = torch.load("ckpts/002432.pt", map_location="cpu")
+    # init = init["params"]
+    init = None
+    learner = Learner(init=init, debug=debug)
+    # learner = Learner.from_fpath("ckpts/113083.pt")
 
     if not debug:
+        config = learner.get_config()
         wandb.init(
             # set the wandb project where this run will be logged
             project="pokesim",
             # track hyperparameters and run metadata
-            config=learner.get_config(),
+            config=config,
         )
         num_workers = NUM_WORKERS
     else:
@@ -129,7 +133,7 @@ def main(debug):
         while True:
             time.sleep(1)
 
-            if (time.time() - prev_time) >= 5 * 60:
+            if (time.time() - prev_time) >= 60 * 60:
                 learner.save(
                     f"ckpts/{learner.learner_steps:06}.pt",
                 )

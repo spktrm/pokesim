@@ -5,6 +5,8 @@ import * as net from "net";
 import * as fs from "fs";
 import * as yaml from "js-yaml";
 
+import { InternalState } from "./helpers";
+
 type Config = { [k: string]: any };
 const config = yaml.load(
     fs.readFileSync(path.resolve("config.yml"), "utf-8")
@@ -53,6 +55,7 @@ function createWorker(
     });
     worker.on("message", (buffer: Buffer) => {
         const workerIndex = buffer[0];
+        const playerIndex = buffer[1];
         const done = buffer[2];
 
         throughputs[workerIndex] += 1;
@@ -122,14 +125,10 @@ setInterval(() => {
     console.log(log);
 }, updateFreq);
 
-interface InternalState {
-    workerIndex: number;
-}
-
 let numConnections = 0;
 const socketStates = new Map<net.Socket, InternalState>();
-
 const decoder = new TextDecoder("utf-8");
+
 const server = net.createServer((socket) => {
     console.log(`Client${numConnections} connected`);
     createWorker(numConnections, socket);
