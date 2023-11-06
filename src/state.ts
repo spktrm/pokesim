@@ -27,7 +27,7 @@ function formatKey(key: string): string {
 function getMappingValue(
     pokemon: AnyObject,
     mapping: AnyObject,
-    key: string
+    key: string,
 ): number {
     let suffix: string = "";
     if (key === "asone") {
@@ -50,7 +50,7 @@ function logKeyError(key: string, mapping: AnyObject) {
 function getMappingValueWrapper(
     pokemon: AnyObject,
     mapping: AnyObject,
-    key: string
+    key: string,
 ): number {
     const stringKey = key ?? "";
     if (stringKey === "") {
@@ -69,29 +69,29 @@ function getMappingValueWrapper(
 function getPublicPokemon(
     pokemon: AnyObject,
     active: boolean,
-    buckets: number = 1024
+    buckets: number = 1024,
 ): Int8Array {
     let moveTokens = [];
     for (let i = 0; i < 4; i++) {
         moveTokens.push(
-            getMappingValueWrapper(pokemon, moveMapping, pokemon.moves[i])
+            getMappingValueWrapper(pokemon, moveMapping, pokemon.moves[i]),
         );
     }
     const formatedPokemonName = formatKey(pokemon.name);
     const speciesToken = getMappingValueWrapper(
         pokemon,
         pokemonMapping,
-        formatedPokemonName
+        formatedPokemonName,
     );
     const itemToken = getMappingValueWrapper(
         pokemon,
         itemMapping,
-        pokemon.item
+        pokemon.item,
     );
     const abilityToken = getMappingValueWrapper(
         pokemon,
         abilityMapping,
-        pokemon.ability
+        pokemon.ability,
     );
     const hpToken =
         pokemon.maxhp !== undefined
@@ -112,29 +112,29 @@ function getPublicPokemon(
 
 function getPrivatePokemon(
     pokemon: AnyObject,
-    buckets: number = 1024
+    buckets: number = 1024,
 ): Int8Array {
     let moveTokens = [];
     for (let i = 0; i < 4; i++) {
         moveTokens.push(
-            getMappingValueWrapper(pokemon, moveMapping, pokemon.moves[i])
+            getMappingValueWrapper(pokemon, moveMapping, pokemon.moves[i]),
         );
     }
     const formatedPokemonName = formatKey(pokemon.name);
     const speciesToken = getMappingValueWrapper(
         pokemon,
         pokemonMapping,
-        formatedPokemonName
+        formatedPokemonName,
     );
     const itemToken = getMappingValueWrapper(
         pokemon,
         itemMapping,
-        pokemon.item
+        pokemon.item,
     );
     const abilityToken = getMappingValueWrapper(
         pokemon,
         abilityMapping,
-        pokemon.ability
+        pokemon.ability,
     );
     const hpToken =
         pokemon.maxhp !== undefined
@@ -168,7 +168,7 @@ export class Int8State {
         playerIndex: number,
         workerIndex: number,
         done: number,
-        reward: number
+        reward: number,
     ) {
         this.handler = handler;
         this.playerIndex = playerIndex;
@@ -210,14 +210,14 @@ export class Int8State {
 
     getBoosts(actives: (Pokemon | null)[]): Int8Array {
         const boostsVector = new Int8Array(
-            actives.length * boostsEntries.length
+            actives.length * boostsEntries.length,
         );
         boostsVector.fill(0);
 
         for (const [activeIndex, activePokemon] of actives.entries()) {
             if (activePokemon !== null) {
                 for (const [boost, value] of Object.entries(
-                    activePokemon.boosts
+                    activePokemon.boosts,
                 )) {
                     boostsVector[
                         activeIndex + boostsMapping[boost as BoostID]
@@ -233,7 +233,7 @@ export class Int8State {
         const fieldVector = new Int8Array(9 + 6);
         fieldVector.fill(-1);
         for (const [index, [name, pseudoWeather]] of Object.entries(
-            field.pseudoWeather
+            field.pseudoWeather,
         ).entries()) {
             fieldVector[index] = pseudoWeatherMapping[name];
             fieldVector[index + 1] = pseudoWeather.minDuration;
@@ -263,7 +263,7 @@ export class Int8State {
         for (const [activeIndex, activePokemon] of actives.entries()) {
             if (activePokemon !== null) {
                 for (const [volatileIndex, volatileStatus] of Object.values(
-                    activePokemon.volatiles
+                    activePokemon.volatiles,
                 ).entries()) {
                     volatileStatusVector[activeIndex + volatileIndex] =
                         volatileStatusMapping[volatileStatus.id];
@@ -286,7 +286,7 @@ export class Int8State {
 
     getSideConditions(sideConditions: SideConditions): Int8Array {
         const sideConditionVector = new Int8Array(
-            Object.keys(sideConditionsMapping).length
+            Object.keys(sideConditionsMapping).length,
         );
         for (const [name, sideCondition] of Object.entries(sideConditions)) {
             sideConditionVector[sideConditionsMapping[name]] =
@@ -340,9 +340,9 @@ export class Int8State {
                 teamArray.set(
                     getPublicPokemon(
                         team[i],
-                        activeIdents.includes(team[i].ident)
+                        activeIdents.includes(team[i].ident),
                     ),
-                    i * fillPokemonArray.length
+                    i * fillPokemonArray.length,
                 );
             }
         }
@@ -360,7 +360,7 @@ export class Int8State {
             };
             teamArray.set(
                 getPrivatePokemon(amalgam),
-                i * fillPokemonArray.length
+                i * fillPokemonArray.length,
             );
         }
         return teamArray;
@@ -460,7 +460,7 @@ export class Int8State {
             stateSize = data.reduce(
                 (accumulator, currentValue) =>
                     accumulator + currentValue.length,
-                0
+                0,
             );
         }
         const state = new Int8Array(stateSize);

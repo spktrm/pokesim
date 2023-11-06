@@ -24,7 +24,7 @@ import { formatId } from "../data";
 
 type Config = { [k: string]: any };
 const config = yaml.load(
-    fs.readFileSync(path.resolve("config.yml"), "utf-8")
+    fs.readFileSync(path.resolve("config.yml"), "utf-8"),
 ) as Config;
 console.log(config);
 
@@ -101,7 +101,7 @@ class PokemonShowdownBot {
                     const state = getState(
                         this.handler,
                         1,
-                        this.playerIndex ?? 0
+                        this.playerIndex ?? 0,
                     );
                     this.sendMessage("", `/search ${formatId}`);
                 }
@@ -114,7 +114,7 @@ class PokemonShowdownBot {
                             parseInt(
                                 (
                                     this.clientBattle.request as AnyObject
-                                ).side.id.slice(1)
+                                ).side.id.slice(1),
                             ) - 1;
                         this.playerIndexIsSet = true;
                     }
@@ -129,7 +129,7 @@ class PokemonShowdownBot {
                 const action = actionCharToString(actionChar);
                 this.sendMessage(
                     this.battleId ?? "",
-                    `/choose ${action}|${rqid}`
+                    `/choose ${action}|${rqid}`,
                 );
             }
         }
@@ -142,7 +142,7 @@ class PokemonShowdownBot {
 
     private async getAssertion(
         username: string,
-        challstr: string
+        challstr: string,
     ): Promise<string | null> {
         try {
             const params = new URLSearchParams({
@@ -153,7 +153,7 @@ class PokemonShowdownBot {
 
             const response = await fetch(
                 "https://play.pokemonshowdown.com/action.php?" +
-                    params.toString()
+                    params.toString(),
             );
             const assertion: string = await response.text();
 

@@ -95,14 +95,14 @@ export function getState(
     done: number,
     playerIndex: number,
     workerIndex?: number,
-    reward?: number
+    reward?: number,
 ) {
     const stateHandler = new Int8State(
         handler,
         playerIndex,
         workerIndex ?? 0,
         done,
-        reward ?? 0
+        reward ?? 0,
     );
     const state = stateHandler.getState();
     const stateBuffer = Buffer.from(state.buffer);

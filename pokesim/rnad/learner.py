@@ -10,7 +10,7 @@ from dataclasses import asdict
 from typing import Any, List, Mapping, Sequence
 
 from pokesim.data import MODEL_INPUT_KEYS, NUM_PLAYERS
-from pokesim.model import Model
+from pokesim.nn.model import Model
 from pokesim.structs import Batch, State
 
 from pokesim.rnad.utils import (
@@ -394,8 +394,9 @@ class Learner:
                     bs,
                 )
                 minibatch_valid = valid[ts:tf, mbs:bf]
+                minibatch_valid_sum = minibatch_valid.sum().item()
 
-                if not minibatch_valid.sum().item():
+                if not minibatch_valid_sum:
                     continue
 
                 minibatch = {
@@ -409,7 +410,7 @@ class Learner:
                     dtype=torch.float16,
                     enabled=self.use_amp,
                 ):
-                    pi, log_pi, logit, v, *_ = self.params(**minibatch)
+                    pi, log_pi, logit, v, recon_loss = self.params(**minibatch)
 
                     loss_v = get_loss_v(
                         [v] * NUM_PLAYERS,
@@ -439,11 +440,14 @@ class Learner:
                     ):
                         loss += (value_loss + policy_loss) / scale
 
+                    loss += (recon_loss * minibatch_valid).sum() / minibatch_valid_sum
+
                 self.scaler.scale(loss).backward()
 
                 tv_loss += sum(loss_v).item()
                 tp_loss += sum(loss_nerd).item()
                 te_loss += (minibatch_valid * (log_pi * -pi).sum(-1)).sum()
+                tr_loss += (minibatch_valid * recon_loss).sum()
 
         tv_loss /= total_valid
         tp_loss /= total_valid
@@ -454,6 +458,7 @@ class Learner:
             "v_loss": tv_loss,
             "p_loss": tp_loss,
             "e": te_loss,
+            "r_loss": tr_loss,
         }
 
     def update_parameters(self, batch: Batch, alpha: float, update_target_net: bool):

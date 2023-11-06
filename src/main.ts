@@ -9,7 +9,7 @@ import { InternalState } from "./helpers";
 
 type Config = { [k: string]: any };
 const config = yaml.load(
-    fs.readFileSync(path.resolve("config.yml"), "utf-8")
+    fs.readFileSync(path.resolve("config.yml"), "utf-8"),
 ) as Config;
 console.log(config);
 
@@ -48,7 +48,7 @@ const emptyWriteObject = {
 
 function createWorker(
     workerIndex: number,
-    clientSocket: net.Socket | typeof emptyWriteObject = emptyWriteObject
+    clientSocket: net.Socket | typeof emptyWriteObject = emptyWriteObject,
 ) {
     const worker = new Worker(path.resolve(__dirname, "worker.js"), {
         workerData: { workerIndex, config },

@@ -10,3 +10,8 @@ start:
 start-eval:
 	tsc
 	node dist/eval/worker.js
+
+data:
+	tsc
+	node dist/download.js
+	npx prettier -w src --config .prettierrc

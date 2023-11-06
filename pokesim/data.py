@@ -47,9 +47,6 @@ HISTORY_OFFSET = FIELD_OFFSET + FIELD_SIZE
 with open(os.path.abspath("./src/data.json"), "r") as f:
     DATA = json.load(f)
 
-with open(os.path.abspath("./src/tokens.json"), "r") as f:
-    TOKENS = json.load(f)
-
 
 STATUS_MAPPING = {
     "slp": 0,
@@ -71,11 +68,11 @@ BOOSTS_MAPPING = {
 }
 
 
-NUM_SPECIES = len(TOKENS["species"])
-NUM_ABILITIES = len(TOKENS["abilities"])
-NUM_ITEMS = len(TOKENS["items"])
-NUM_MOVES = len(TOKENS["moves"])
-NUM_TYPES = len(TOKENS["types"])
+NUM_SPECIES = len(DATA["species"])
+NUM_ABILITIES = len(DATA["abilities"])
+NUM_ITEMS = len(DATA["items"])
+NUM_MOVES = len(DATA["moves"])
+# NUM_TYPES = len(DATA["types"])
 
 NUM_TERRAIN = len(DATA["terrain"])
 NUM_VOLATILE_STATUS = len(DATA["volatileStatus"])

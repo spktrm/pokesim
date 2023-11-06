@@ -26,7 +26,7 @@ class EnvStep(NamedTuple):
     rewards: np.ndarray
     valid: np.ndarray
     legal: np.ndarray
-    history_mask: np.ndarray
+    history_mask: np.ndarray = None
 
 
 class ModelOutput(NamedTuple):
@@ -34,6 +34,7 @@ class ModelOutput(NamedTuple):
     log_policy: torch.Tensor
     logits: torch.Tensor
     value: torch.Tensor
+    hidden_state: torch.Tensor = None
 
 
 class ActorStep(NamedTuple):
@@ -80,12 +81,14 @@ class Trajectory(NamedTuple):
     rewards: np.ndarray
     valid: np.ndarray
     legal: np.ndarray
-    history_mask: np.ndarray
 
     # Actor fields
     policy: np.ndarray
     action: np.ndarray
     value: np.ndarray
+
+    # extra
+    history_mask: np.ndarray = None
 
     def get_length(self):
         return max(self.valid.sum(0, keepdims=True))
@@ -111,10 +114,16 @@ class Trajectory(NamedTuple):
         store = {k: [] for k in _FIELDS_TO_STORE}
         for _, actor_step, env_step in traj:
             for key in actor_fields:
-                store[key].append(getattr(actor_step, key))
+                value = getattr(actor_step, key)
+                if value is not None:
+                    store[key].append(value)
+
             for key in env_fields:
-                store[key].append(getattr(env_step, key))
-        elements = {key: np.stack(value) for key, value in store.items()}
+                value = getattr(env_step, key)
+                if value is not None:
+                    store[key].append(value)
+
+        elements = {key: np.stack(value) for key, value in store.items() if value}
         if fix_rewards:
             elements["rewards"] = _fix_rewards(elements["rewards"])
         return cls(**elements)
@@ -140,7 +149,11 @@ class Batch(Trajectory):
 
         store = {}
         for k in Trajectory._fields:
-            value = getattr(traj_list[max_index], k)[:, None]
+            value = getattr(traj_list[max_index], k)
+            if value is None:
+                continue
+
+            value = value[:, None]
             new_shape = (1, batch_size, *((1,) * len(value.shape[2:])))
             store[k] = np.tile(value, new_shape)
 
@@ -149,7 +162,10 @@ class Batch(Trajectory):
         for batch_index, trajectory in enumerate(traj_list):
             trajectory_length = trajectory.get_length()
             for key, values in trajectory._asdict().items():
-                store[key][:trajectory_length, batch_index] = values[:trajectory_length]
+                if values is not None:
+                    store[key][:trajectory_length, batch_index] = values[
+                        :trajectory_length
+                    ]
             store["valid"][trajectory_length:, batch_index] = False
             store["rewards"][trajectory_length:, batch_index] = 0
 
@@ -173,7 +189,7 @@ class State(NamedTuple):
 
     def get_teams(self, leading_dims: Sequence[int]):
         teams = self.view_teams(leading_dims)
-        active_moveset = teams[..., -1, 0, 0, -4:].astype(int) + 2
+        active_moveset = teams[..., 0, 0, -4:].astype(int) + 2
         return active_moveset, teams
 
     def get_side_conditions(self, leading_dims: Sequence[int]):
@@ -213,7 +229,10 @@ class State(NamedTuple):
         return history.astype(int)
 
     def dense(self):
-        leading_dims = self.raw.shape[:-1]
+        if len(self.raw.shape) > 2:
+            leading_dims = self.raw.shape[:-1]
+        else:
+            leading_dims = (1, 1) + (self.raw.shape[0],)
         turn_enc = self.get_turn(leading_dims)
         active_moveset_enc, teams_enc = self.get_teams(leading_dims)
         side_conditions_enc = self.get_side_conditions(leading_dims)

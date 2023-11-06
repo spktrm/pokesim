@@ -9,7 +9,7 @@ from copy import deepcopy
 from typing import Any, Mapping
 
 from pokesim.data import MODEL_INPUT_KEYS
-from pokesim.model import Model
+from pokesim.nn.model import Model
 from pokesim.structs import Batch, State
 
 from pokesim.sac.utils import gae_advantages

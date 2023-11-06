@@ -118,3 +118,98 @@ class Environment:
             is_done,
             self.current_player,
         )
+
+
+class EnvironmentNoStack:
+    _NUM_HISTORY = 2
+
+    def __init__(
+        self,
+        worker_index: int,
+        socket_address: str = SOCKET_PATH,
+        verbose: bool = False,
+    ):
+        self.socket_address = socket_address
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.worker_index = worker_index
+        if verbose:
+            print(f"Worker {worker_index} Connecting to {socket_address}")
+        self.sock.connect(socket_address)
+        if verbose:
+            print(f"Worker {worker_index} Connected successfully!")
+        self.reset_env_vars()
+
+    def reset_env_vars(self):
+        self.dones = np.array([0, 0], dtype=bool)
+        self.history = {0: [], 1: []}
+        self.policy_select = 0
+        self.current_player = 0
+        self.reward = np.zeros(1)
+
+    def is_done(self):
+        return self.dones.all()
+
+    def read_stdout(self):
+        out = read(self.sock)
+        return np.frombuffer(out, dtype=np.int8)
+
+    def recvenv(self) -> Observation:
+        arr = self.read_stdout()
+        self.observation = Observation(arr)
+
+    def reset(self):
+        self.reset_env_vars()
+        self.recvenv()
+        state, *_, player_index = self.process_state()
+        return state, player_index
+
+    def is_current_player_done(self):
+        return self.dones[self.current_player] == 1
+
+    def step(self, action_index: int):
+        is_current_player_done = self.is_current_player_done()
+
+        if self.policy_select == 0:
+            if not is_current_player_done:
+                self.policy_select = action_index + 1
+            else:
+                self.recvenv()
+        else:
+            if not is_current_player_done:
+                action = f"{self.current_player}|{action_index-2}\n"
+                self.sock.sendall(action.encode(ENCODING))
+            self.recvenv()
+            self.policy_select = 0
+
+        return self.process_state()
+
+    def process_state(self) -> Tuple[Dict[str, np.ndarray], int, bool]:
+        reward = np.zeros(1)
+        if self.policy_select == 0:
+            player_index = self.observation.get_player_index()
+            self.current_player = player_index.item()
+            done = self.observation.get_done()
+            self.dones[self.current_player] |= bool(done)
+            state = self.observation.get_state()
+            reward = self.observation.get_reward()
+            self.history[self.current_player].append(state)
+            self.history[self.current_player] = self.history[self.current_player][
+                -self._NUM_HISTORY :
+            ]
+            state_stack = State(
+                stacknpad(
+                    self.history[self.current_player][-self._NUM_HISTORY :],
+                    self._NUM_HISTORY,
+                ).copy()
+            )
+            state = state_stack.dense()
+            self.prev_state = state
+        self.prev_state["legal"] = self.observation.get_legal_moves(self.policy_select)
+        is_done = self.is_done()
+        reward = reward.reshape((1,))
+        return (
+            self.prev_state,
+            reward.copy(),  # * is_done,
+            is_done,
+            self.current_player,
+        )

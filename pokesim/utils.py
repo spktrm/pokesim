@@ -21,7 +21,7 @@ class SGDTowardsModel:
 
 
 def _print_params(model: nn.Module):
-    from pokesim.model import MLP, PointerLogits, ResNet, ToVector, VectorMerge
+    from pokesim.nn.model import MLP, PointerLogits, ResNet, ToVector, VectorMerge
 
     trainable_params_count = sum(
         x.numel() for x in model.parameters() if x.requires_grad

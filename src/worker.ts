@@ -63,7 +63,7 @@ async function runPlayer(
     stream: ObjectReadWriteStream<string>,
     playerIndex: number,
     p1battle: clientBattle,
-    p2battle: clientBattle
+    p2battle: clientBattle,
 ) {
     // const handler = new BattlesHandler([p1battle, p2battle]);
     const handler = new BattlesHandler([p1battle]);
@@ -74,10 +74,6 @@ async function runPlayer(
     let action: string = "";
     let winner: string = "";
 
-    let myCurrentFainted = 0;
-    let myPrevFainted = 0;
-    let oppCurrentFainted = 0;
-    let oppPrevFainted = 0;
     let reward = 0;
 
     for await (const chunk of stream) {
@@ -105,18 +101,11 @@ async function runPlayer(
         }
 
         if (isActionRequired(p1battle, chunk)) {
-            myCurrentFainted = handler.getNumFainted(playerIndex);
-            oppCurrentFainted = handler.getNumFainted(1 - playerIndex);
-            reward =
-                oppCurrentFainted -
-                oppPrevFainted -
-                (myCurrentFainted - myPrevFainted);
             if (!isEval) {
                 state = getState(handler, 0, playerIndex, workerIndex); //, reward);
                 parentPort?.postMessage(state, [state.buffer]);
-                const actionChar = await queueManager.queues[
-                    playerIndex
-                ].dequeue();
+                const actionChar =
+                    await queueManager.queues[playerIndex].dequeue();
                 action = actionCharToString(actionChar);
             } else {
                 if (workerIndex === defaultWorkerIndex) {
@@ -127,7 +116,7 @@ async function runPlayer(
                         playerIndex,
                         workerIndex,
                         0,
-                        0
+                        0,
                     );
                     const legalMask = stateHandler.getLegalMask();
                     action = getRandomAction(legalMask);
@@ -137,15 +126,13 @@ async function runPlayer(
             }
             stream.write(action);
             p1battle.request = undefined;
-            myPrevFainted = myCurrentFainted;
-            oppPrevFainted = oppCurrentFainted;
         }
     }
-    // myCurrentFainted = handler.getNumFainted(playerIndex);
-    // oppCurrentFainted = handler.getNumFainted(1 - playerIndex);
-    // reward =
-    //     oppCurrentFainted - oppPrevFainted - (myCurrentFainted - myPrevFainted);
-    reward = winner === p1battle.sides[playerIndex].name ? 1 : -1;
+    const hp_count = p1battle.sides.map((side) =>
+        side.team.map((x) => x.hp / x.maxhp).reduce((a, b) => a + b),
+    );
+    reward = hp_count[playerIndex] > hp_count[1 - playerIndex] ? 1 : -1;
+    // reward = winner === p1battle.sides[playerIndex].name ? 1 : -1;
     state = getState(handler, 1, playerIndex, workerIndex, reward);
     parentPort?.postMessage(state, [state.buffer]);
     p1battle.request = undefined;

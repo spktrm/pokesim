@@ -16,8 +16,8 @@ from typing import List
 from pokesim.data import EVAL_MAPPING, NUM_WORKERS
 from pokesim.structs import Batch, Trajectory
 
-from pokesim.rnad.learner import Learner
-from pokesim.rnad.actor import run_environment
+from pokesim.impala.learner import Learner
+from pokesim.impala.actor import run_environment
 
 
 def run_environment_wrapper(*args, **kwargs):
@@ -39,8 +39,7 @@ def read_eval(eval_queue: mp.Queue):
 
 def learn(learner: Learner, batch: Batch, lock=threading.Lock()):
     with lock:
-        alpha, update_target_net = learner._entropy_schedule(learner.learner_steps)
-        logs = learner.update_parameters(batch, alpha, update_target_net)
+        logs = learner.update_parameters(batch)
 
         learner.learner_steps += 1
 
@@ -49,7 +48,7 @@ def learn(learner: Learner, batch: Batch, lock=threading.Lock()):
         return logs
 
 
-def learn_loop(learner: Learner, queue: mp.Queue):
+def learn_loop(learner: Learner, queue: mp.Queue, debug: bool = False):
     progress = tqdm(desc="Learning")
     env_steps = 0
 
@@ -67,16 +66,17 @@ def learn_loop(learner: Learner, queue: mp.Queue):
         logs = learn(learner, batch)
         # logs["env_steps"] = env_steps
 
-        wandb.log(logs)
+        if not debug:
+            wandb.log(logs)
         progress.update(1)
 
 
 def main(debug):
-    # init = torch.load("ckpts/320895.pt", map_location="cpu")
-    # init = init["params"]
+    # # init = torch.load("ckpts/320895.pt", map_location="cpu")
+    # # init = init["params"]
     init = None
-    learner = Learner(init=init, debug=debug)
-    # learner = Learner.from_fpath("ckpts/113083.pt")
+    learner = Learner(init=init, debug=debug, trace_nets=False)
+    # learner = Learner.from_fpath("ckpts/015211.pt", trace_nets=False)
 
     if not debug:
         config = learner.get_config()
@@ -118,7 +118,7 @@ def main(debug):
     for _ in range(1):
         learn_thread = threading.Thread(
             target=learn_loop,
-            args=(learner, learn_queue),
+            args=(learner, learn_queue, debug),
         )
         learn_thread.start()
         threads.append(learn_thread)
