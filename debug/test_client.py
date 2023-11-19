@@ -1,6 +1,6 @@
 import torch
 from pokesim.nn.modelv2 import Model
-from pokesim.impala.actor import run_environment
+from pokesim.rnad.actor import run_environment
 
 
 class FillerQueue:
@@ -9,7 +9,7 @@ class FillerQueue:
 
 
 def main(worker_index):
-    ckpt = torch.load(f"ckpts/018403.pt", map_location="cpu")
+    ckpt = torch.load(f"ckpts/108206.pt", map_location="cpu")
     state_dict = ckpt["params"]
 
     model = Model()

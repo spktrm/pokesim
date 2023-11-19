@@ -55,7 +55,7 @@ function createWorker(
     });
     worker.on("message", (buffer: Buffer) => {
         const workerIndex = buffer[0];
-        const playerIndex = buffer[1];
+        // const playerIndex = buffer[1];
         const done = buffer[2];
 
         throughputs[workerIndex] += 1;

@@ -85,12 +85,13 @@ class MLP(nn.Module):
         self.layer_sizes = layer_sizes
         layers = []
         for size1, size2 in zip(layer_sizes, layer_sizes[1:]):
-            layer = [
+            layer = []
+            if use_layer_norm:
+                layer.append(nn.LayerNorm(size1))
+            layer += [
                 nn.ReLU(),
                 _layer_init(nn.Linear(size1, size2, bias=bias)),
             ]
-            if use_layer_norm:
-                layer.insert(0, nn.LayerNorm(size1))
             layers += layer
         self.net = nn.Sequential(*layers)
 
@@ -242,7 +243,7 @@ class ToVector(nn.Module):
         self.input_size = input_size
         self.output_size = output_size
 
-        self.qk = MLP([input_size, 2 * input_size], use_layer_norm=use_layer_norm)
+        self.qk = MLP([input_size, output_size], use_layer_norm=use_layer_norm)
         self.denom = 1 / (input_size**0.5)
 
         self.v = MLP([input_size, output_size], use_layer_norm=use_layer_norm)
@@ -294,56 +295,56 @@ class VectorMerge(nn.Module):
         )
 
         if gating_type != GatingType.NONE:
+            self.gate_size = output_size if gating_type == GatingType.POINTWISE else 1
             self.gate_layers = nn.ModuleDict(
                 {
                     name: _layer_init(
                         nn.Linear(
-                            output_size,
-                            output_size if gating_type == GatingType.POINTWISE else 1,
+                            size,
+                            len(input_sizes) * self.gate_size,
                         )
                     )
-                    for name in input_sizes.keys()
+                    for name, size in input_sizes.items()
                 }
             )
 
-        self.layer_norms = (
-            nn.ModuleDict(
-                {name: nn.LayerNorm(output_size) for name in input_sizes.keys()}
+        if use_layer_norm:
+            self.layer_norms = nn.ModuleDict(
+                {name: nn.LayerNorm(size) for name, size in input_sizes.items()}
             )
-            if use_layer_norm
-            else None
-        )
 
     def forward(self, inputs: Dict[str, torch.Tensor]) -> torch.Tensor:
-        encoded = []
+        outputs = []
         gates = []
+        gate_is_none = self.gating_type == GatingType.NONE
 
         for name in self.input_sizes.keys():
-            x = inputs[name]
+            feature = inputs[name]
             if self.input_sizes[name] is None:
-                x = x.unsqueeze(-1)
+                feature = feature.unsqueeze(-1)
 
             if self.use_layer_norm:
-                x = F.relu(self.layer_norms[name](self.linear_layers[name](x)))
-            else:
-                x = F.relu(self.linear_layers[name](x))
+                feature = self.layer_norms[name](feature)
 
-            encoded.append(x)
+            feature = F.relu(feature)
 
-            if self.gating_type != GatingType.NONE:
-                gates.append(self.gate_layers[name](x))
+            if not gate_is_none:
+                gates.append((name, feature))
 
-        if self.gating_type == GatingType.NONE:
-            output = sum(encoded)
+            outputs.append(self.linear_layers[name](feature))
+
+        outputs = torch.stack(outputs, -2)
+
+        if gate_is_none:
+            output = outputs.sum(-2)
         else:
-            if self.gating_type == GatingType.GLOBAL:
-                gate = torch.sigmoid(sum(gates))
-                output = sum(g * d for g, d in zip(gates, encoded))
-            elif self.gating_type == GatingType.POINTWISE:
-                gate = F.softmax(torch.stack(gates, dim=0), dim=0)
-                output = (torch.stack(encoded) * gate).sum(0)
-            else:
-                raise ValueError(f"Gating type {self.gating_type} is not supported")
+            gates = [self.gate_layers[name](gate) for name, gate in gates]
+
+            gates = torch.stack(gates).sum(0)
+            gates = gates.view(*gates.shape[:-1], -1, self.gate_size)
+
+            gate = F.softmax(gates, dim=-2)
+            output = (outputs * gate).sum(-2)
 
         return output
 
@@ -361,48 +362,19 @@ class PointerLogits(nn.Module):
         super().__init__()
 
         self.query_mlp = MLP(
-            [query_input_size]
-            + [query_input_size for _ in range(num_layers_query - 1)]
-            + [key_size],
+            [query_input_size for _ in range(num_layers_query)] + [key_size],
             use_layer_norm=use_layer_norm,
         )
         self.keys_mlp = MLP(
-            [keys_input_size]
-            + [keys_input_size for _ in range(num_layers_keys - 1)]
-            + [key_size],
+            [keys_input_size for _ in range(num_layers_keys)] + [key_size],
             use_layer_norm=use_layer_norm,
         )
 
     def forward(self, query: torch.Tensor, keys: torch.Tensor) -> torch.Tensor:
         query = self.query_mlp(query)
         keys = self.keys_mlp(keys)
-
         logits = keys @ query.transpose(-2, -1)
         return logits
-
-
-class ConvPointerLogits(nn.Module):
-    def __init__(self, query_input_size: int, keys_input_size: int, output_size: int):
-        super().__init__()
-
-        self.conv = nn.Sequential(
-            nn.ReLU(),
-            nn.Conv1d(query_input_size + keys_input_size, 256, 3, 1),
-            nn.ReLU(),
-            nn.Conv1d(256, 256, 1),
-            nn.Flatten(-2),
-            MLP([256 * (output_size - 2), 256, 256, output_size]),
-        )
-
-    def forward(self, query: torch.Tensor, keys: torch.Tensor) -> torch.Tensor:
-        T, B, *_ = query.shape
-        gated_keys = (
-            torch.cat((query.expand(*keys.shape[:-1], -1), keys), dim=-1)
-            .transpose(-2, -1)
-            .flatten(0, 1)
-        )
-        logits = self.conv(gated_keys)
-        return logits.view(T, B, -1)
 
 
 class SimSiam(nn.Module):
@@ -444,6 +416,62 @@ class VectorQuantizer(nn.Module):
         x_q = x + (x_q - x).detach()
 
         loss = ((x_q.detach() - x) ** 2) + self.beta * ((x_q - x.detach()) ** 2)
-        loss = loss.mean(-1).flatten(3).mean(-1)
+        loss = loss.mean(-1).flatten(2).mean(-1)
 
         return x_q, loss
+
+
+class GLU(nn.Module):
+    def __init__(
+        self,
+        input_size: int,
+        gate_size: int,
+        output_size: int = None,
+        use_layer_norm: bool = False,
+    ):
+        super().__init__()
+
+        self.input_size = input_size
+        self.gate_size = gate_size
+        self.output_size = output_size or input_size
+
+        self.gate_mlp = MLP(
+            [self.gate_size, self.input_size], use_layer_norm=use_layer_norm
+        )
+        self.out_mlp = MLP(
+            [self.input_size, self.output_size], use_layer_norm=use_layer_norm
+        )
+
+    def forward(self, input: torch.Tensor, context: torch.Tensor) -> torch.Tensor:
+        # The gate value is a learnt function of the input.
+        gate = torch.sigmoid(self.gate_mlp(context))
+        # Gate the input and return an output of desired size.
+        return self.out_mlp(gate * input)
+
+
+class VAE(nn.Module):
+    def __init__(
+        self, input_size: int, output_size: int = None, use_layer_norm: bool = False
+    ):
+        super().__init__()
+
+        self.input_size = input_size
+        self.output_size = output_size or input_size
+
+        self.hidden = MLP(
+            [self.input_size, self.input_size], use_layer_norm=use_layer_norm
+        )
+        self.mu = MLP(
+            [self.input_size, self.output_size], use_layer_norm=use_layer_norm
+        )
+        self.log_var = MLP(
+            [self.input_size, self.output_size], use_layer_norm=use_layer_norm
+        )
+
+    def forward(self, x: torch.Tensor):
+        x = self.hidden(F.relu(x))
+        mu = self.mu(F.relu(x))
+        log_var = self.log_var(F.relu(x))
+        var = torch.exp(0.5 * log_var)
+        epsilon = torch.rand_like(var)
+        return mu + var * epsilon

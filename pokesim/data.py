@@ -12,15 +12,21 @@ with open(os.path.abspath("./config.yml"), "r") as f:
 SOCKET_PATH = CONFIG["socket_path"]
 ENCODING = CONFIG["encoding"]
 NUM_WORKERS = CONFIG["num_workers"]
+
 DEFAULT_WORKER_INDEX = CONFIG.get("default_worker_index")
 RANDOM_WORKER_INDEX = CONFIG.get("random_worker_index")
 PREV_WORKER_INDEX = CONFIG.get("prev_worker_index")
-EVAL_WORKER_INDEX = min(DEFAULT_WORKER_INDEX, RANDOM_WORKER_INDEX, PREV_WORKER_INDEX)
+HEURISTIC_WORKER_INDEX = CONFIG.get("heuristic_worker_index")
+
+EVAL_WORKER_INDEX = min(
+    DEFAULT_WORKER_INDEX, RANDOM_WORKER_INDEX, PREV_WORKER_INDEX, HEURISTIC_WORKER_INDEX
+)
 
 EVAL_MAPPING = {
     DEFAULT_WORKER_INDEX: "default",
     RANDOM_WORKER_INDEX: "random",
     PREV_WORKER_INDEX: "prev",
+    HEURISTIC_WORKER_INDEX: "heuristic",
 }
 
 TURN_OFFSET = 0

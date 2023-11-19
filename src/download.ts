@@ -68,9 +68,16 @@ function reduce(arr: string[]): string[] {
     return Array.from(new Set(arr.map(toId))).sort();
 }
 
+function findDuplicates(arr: string[]): string[] {
+    return arr.filter((item, index) => {
+        return arr.indexOf(item) !== index;
+    });
+}
+
 // Helper function to create an enumeration from an array
 function enumerate(arr: string[]): { [key: string]: number } {
     const enumeration: { [key: string]: number } = {};
+    const dupes = findDuplicates(arr);
     arr.forEach((item, index) => {
         enumeration[item] = index;
     });
@@ -127,9 +134,26 @@ function mapId<T extends { id: string; [key: string]: any }>(
 }
 
 function formatData(data: GenData) {
+    const moveIds = [
+        ...data.moves.map((item) => {
+            if (item.id === "hiddenpower") {
+                const moveType = item.type.toLowerCase();
+                if (moveType === "normal") {
+                    return item.id;
+                } else {
+                    return `${item.id}${moveType}`;
+                }
+            } else if (item.id === "return") {
+                return `${item.id}102`;
+            } else {
+                return item.id;
+            }
+        }),
+        "return",
+    ];
     return {
         species: enumerate(mapId(data.species)),
-        moves: enumerate(mapId(data.moves)),
+        moves: enumerate(moveIds),
         abilities: enumerate(mapId(data.abilities)),
         items: enumerate(mapId(data.items)),
     };

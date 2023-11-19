@@ -8,7 +8,7 @@ import * as yaml from "js-yaml";
 
 import { AnyObject, Teams } from "@pkmn/sim";
 import { TeamGenerators } from "@pkmn/randoms";
-import { Battle as clientBattle } from "@pkmn/client";
+import { Pokemon, Battle as clientBattle } from "@pkmn/client";
 import { Generations } from "@pkmn/data";
 import { Dex } from "@pkmn/dex";
 import {
@@ -16,7 +16,6 @@ import {
     BattlesHandler,
     InternalState,
     actionCharToString,
-    getState,
     isAction,
     isActionRequired,
 } from "../helpers";
@@ -39,6 +38,26 @@ if (fs.existsSync(socketPath)) {
 
 Teams.setGeneratorFactory(TeamGenerators);
 const generations = new Generations(Dex);
+
+function logRequest(request: AnyObject) {
+    const actions: string[] = [];
+    try {
+        actions.push(
+            ...((request ?? {}).active ?? [])[0].moves.map(
+                (x: { [k: string]: any }) => x.id,
+            ),
+        );
+    } catch {}
+    try {
+        actions.push(
+            ...(((request ?? {}).side ?? {}).pokemon ?? []).map(
+                (x: { [k: string]: any }) => x.ident,
+            ),
+        );
+    } catch {}
+
+    console.log(actions);
+}
 
 class PokemonShowdownBot {
     private ws: WebSocket;
@@ -98,8 +117,7 @@ class PokemonShowdownBot {
                     this.clientBattle.add(line);
                 } catch (err) {}
                 if (line.startsWith("|win")) {
-                    const state = getState(
-                        this.handler,
+                    const state = this.handler.getState(
                         1,
                         this.playerIndex ?? 0,
                     );
@@ -123,7 +141,8 @@ class PokemonShowdownBot {
 
             if (isActionRequired(this.clientBattle, message)) {
                 const rqid = this.clientBattle.request?.rqid;
-                const state = getState(this.handler, 0, this.playerIndex ?? 0);
+                logRequest(this.clientBattle.request ?? {});
+                const state = this.handler.getState(0, this.playerIndex ?? 0);
                 this.clientSocket.write(state);
                 const actionChar = await this.msgQueue.dequeue();
                 const action = actionCharToString(actionChar);

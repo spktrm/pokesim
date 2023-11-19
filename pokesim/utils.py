@@ -10,18 +10,27 @@ class SGDTowardsModel:
         self._params = params
         self._lr = lr
 
-    @torch.no_grad()
     def step(self):
-        for param_target, param in zip(
-            self._params_target.parameters(), self._params.parameters()
+        target_state_dict = self._params_target.state_dict()
+        state_dict = self._params.state_dict()
+
+        for (key, param_target), (_, param) in zip(
+            target_state_dict.items(), state_dict.items()
         ):
-            if param.requires_grad:
-                new_val = self._lr * param + (1 - self._lr) * param_target
-                param_target.copy_(new_val)
+            target_state_dict[key] = self._lr * param + (1 - self._lr) * param_target
+
+        self._params_target.load_state_dict(target_state_dict)
 
 
 def _print_params(model: nn.Module):
-    from pokesim.nn.model import MLP, PointerLogits, ResNet, ToVector, VectorMerge
+    from pokesim.nn.modules import (
+        MLP,
+        PointerLogits,
+        ResNet,
+        ToVector,
+        VectorMerge,
+        GLU,
+    )
 
     trainable_params_count = sum(
         x.numel() for x in model.parameters() if x.requires_grad
@@ -35,7 +44,16 @@ def _print_params(model: nn.Module):
         if (
             isinstance(
                 mod,
-                (MLP, nn.LSTM, nn.GRU, ToVector, VectorMerge, ResNet, PointerLogits),
+                (
+                    MLP,
+                    nn.LSTM,
+                    nn.GRU,
+                    ToVector,
+                    VectorMerge,
+                    ResNet,
+                    PointerLogits,
+                    GLU,
+                ),
             )
             and name.count(".") == 0
         ):

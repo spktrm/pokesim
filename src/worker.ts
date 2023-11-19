@@ -7,17 +7,16 @@ import { Dex } from "@pkmn/dex";
 import { ObjectReadWriteStream } from "@pkmn/streams";
 import { BattleStreamsType } from "./types";
 import { formatId } from "./data";
-import { getRandomAction } from "./random";
 import {
     AsyncQueue,
     BattlesHandler,
     actionCharToString,
+    formatTeamPreviewAction,
     delay,
-    getState,
     isAction,
     isActionRequired,
+    getIsTeamPreview,
 } from "./helpers";
-import { Int8State } from "./state";
 
 Teams.setGeneratorFactory(TeamGenerators);
 
@@ -43,6 +42,7 @@ const queueManager = new QueueManager();
 const defaultWorkerIndex = workerData.config.default_worker_index as number;
 const randomWorkerIndex = workerData.config.random_worker_index as number;
 const prevWorkerIndex = workerData.config.prev_worker_index as number;
+const heuristicWorkerIndex = workerData.config.heuristic_worker_index as number;
 
 function isEvalPlayer(workerIndex: number, playerIndex: number): boolean {
     if (playerIndex === 1) {
@@ -63,7 +63,7 @@ async function runPlayer(
     stream: ObjectReadWriteStream<string>,
     playerIndex: number,
     p1battle: clientBattle,
-    p2battle: clientBattle,
+    p2battle: clientBattle
 ) {
     // const handler = new BattlesHandler([p1battle, p2battle]);
     const handler = new BattlesHandler([p1battle]);
@@ -71,10 +71,19 @@ async function runPlayer(
 
     const log = [];
 
-    let action: string = "";
-    let winner: string = "";
-
+    let isTeamPreview = false;
+    let action = "";
+    let winner = "";
     let reward = 0;
+
+    // if (parseInt(formatId[3]) >= 5 && !formatId.includes("random")) {
+    //     state = getState(handler, 0, playerIndex, workerIndex); //, reward);
+    //     parentPort?.postMessage(state, [state.buffer]);
+    //     const actionChar = await queueManager.queues[playerIndex].dequeue();
+    //     action = actionCharToString(actionChar);
+    //     stream.write(action);
+    //     p1battle.request = undefined;
+    // }
 
     for await (const chunk of stream) {
         const turn = p1battle.turn ?? 0;
@@ -101,50 +110,58 @@ async function runPlayer(
         }
 
         if (isActionRequired(p1battle, chunk)) {
+            isTeamPreview = getIsTeamPreview(p1battle.request ?? {});
+
             if (!isEval) {
-                state = getState(handler, 0, playerIndex, workerIndex); //, reward);
+                state = handler.getState(0, playerIndex, workerIndex); //, reward);
                 parentPort?.postMessage(state, [state.buffer]);
-                const actionChar =
-                    await queueManager.queues[playerIndex].dequeue();
+                const actionChar = await queueManager.queues[
+                    playerIndex
+                ].dequeue();
                 action = actionCharToString(actionChar);
             } else {
                 if (workerIndex === defaultWorkerIndex) {
                     action = "default";
                 } else if (workerIndex === randomWorkerIndex) {
-                    const stateHandler = new Int8State(
-                        handler,
+                    action = handler.getRandomAction(playerIndex, workerIndex);
+                } else if (workerIndex === heuristicWorkerIndex) {
+                    action = handler.getHeuristicAction(
                         playerIndex,
-                        workerIndex,
-                        0,
-                        0,
+                        workerIndex
                     );
-                    const legalMask = stateHandler.getLegalMask();
-                    action = getRandomAction(legalMask);
                 } else {
-                    action = "default";
+                    action = handler.getHeuristicAction(
+                        playerIndex,
+                        workerIndex
+                    );
                 }
             }
+
+            if (isTeamPreview && action != "default") {
+                action = formatTeamPreviewAction(
+                    action,
+                    p1battle.sides[playerIndex].totalPokemon
+                );
+            }
+
             stream.write(action);
             p1battle.request = undefined;
         }
     }
     const hp_count = p1battle.sides.map((side) =>
-        side.team.map((x) => x.hp / x.maxhp).reduce((a, b) => a + b),
+        side.team.map((x) => x.hp / x.maxhp).reduce((a, b) => a + b)
     );
     reward = hp_count[playerIndex] > hp_count[1 - playerIndex] ? 1 : -1;
     // reward = winner === p1battle.sides[playerIndex].name ? 1 : -1;
-    state = getState(handler, 1, playerIndex, workerIndex, reward);
+    state = handler.getState(1, playerIndex, workerIndex, reward);
     parentPort?.postMessage(state, [state.buffer]);
     p1battle.request = undefined;
 }
 
 const exampleTeam = [
-    "spiritomb||sitrusberry|pressure|shadowball,darkpulse,psychic,sucherpunch||85,,85,85,85,85|N|,0,,,,||78|,,,,,Grass",
-    "roserade||expertbelt|poisonpoint|dazzlinggleam,shadowball,sludgebomb,energyball||85,85,85,85,85,85|N|||80|,,,,,Fighting",
-    "gastrodon||Leftovers|stormdrain|scald,earthquake,slugdebomb,rocktomb||85,85,85,85,85,85|N|||84|,,,,,Steel",
-    "lucario||wiseglasses|innerfocus|aurasphere,dragonpulse,flashcannon,nastyplot||85,85,85,85,85,85||||85|,,,,,Dark",
-    "milotic||flameorb|marvelscale|recover,mirrorcoat,icebeam,scald||85,85,85,85,85,85||||84|,,,,,Ground",
-    "garchomp||yacheberry|roughskin|dragonclaw,earthquake,swordsdance,poisonjab||85,85,85,85,85,85|N|||65|,,,,,Fighting",
+    "charmander|||blaze|ember,,,||85,,85,85,85,85|N|,0,,,,||5|,,,,,Grass",
+    "bulbasaur|||torrent|bubble,,,||85,85,85,85,85,85|N|||5|,,,,,Fighting",
+    "squirtle|||overgrow|vinewhip,,,||85,85,85,85,85,85|N|||5|,,,,,Steel",
 ];
 
 async function runGame() {
@@ -162,13 +179,13 @@ async function runGame() {
 
     const p1spec = {
         name: `Bot${workerIndex}1`,
-        team: Teams.pack(Teams.generate(formatId)),
-        // team: exampleTeam.join("]"),
+        // team: Teams.pack(Teams.generate(formatId)),
+        team: exampleTeam.join("]"),
     };
     const p2spec = {
         name: `Bot${workerIndex}2`,
-        team: Teams.pack(Teams.generate(formatId)),
-        // team: exampleTeam.join("]"),
+        // team: Teams.pack(Teams.generate(formatId)),
+        team: exampleTeam.join("]"),
     };
 
     void streams.omniscient.write(`>start ${JSON.stringify(spec)}

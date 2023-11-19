@@ -14,9 +14,8 @@ from typing import Any, Mapping
 from pokesim.nn.modelv2 import Model
 from pokesim.structs import Batch, ModelOutput, State
 
-from pokesim.impala.utils import EntropySchedule
 from pokesim.impala.config import ImpalaConfig
-from pokesim.utils import _print_params, SGDTowardsModel
+from pokesim.utils import _print_params
 
 
 def get_example(T: int, B: int, device: str):
@@ -58,12 +57,13 @@ def action_log_probs(policy_logits, actions):
     )
 
 
+@torch.no_grad()
 def from_logits(
     behavior_policy_logits,
     target_policy_logits,
     actions,
-    discounts,
     rewards,
+    discounts,
     values,
     bootstrap_value,
     clip_rho_threshold=1.0,
@@ -74,15 +74,42 @@ def from_logits(
     target_action_log_probs = action_log_probs(target_policy_logits, actions)
     behavior_action_log_probs = action_log_probs(behavior_policy_logits, actions)
     log_rhos = target_action_log_probs - behavior_action_log_probs
-    vtrace_returns = from_importance_weights(
-        log_rhos=log_rhos,
-        discounts=discounts,
-        rewards=rewards,
-        values=values,
-        bootstrap_value=bootstrap_value,
-        clip_rho_threshold=clip_rho_threshold,
-        clip_pg_rho_threshold=clip_pg_rho_threshold,
+
+    rhos = torch.exp(log_rhos)
+    if clip_rho_threshold is not None:
+        clipped_rhos = torch.clamp(rhos, max=clip_rho_threshold)
+    else:
+        clipped_rhos = rhos
+
+    cs = torch.clamp(rhos, max=1.0)
+    # Append bootstrapped value to get [v1, ..., v_t+1]
+    values_t_plus_1 = torch.cat(
+        [values[1:], torch.unsqueeze(bootstrap_value, 0)], dim=0
     )
+    deltas = clipped_rhos * (rewards + discounts * values_t_plus_1 - values)
+
+    acc = torch.zeros_like(bootstrap_value)
+    result = []
+    for t in range(discounts.shape[0] - 1, -1, -1):
+        acc = deltas[t] + discounts[t] * cs[t] * acc
+        result.append(acc)
+    result.reverse()
+    vs_minus_v_xs = torch.stack(result)
+
+    # Add V(x_s) to get v_s.
+    vs = torch.add(vs_minus_v_xs, values)
+
+    # Advantage for policy gradient.
+    broadcasted_bootstrap_values = torch.ones_like(vs[0]) * bootstrap_value
+    vs_t_plus_1 = torch.cat([vs[1:], broadcasted_bootstrap_values.unsqueeze(0)], dim=0)
+    if clip_pg_rho_threshold is not None:
+        clipped_pg_rhos = torch.clamp(rhos, max=clip_pg_rho_threshold)
+    else:
+        clipped_pg_rhos = rhos
+    pg_advantages = clipped_pg_rhos * (rewards + discounts * vs_t_plus_1 - values)
+
+    # Make sure no gradients backpropagated through the returned values.
+    vtrace_returns = VTraceReturns(vs=vs, pg_advantages=pg_advantages)
     return VTraceFromLogitsReturns(
         log_rhos=log_rhos,
         behavior_action_log_probs=behavior_action_log_probs,
@@ -91,69 +118,18 @@ def from_logits(
     )
 
 
-@torch.no_grad()
-def from_importance_weights(
-    log_rhos,
-    discounts,
-    rewards,
-    values,
-    bootstrap_value,
-    clip_rho_threshold=1.0,
-    clip_pg_rho_threshold=1.0,
-):
-    """V-trace from log importance weights."""
-    with torch.no_grad():
-        rhos = torch.exp(log_rhos)
-        if clip_rho_threshold is not None:
-            clipped_rhos = torch.clamp(rhos, max=clip_rho_threshold)
-        else:
-            clipped_rhos = rhos
-
-        cs = torch.clamp(rhos, max=1.0)
-        # Append bootstrapped value to get [v1, ..., v_t+1]
-        values_t_plus_1 = torch.cat(
-            [values[1:], torch.unsqueeze(bootstrap_value, 0)], dim=0
-        )
-        deltas = clipped_rhos * (rewards + discounts * values_t_plus_1 - values)
-
-        acc = torch.zeros_like(bootstrap_value)
-        result = []
-        for t in range(discounts.shape[0] - 1, -1, -1):
-            acc = deltas[t] + discounts[t] * cs[t] * acc
-            result.append(acc)
-        result.reverse()
-        vs_minus_v_xs = torch.stack(result)
-
-        # Add V(x_s) to get v_s.
-        vs = torch.add(vs_minus_v_xs, values)
-
-        # Advantage for policy gradient.
-        broadcasted_bootstrap_values = torch.ones_like(vs[0]) * bootstrap_value
-        vs_t_plus_1 = torch.cat(
-            [vs[1:], broadcasted_bootstrap_values.unsqueeze(0)], dim=0
-        )
-        if clip_pg_rho_threshold is not None:
-            clipped_pg_rhos = torch.clamp(rhos, max=clip_pg_rho_threshold)
-        else:
-            clipped_pg_rhos = rhos
-        pg_advantages = clipped_pg_rhos * (rewards + discounts * vs_t_plus_1 - values)
-
-        # Make sure no gradients backpropagated through the returned values.
-        return VTraceReturns(vs=vs, pg_advantages=pg_advantages)
+def compute_baseline_loss(advantages):
+    return advantages**2
 
 
-def compute_baseline_loss(advantages, discounts):
-    return 0.5 * torch.sum((advantages**2) * discounts)
-
-
-def compute_policy_gradient_loss(policy, actions, advantages, discounts):
-    cross_entropy = F.cross_entropy(
-        torch.flatten(policy, 0, 1),
+def compute_policy_gradient_loss(log_policy, actions, advantages):
+    cross_entropy = F.nll_loss(
+        torch.flatten(log_policy, 0, 1),
         target=torch.flatten(actions, 0, 1),
         reduction="none",
     )
     cross_entropy = cross_entropy.view_as(advantages)
-    return torch.sum(cross_entropy * advantages.detach() * discounts)
+    return cross_entropy * advantages.detach()
 
 
 class Learner:
@@ -170,10 +146,14 @@ class Learner:
 
         # Create initial parameters.
         self.params = Model()
+        # self.params_target = Model()
+
         if init is not None:
             self.params.load_state_dict(init)
+            # self.params_target.load_state_dict(init)
 
         self.params.train()
+        # self.params_target.train()
 
         self.extra_config = {
             "num_params": _print_params(self.params)[0],
@@ -184,10 +164,11 @@ class Learner:
         self.params_actor = deepcopy(self.params).share_memory()
         self.params_actor.eval()
 
-        self.params_actor_prev = deepcopy(self.params).share_memory()
-        self.params_actor_prev.eval()
+        # self.params_actor_prev = deepcopy(self.params).share_memory()
+        # self.params_actor_prev.eval()
 
         self.params.to(self.config.learner_device)
+        # self.params_target.to(self.config.learner_device)
         self.params_actor.to(self.config.actor_device)
 
         if not debug and trace_nets:
@@ -202,6 +183,9 @@ class Learner:
                 learner_example = get_example(1, 1, self.config.learner_device)
 
                 self.params = torch.jit.trace(self.params, learner_example)
+                # self.params_target = torch.jit.trace(
+                #     self.params_target, learner_example
+                # )
 
         # Parameter optimizers.
         self.optimizer = optim.Adam(
@@ -218,6 +202,7 @@ class Learner:
             {
                 "config": self.config,
                 "params": self.params.state_dict(),
+                # "params_target": self.params_target.state_dict(),
                 "params_actor": self.params_actor.state_dict(),
                 "optimizer": self.optimizer.state_dict(),
                 "scaler": self.scaler.state_dict(),
@@ -233,6 +218,7 @@ class Learner:
         if not ignore_config:
             obj.config = ckpt["config"]
         obj.params.load_state_dict(ckpt["params"])
+        # obj.params_target.load_state_dict(ckpt["params_target"])
         obj.params_actor.load_state_dict(ckpt["params_actor"])
         obj.optimizer.load_state_dict(ckpt["optimizer"])
         obj.scaler.load_state_dict(ckpt["scaler"])
@@ -273,58 +259,55 @@ class Learner:
 
         learner_outputs: ModelOutput = self.params(**forward_batch)
 
-        behavior_policy_logits = torch.from_numpy(batch.policy)
-        target_policy_logits = learner_outputs.policy.cpu()
-        action = torch.from_numpy(batch.action)
-        discounts = torch.from_numpy(batch.valid).to(torch.float32)
-        # rewards = torch.from_numpy(
-        #     np.sign(batch.rewards) * ((batch.rewards / 100) ** 2)
-        # ).squeeze(-1)
-        rewards = torch.from_numpy(batch.rewards).squeeze(-1)
-        values = learner_outputs.value.cpu().squeeze(-1)
-        legal = self._to_torch(batch.legal)
+        behavior_policy_logits = torch.from_numpy(batch.policy[:-1])
+        target_policy_logits = learner_outputs.policy[:-1].cpu()
+        action = torch.from_numpy(batch.action[:-1])
+        discounts = torch.from_numpy(batch.valid[1:]).to(torch.float32)
+        rewards = torch.from_numpy(batch.rewards[:-1]).squeeze(-1)
+        values = learner_outputs.value[:-1].squeeze(-1)
+        bootstrap_value = learner_outputs.value[-1].squeeze(-1)
 
-        vtrace_returns = from_logits(
-            behavior_policy_logits=behavior_policy_logits,
-            target_policy_logits=target_policy_logits,
-            actions=action,
-            discounts=discounts,
-            rewards=rewards,
-            values=values * discounts,
-            bootstrap_value=torch.zeros_like(values[-1]),
-        )
+        with torch.no_grad():
+            # learner_target_outputs: ModelOutput = self.params_target(**forward_batch)
+            # target_values = learner_target_outputs.value[:-1].cpu().squeeze(-1)
+            vtrace_returns = from_logits(
+                behavior_policy_logits=behavior_policy_logits,
+                target_policy_logits=target_policy_logits,
+                actions=action,
+                discounts=discounts,
+                rewards=rewards,
+                values=values.cpu(),
+                bootstrap_value=bootstrap_value.cpu(),
+            )
 
         discounts = discounts.to(self.config.learner_device)
+        pg_advantages = vtrace_returns.pg_advantages.to(self.config.learner_device)
+        vs = vtrace_returns.vs.to(self.config.learner_device)
+        action = action.to(self.config.learner_device)
 
         pg_loss = compute_policy_gradient_loss(
-            learner_outputs.policy,
-            action.to(self.config.learner_device),
-            vtrace_returns.pg_advantages.to(self.config.learner_device),
-            discounts,
-        )
-        baseline_loss = compute_baseline_loss(
-            vtrace_returns.vs.to(self.config.learner_device)
-            - learner_outputs.value.squeeze(-1),
-            discounts,
-        )
-
-        num_valid_actions = legal.sum(-1)
+            learner_outputs.log_policy[:-1], action, pg_advantages * discounts
+        ).sum()
+        baseline_loss = (compute_baseline_loss(vs - values) * discounts).sum()
         entropy_loss = (
-            (learner_outputs.policy * learner_outputs.log_policy).sum(-1)
-            / torch.where(num_valid_actions == 1, 1, torch.log(num_valid_actions))
+            (learner_outputs.policy[:-1] * learner_outputs.log_policy[:-1]).sum(-1)
             * discounts
         ).sum()
 
-        discounts_sum = discounts.sum().item()
-        loss = pg_loss + 0.5 * baseline_loss + 1e-3 * entropy_loss
+        # wm_loss = (learner_outputs.pred_state_embedding_loss * discounts[:-1]).sum(0)
+
+        discounts_sum = discounts.sum()
+        loss = pg_loss + baseline_loss + 1e-4 * entropy_loss  # + wm_loss
         loss = loss / discounts_sum
+        loss = loss.mean()
 
         self.scaler.scale(loss).backward()
 
         return {
-            "v_loss": baseline_loss.item() / discounts_sum,
-            "p_loss": pg_loss.item() / discounts_sum,
-            "e_loss": entropy_loss.item() / discounts_sum,
+            "v_loss": (baseline_loss / discounts_sum).item(),
+            "p_loss": (pg_loss / discounts_sum).item(),
+            "e_loss": (entropy_loss / discounts_sum).item(),
+            # "wm_loss": (wm_loss / discounts_sum).mean().item(),
         }
 
     def update_parameters(self, batch: Batch):
@@ -334,7 +317,7 @@ class Learner:
 
         self.scaler.unscale_(self.optimizer)
 
-        norm = nn.utils.clip_grad.clip_grad_norm_(
+        norm = nn.utils.clip_grad.clip_grad_value_(
             self.params.parameters(), self.config.clip_gradient
         )
 
@@ -346,12 +329,24 @@ class Learner:
 
         self.params_actor.load_state_dict(self.params.state_dict())
 
+        # state_dict = self.params.state_dict()
+        # target_state_dict = self.params_target.state_dict()
+
+        # for (key, value), (_, value_target) in zip(
+        #     state_dict.items(), target_state_dict.items()
+        # ):
+        #     target_state_dict[key] = (
+        #         value_target * (1 - self.config.tau) + value * self.config.tau
+        #     )
+
+        # self.params_target.load_state_dict(target_state_dict)
+
         draws = abs(batch.rewards).sum(0).sum(1) == 0
         draw_ratio = draws.sum() / batch.valid.shape[1]
 
         logs = {
             **loss_vals,
             "draw_ratio": draw_ratio.item(),
-            "norm": norm.item(),
+            # "norm": norm.item(),
         }
         return logs

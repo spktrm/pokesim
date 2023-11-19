@@ -3,11 +3,11 @@ import { actionCharToString } from "./helpers";
 export function weightedRandomSample(
     options: any[],
     weights: number[],
-    size: number,
-): any {
+    size: number
+): number[] {
     if (options.length !== weights.length) {
         throw new Error(
-            "The options and weights arrays must be the same length.",
+            "The options and weights arrays must be the same length."
         );
     }
 
@@ -53,12 +53,28 @@ export function arange(start: number, stop: number, step?: number): number[] {
 export const numArange = arange(0, 10);
 
 export function getRandomAction(legalMask: Int8Array): string {
-    const randIndex = weightedRandomSample(
+    const [randIndex] = weightedRandomSample(
         numArange,
         new Array(...legalMask),
-        1,
+        1
     );
     return actionCharToString(`${randIndex}`);
 }
 
-// console.log(getRandomAction(new Int8Array([1, 1, 1, 1, 0, 0, 0, 0, 0, 0])));
+function test() {
+    const weights = [1, 1, 1, 1, 0, 1, 0, 0, 0, 0];
+    const counts = new Array(weights.length).fill(0);
+    const total = 100000;
+
+    const out = weightedRandomSample(numArange, new Array(...weights), total);
+    // for (let i = 0; i++; i < total) {
+    //     counts[out] += 1;
+    // }
+    out.map((value) => {
+        counts[value] += 1;
+    });
+
+    console.log(counts.map((x) => x / total));
+}
+
+// test();

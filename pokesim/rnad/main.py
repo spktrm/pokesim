@@ -3,6 +3,7 @@ import os
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
+import torch
 import time
 import wandb
 import threading
@@ -49,34 +50,33 @@ def learn(learner: Learner, batch: Batch, lock=threading.Lock()):
         return logs
 
 
-def learn_loop(learner: Learner, queue: mp.Queue):
+def learn_loop(learner: Learner, queue: mp.Queue, debug: bool = False):
     progress = tqdm(desc="Learning")
     env_steps = 0
 
     while True:
-        batch = Batch.from_trajectories(
-            tuple(
-                [
-                    Trajectory.deserialize(queue.get())
-                    for _ in range(learner.config.batch_size)
-                ]
-            )
-        )
+        batch = []
+        for _ in range(learner.config.batch_size):
+            t1, t2 = queue.get()
+            batch += [Trajectory.deserialize(t) for t in [t1, t2]]
+
+        batch = Batch.from_trajectories(batch)
         env_steps += batch.valid.sum()
 
         logs = learn(learner, batch)
         # logs["env_steps"] = env_steps
 
-        wandb.log(logs)
+        if not debug:
+            wandb.log(logs)
         progress.update(1)
 
 
 def main(debug):
-    # init = torch.load("ckpts/320895.pt", map_location="cpu")
+    # init = torch.load("ckpts/069059.pt", map_location="cpu")
     # init = init["params"]
     init = None
-    learner = Learner(init=init, debug=debug)
-    # learner = Learner.from_fpath("ckpts/113083.pt")
+    learner = Learner(init=init, debug=debug, trace_nets=False)
+    # learner = Learner.from_fpath("ckpts/069059.pt", trace_nets=False)
 
     if not debug:
         config = learner.get_config()
@@ -107,7 +107,7 @@ def main(debug):
             args=(
                 worker_index,
                 learner.params_actor,
-                learner.params_actor_prev,
+                None,
                 learn_queue,
                 eval_queue,
             ),
@@ -118,7 +118,7 @@ def main(debug):
     for _ in range(1):
         learn_thread = threading.Thread(
             target=learn_loop,
-            args=(learner, learn_queue),
+            args=(learner, learn_queue, debug),
         )
         learn_thread.start()
         threads.append(learn_thread)
@@ -132,7 +132,7 @@ def main(debug):
         while True:
             time.sleep(1)
 
-            if (time.time() - prev_time) >= 5 * 60:
+            if (time.time() - prev_time) >= 30 * 60:
                 learner.save(
                     f"ckpts/{learner.learner_steps:06}.pt",
                 )

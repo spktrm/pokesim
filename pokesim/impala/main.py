@@ -33,7 +33,7 @@ def run_environment_wrapper(*args, **kwargs):
 def read_eval(eval_queue: mp.Queue):
     while True:
         n, o, r = eval_queue.get()
-        pi = EVAL_MAPPING[o]
+        pi = EVAL_MAPPING.get(o)
         wandb.log({f"{pi}_n": n, f"{pi}_r": r})
 
 
@@ -76,7 +76,7 @@ def main(debug):
     # # init = init["params"]
     init = None
     learner = Learner(init=init, debug=debug, trace_nets=False)
-    # learner = Learner.from_fpath("ckpts/015211.pt", trace_nets=False)
+    # learner = Learner.from_fpath("ckpts/129303.pt", trace_nets=False)
 
     if not debug:
         config = learner.get_config()
@@ -107,7 +107,7 @@ def main(debug):
             args=(
                 worker_index,
                 learner.params_actor,
-                learner.params_actor_prev,
+                None,  # learner.params_actor_prev,
                 learn_queue,
                 eval_queue,
             ),
