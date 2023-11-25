@@ -71,12 +71,32 @@ def learn_loop(learner: Learner, queue: mp.Queue, debug: bool = False):
         progress.update(1)
 
 
+def get_most_recent_file(dir_path):
+    # List all files in the directory
+    files = [
+        os.path.join(dir_path, f)
+        for f in os.listdir(dir_path)
+        if os.path.isfile(os.path.join(dir_path, f))
+    ]
+
+    if not files:
+        return None
+
+    # Sort files by creation time
+    most_recent_file = max(files, key=os.path.getctime)
+
+    return most_recent_file
+
+
 def main(debug):
-    # init = torch.load("ckpts/069059.pt", map_location="cpu")
+    # init = torch.load("ckpts/038847.pt", map_location="cpu")
     # init = init["params"]
-    init = None
-    learner = Learner(init=init, debug=debug, trace_nets=False)
-    # learner = Learner.from_fpath("ckpts/069059.pt", trace_nets=False)
+    # init = None
+    # learner = Learner(init=init, debug=debug, trace_nets=False)
+
+    fpath = get_most_recent_file("ckpts")
+    print(fpath)
+    learner = Learner.from_fpath(fpath, trace_nets=False)
 
     if not debug:
         config = learner.get_config()

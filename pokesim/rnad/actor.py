@@ -46,6 +46,7 @@ async def _run_environment_async(
     learn_queue: mp.Queue,
     eval_queue: mp.Queue,
     verbose: bool = False,
+    threshold: int = 2,
 ):
     timesteps: Dict[int, List[TimeStep]] = {
         0: [],
@@ -133,7 +134,9 @@ async def _run_environment_async(
         num_battles += 1
         num_steps = 0
 
-    env = await EnvironmentNoStackSingleStep.create(worker_index, _act, _reset)
+    env = await EnvironmentNoStackSingleStep.create(
+        worker_index, _act, _reset, threshold=threshold
+    )
     await env.run()
 
 
@@ -144,9 +147,10 @@ def run_environment(
     learn_queue: mp.Queue,
     eval_queue: mp.Queue,
     verbose: bool = False,
+    threshold: int = 2,
 ):
     return asyncio.run(
         _run_environment_async(
-            worker_index, model, model_prev, learn_queue, eval_queue, verbose
+            worker_index, model, model_prev, learn_queue, eval_queue, verbose, threshold
         )
     )

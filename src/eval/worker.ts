@@ -23,7 +23,7 @@ import { formatId } from "../data";
 
 type Config = { [k: string]: any };
 const config = yaml.load(
-    fs.readFileSync(path.resolve("config.yml"), "utf-8"),
+    fs.readFileSync(path.resolve("config.yml"), "utf-8")
 ) as Config;
 console.log(config);
 
@@ -44,24 +44,27 @@ function logRequest(request: AnyObject) {
     try {
         actions.push(
             ...((request ?? {}).active ?? [])[0].moves.map(
-                (x: { [k: string]: any }) => x.id,
-            ),
+                (x: { [k: string]: any }) => x.id
+            )
         );
     } catch {}
     try {
         actions.push(
             ...(((request ?? {}).side ?? {}).pokemon ?? []).map(
-                (x: { [k: string]: any }) => x.ident,
-            ),
+                (x: { [k: string]: any }) => x.ident
+            )
         );
     } catch {}
 
     console.log(actions);
 }
 
+const localHost = "localhost:8000";
+const online = "sim3.psim.us";
+
 class PokemonShowdownBot {
     private ws: WebSocket;
-    private readonly url: string = "ws://localhost:8000/showdown/websocket";
+    private readonly url: string = `ws://${online}/showdown/websocket`;
     username: string;
     password: string | undefined;
     clientBattle: clientBattle;
@@ -119,7 +122,7 @@ class PokemonShowdownBot {
                 if (line.startsWith("|win")) {
                     const state = this.handler.getState(
                         1,
-                        this.playerIndex ?? 0,
+                        this.playerIndex ?? 0
                     );
                     this.sendMessage("", `/search ${formatId}`);
                 }
@@ -132,7 +135,7 @@ class PokemonShowdownBot {
                             parseInt(
                                 (
                                     this.clientBattle.request as AnyObject
-                                ).side.id.slice(1),
+                                ).side.id.slice(1)
                             ) - 1;
                         this.playerIndexIsSet = true;
                     }
@@ -148,7 +151,7 @@ class PokemonShowdownBot {
                 const action = actionCharToString(actionChar);
                 this.sendMessage(
                     this.battleId ?? "",
-                    `/choose ${action}|${rqid}`,
+                    `/choose ${action}|${rqid}`
                 );
             }
         }
@@ -161,7 +164,7 @@ class PokemonShowdownBot {
 
     private async getAssertion(
         username: string,
-        challstr: string,
+        challstr: string
     ): Promise<string | null> {
         try {
             const params = new URLSearchParams({
@@ -172,7 +175,7 @@ class PokemonShowdownBot {
 
             const response = await fetch(
                 "https://play.pokemonshowdown.com/action.php?" +
-                    params.toString(),
+                    params.toString()
             );
             const assertion: string = await response.text();
 
@@ -201,7 +204,7 @@ let numConnections = 0;
 const workers: PokemonShowdownBot[] = [];
 
 function createWorker(socket: net.Socket) {
-    const worker = new PokemonShowdownBot(socket, "PokesimBot");
+    const worker = new PokemonShowdownBot(socket, "spktrm", "Xtrasm00th");
     workers.push(worker);
 }
 

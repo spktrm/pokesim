@@ -262,7 +262,12 @@ export class Int8State {
 
         const userIndex = prevKeys.indexOf(actionUser);
         const targetIndex = prevKeys.indexOf(actionTarget);
-        const actionVector = [isMe, userIndex, targetIndex, actionToken];
+        const actionVector = [
+            isMe,
+            userIndex === paddingToken ? unknownToken : userIndex,
+            targetIndex === paddingToken ? unknownToken : targetIndex,
+            actionToken,
+        ];
 
         return new Int8Array(new Int16Array(actionVector).buffer);
     }

@@ -140,25 +140,23 @@ class Learner:
         self.params_actor.eval()
 
         self.params_target = deepcopy(self.params)
-        self.params_prev = deepcopy(self.params)
-        self.params_prev_ = deepcopy(self.params)
+        # self.params_prev = deepcopy(self.params)
+        # self.params_prev_ = deepcopy(self.params)
 
         self.params_target.train()
-        self.params_prev.train()
-        self.params_prev_.train()
+        # self.params_prev.train()
+        # self.params_prev_.train()
 
         self.params.to(self.config.learner_device)
         self.params_actor.to(self.config.actor_device)
         self.params_target.to(self.config.learner_device)
-        self.params_prev.to(self.config.learner_device)
-        self.params_prev_.to(self.config.learner_device)
+        # self.params_prev.to(self.config.learner_device)
+        # self.params_prev_.to(self.config.learner_device)
 
         if not debug and trace_nets:
             actor_example = get_example(1, 1, self.config.actor_device)
             self.params_actor = torch.jit.trace(self.params_actor, actor_example)
-            self.params_actor_prev = torch.jit.trace(
-                self.params_actor_prev, actor_example
-            )
+
             with torch.autocast(
                 device_type=self.config.learner_device,
                 dtype=torch.float16,
@@ -170,8 +168,8 @@ class Learner:
                 self.params_target = torch.jit.trace(
                     self.params_target, learner_example
                 )
-                self.params_prev = torch.jit.trace(self.params_prev, learner_example)
-                self.params_prev_ = torch.jit.trace(self.params_prev_, learner_example)
+                # self.params_prev = torch.jit.trace(self.params_prev, learner_example)
+                # self.params_prev_ = torch.jit.trace(self.params_prev_, learner_example)
 
         # Parameter optimizers.
         self.optimizer = optim.Adam(
@@ -183,7 +181,7 @@ class Learner:
             self.params_target, self.params, self.config.target_network_avg
         )
 
-        self.scaler = torch.cuda.amp.GradScaler()
+        self.scaler = torch.cuda.amp.GradScaler(enabled=False)
         self.learner_steps = 0
 
     def save(self, fpath: str):
@@ -193,8 +191,8 @@ class Learner:
                 "params": self.params.state_dict(),
                 "params_actor": self.params_actor.state_dict(),
                 "params_target": self.params_target.state_dict(),
-                "params_prev": self.params_prev.state_dict(),
-                "params_prev_": self.params_prev_.state_dict(),
+                # "params_prev": self.params_prev.state_dict(),
+                # "params_prev_": self.params_prev_.state_dict(),
                 "optimizer": self.optimizer.state_dict(),
                 "scaler": self.scaler.state_dict(),
                 "learner_steps": self.learner_steps,
@@ -211,8 +209,8 @@ class Learner:
         obj.params.load_state_dict(ckpt["params"])
         obj.params_actor.load_state_dict(ckpt["params_actor"])
         obj.params_target.load_state_dict(ckpt["params_target"])
-        obj.params_prev.load_state_dict(ckpt["params_prev"])
-        obj.params_prev_.load_state_dict(ckpt["params_prev_"])
+        # obj.params_prev.load_state_dict(ckpt["params_prev"])
+        # obj.params_prev_.load_state_dict(ckpt["params_prev_"])
         obj.optimizer.load_state_dict(ckpt["optimizer"])
         obj.scaler.load_state_dict(ckpt["scaler"])
         obj.learner_steps = ckpt["learner_steps"]
@@ -343,21 +341,20 @@ class Learner:
             threshold=self.config.nerd.beta,
         )
 
-        loss_dyn = (params.forward_dynamics_loss * valid).sum() / valid.sum()
-        loss = loss_v + loss_nerd + loss_dyn
-        self.scaler.scale(loss).backward()
+        valid_sum = valid.sum()
+        # loss_dyn = (params.forward_dynamics_loss * valid).sum() / valid_sum
 
-        with torch.no_grad():
-            entropy = (params.policy * params.log_policy).sum(
-                -1
-            ).cpu().numpy() * batch.valid
-            entropy = entropy.sum() / batch.valid.sum()
+        loss_entropy = (params.policy * params.log_policy).sum(-1)
+        loss_entropy = (loss_entropy * valid).sum() / valid_sum
+
+        loss = loss_v + loss_nerd + 1e-4 * loss_entropy  # + loss_dyn
+        self.scaler.scale(loss).backward()
 
         return {
             "v_loss": loss_v.item(),
             "p_loss": loss_nerd.item(),
-            "e_loss": entropy.item(),
-            "r_loss": loss_dyn.item(),
+            "e_loss": loss_entropy.item(),
+            # "r_loss": loss_dyn.item(),
         }
 
     def update_parameters(self, batch: Batch, alpha: float, update_target_net: bool):
@@ -382,10 +379,10 @@ class Learner:
 
         # Rolls forward the prev and prev_ params if update_target_net is 1.
         # pyformat: disable
-        if update_target_net:
-            print(f"Updating regularization nets @ {self.learner_steps:,}")
-            self.params_prev_.load_state_dict(self.params_prev.state_dict())
-            self.params_prev.load_state_dict(self.params_target.state_dict())
+        # if update_target_net:
+        #     print(f"Updating regularization nets @ {self.learner_steps:,}")
+        #     self.params_prev_.load_state_dict(self.params_prev.state_dict())
+        #     self.params_prev.load_state_dict(self.params_target.state_dict())
 
         self.params_actor.load_state_dict(self.params.state_dict())
 

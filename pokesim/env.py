@@ -254,9 +254,12 @@ class EnvironmentNoStackSingleStep:
     reset_fn: Callable
     reader: asyncio.StreamReader
     writer: asyncio.StreamWriter
+    threshold: int
 
     @classmethod
-    async def create(cls, worker_index: int, act_fn: Callable, reset_fn: Callable):
+    async def create(
+        cls, worker_index: int, act_fn: Callable, reset_fn: Callable, threshold: int = 2
+    ):
         reader, writer = await asyncio.open_unix_connection(SOCKET_PATH)
         self = cls()
         self.worker_index = worker_index
@@ -264,6 +267,7 @@ class EnvironmentNoStackSingleStep:
         self.reset_fn = reset_fn
         self.reader = reader
         self.writer = writer
+        self.threshold = threshold
         self.reset_env_vars()
         return self
 
@@ -290,7 +294,10 @@ class EnvironmentNoStackSingleStep:
         self.reward = np.zeros(1)
 
     def is_done(self):
-        return self.dones.all()
+        if self.threshold > 1:
+            return self.dones.all()
+        else:
+            return self.dones.any()
 
     async def read_stdout(self):
         out = await read_async(self.reader)

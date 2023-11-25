@@ -164,6 +164,12 @@ const exampleTeam = [
     "squirtle|||overgrow|vinewhip,,,||85,85,85,85,85,85|N|||5|,,,,,Steel",
 ];
 
+const shuffle = (arr: any[]) =>
+    arr
+        .map((value) => ({ value, sort: Math.random() }))
+        .sort((a, b) => a.sort - b.sort)
+        .map(({ value }) => value);
+
 async function runGame() {
     const stream = new BattleStreams.BattleStream();
     streams = BattleStreams.getPlayerStreams(stream);
@@ -179,13 +185,13 @@ async function runGame() {
 
     const p1spec = {
         name: `Bot${workerIndex}1`,
-        // team: Teams.pack(Teams.generate(formatId)),
-        team: exampleTeam.join("]"),
+        team: Teams.pack(Teams.generate(formatId)),
+        // team: shuffle(exampleTeam).join("]"),
     };
     const p2spec = {
         name: `Bot${workerIndex}2`,
-        // team: Teams.pack(Teams.generate(formatId)),
-        team: exampleTeam.join("]"),
+        team: Teams.pack(Teams.generate(formatId)),
+        // team: shuffle(exampleTeam).join("]"),
     };
 
     void streams.omniscient.write(`>start ${JSON.stringify(spec)}

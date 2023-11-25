@@ -43,7 +43,7 @@ class ModelOutput(NamedTuple):
             "log_policy",
             "logits",
             "value",
-            "forward_dynamics_loss",
+            # "forward_dynamics_loss",
         }
         return ModelOutput(
             **{
