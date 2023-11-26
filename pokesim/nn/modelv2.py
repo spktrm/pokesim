@@ -57,9 +57,9 @@ def gumbel_softmax_zero_temp(
 class Model(nn.Module):
     def __init__(
         self,
-        entity_size: int = 128,
-        vector_size: int = 384,
-        use_layer_norm: bool = True,
+        entity_size: int = 256,
+        vector_size: int = 512,
+        use_layer_norm: bool = False,
     ):
         super().__init__()
 
@@ -82,9 +82,13 @@ class Model(nn.Module):
 
         self.item_onehot = _layer_init(nn.Embedding(NUM_ITEMS + 2, entity_size))
         self.item_glu = GLU(entity_size, entity_size, use_layer_norm=use_layer_norm)
+        self.item_mlp = MLP([entity_size, entity_size], use_layer_norm=use_layer_norm)
 
         self.ability_onehot = _layer_init(nn.Embedding(NUM_ABILITIES + 2, entity_size))
         self.ability_glu = GLU(entity_size, entity_size, use_layer_norm=use_layer_norm)
+        self.ability_mlp = MLP(
+            [entity_size, entity_size], use_layer_norm=use_layer_norm
+        )
 
         self.moves_onehot = _layer_init(nn.Embedding(NUM_MOVES + 3, entity_size))
         self.moves_glu = GLU(entity_size, entity_size, use_layer_norm=use_layer_norm)
@@ -94,13 +98,12 @@ class Model(nn.Module):
 
         self.hp_onehot = nn.Embedding.from_pretrained(torch.eye(NUM_HP_BUCKETS + 1))
         self.status_onehot = nn.Embedding.from_pretrained(torch.eye(NUM_STATUS + 1))
-        self.active_onehot = nn.Embedding.from_pretrained(torch.eye(2))
+        # self.active_onehot = nn.Embedding.from_pretrained(torch.eye(2))
         self.fainted_onehot = nn.Embedding.from_pretrained(torch.eye(2))
         self.entity_onehots = _layer_init(
             nn.Linear(
-                self.hp_onehot.weight.shape[-1]
-                + self.status_onehot.weight.shape[-1]
-                + self.active_onehot.weight.shape[-1]
+                self.hp_onehot.weight.shape[-1] + self.status_onehot.weight.shape[-1]
+                # + self.active_onehot.weight.shape[-1]
                 + self.fainted_onehot.weight.shape[-1],
                 entity_size,
             )
@@ -177,11 +180,11 @@ class Model(nn.Module):
             use_layer_norm=use_layer_norm,
         )
 
-        self.state_rnn = nn.GRU(
-            input_size=vector_size,
-            hidden_size=vector_size,
-            num_layers=1,
-        )
+        # self.state_rnn = nn.GRU(
+        #     input_size=vector_size,
+        #     hidden_size=vector_size,
+        #     num_layers=1,
+        # )
 
         self.my_action_query_resnet = ResNet(vector_size, use_layer_norm=use_layer_norm)
         self.my_action_pointer = PointerLogits(
@@ -222,13 +225,13 @@ class Model(nn.Module):
 
     def forward_items(self, token: torch.Tensor, context: torch.Tensor) -> torch.Tensor:
         embedding = F.relu(self.item_onehot(token))
-        return self.item_glu(embedding, context)
+        return self.item_mlp(self.item_glu(embedding, context))
 
     def forward_abilities(
         self, token: torch.Tensor, context: torch.Tensor
     ) -> torch.Tensor:
         embedding = F.relu(self.ability_onehot(token))
-        return self.ability_glu(embedding, context)
+        return self.ability_mlp(self.ability_glu(embedding, context))
 
     def pred_curr_state(
         self,
@@ -313,8 +316,8 @@ class Model(nn.Module):
         hp_bucket = torch.sqrt(teams[..., 3]).to(torch.long)
         hp_onehot = self.hp_onehot(hp_bucket)
 
-        active_token = teams[..., 4]
-        active_onehot = self.active_onehot(active_token)
+        # active_token = teams[..., 4]
+        # active_onehot = self.active_onehot(active_token)
 
         fainted_token = teams[..., 5]
         fainted_onehot = self.fainted_onehot(fainted_token)
@@ -323,7 +326,13 @@ class Model(nn.Module):
         status_onehot = self.status_onehot(status_token)
 
         onehots = torch.cat(
-            (hp_onehot, active_onehot, fainted_onehot, status_onehot), dim=-1
+            (
+                hp_onehot,
+                # active_onehot,
+                fainted_onehot,
+                status_onehot,
+            ),
+            dim=-1,
         )
 
         embeddings = self.units_enc(
@@ -360,7 +369,8 @@ class Model(nn.Module):
         return encoding
 
     def get_hidden_state(self, batch_size: int = 1):
-        return torch.zeros((self.state_rnn.num_layers, batch_size, self.vector_size))
+        # return torch.zeros((self.state_rnn.num_layers, batch_size, self.vector_size))
+        return torch.zeros((1, batch_size, 512))
 
     def embed_field(self, field: torch.Tensor) -> torch.Tensor:
         field_id = field[..., 0]
@@ -410,14 +420,15 @@ class Model(nn.Module):
         hidden_state: torch.Tensor = None,
     ):
         entity_embeddings = self.embed_teams(teams)
+        entity_embeddings = entity_embeddings[:, :, -1]
 
-        private_entities = gumbel_softmax_zero_temp(
-            entity_embeddings[..., -1, :1, :, :], hard=True
-        )
-        public_entities = gumbel_softmax_zero_temp(
-            entity_embeddings[..., -1, 1:, :, :], hard=False
-        )
-        entity_embeddings = torch.cat((private_entities, public_entities), dim=2)
+        # private_entities = gumbel_softmax_zero_temp(
+        #     entity_embeddings[..., -1, :1, :, :], hard=True
+        # )
+        # public_entities = gumbel_softmax_zero_temp(
+        #     entity_embeddings[..., -1, 1:, :, :], hard=False
+        # )
+        # entity_embeddings = torch.cat((private_entities, public_entities), dim=2)
 
         active_token = teams[:, :, -1, ..., 4]
         active_mask = (active_token + (teams[:, :, -1, ..., 0] == PADDING_TOKEN)).bool()
@@ -451,14 +462,14 @@ class Model(nn.Module):
             dim=-1,
         )
         context_encoding = self.context_mlp(self.context_linear(context_encoding))
-        context_encoding = gumbel_softmax_zero_temp(
-            context_encoding[..., -1, :], hard=True
-        )
+        # context_encoding = gumbel_softmax_zero_temp(
+        #     context_encoding[..., -1, :], hard=True
+        # )
 
         field_embedding = self.embed_field(field)
-        field_embedding = gumbel_softmax_zero_temp(
-            field_embedding[..., -1, :], hard=True
-        )
+        # field_embedding = gumbel_softmax_zero_temp(
+        #     field_embedding[..., -1, :], hard=True
+        # )
 
         # turn_embedding = self.turn_embedding(
         #     turn[:, :, -1].clamp(min=0, max=self.turn_embedding.weight.shape[0] - 1)
@@ -472,9 +483,9 @@ class Model(nn.Module):
                 "my_private_reserve": private_reserve_embedding,
                 "my_public_reserve": public_reserve_embeddings[..., 0, :],
                 "opp_public_reserve": public_reserve_embeddings[..., 1, :],
-                "my_context": context_encoding[..., 0, :],
-                "opp_context": context_encoding[..., 1, :],
-                "field": field_embedding,
+                "my_context": context_encoding[..., -1, 0, :],
+                "opp_context": context_encoding[..., -1, 1, :],
+                "field": field_embedding[..., -1, :],
                 # "action": vector_size,
                 # "turn": vector_size // 4,
             },
@@ -502,7 +513,7 @@ class Model(nn.Module):
         #     pred_state.view(T, B, -1, 16), curr_state.view(T, B, -1, 16).log_softmax(-1)
         # )
 
-        curr_state, hidden_state = self.embed_state_history(curr_state, hidden_state)
+        # curr_state, hidden_state = self.embed_state_history(curr_state, hidden_state)
 
         # curr_state = torch.exp(curr_state)
 
@@ -544,23 +555,21 @@ class Model(nn.Module):
             my_active_moveset + 3,
             private_active_embedding.unsqueeze(-2).expand(-1, -1, 10, -1),
         )
-        opp_action_embeddings = self.forward_moves(
-            opp_active_moveset + 3,
-            public_active_embeddings[..., 1:, :].expand(-1, -1, 10, -1),
-        )
-
         my_action_embeddings = self.action_glu1(
             my_action_embeddings, my_action_target_embeddings
         )
-        opp_action_embeddings = self.action_glu1(
-            opp_action_embeddings, opp_action_target_embeddings
-        )
-
         my_action_query = self.my_action_query_resnet(curr_state).unsqueeze(-2)
         my_logits = self.my_action_pointer(
             my_action_query, my_action_embeddings
         ).flatten(2)
 
+        opp_action_embeddings = self.forward_moves(
+            opp_active_moveset + 3,
+            public_active_embeddings[..., 1:, :].expand(-1, -1, 10, -1),
+        )
+        opp_action_embeddings = self.action_glu1(
+            opp_action_embeddings, opp_action_target_embeddings
+        )
         opp_action_query = self.opp_action_query_resnet(curr_state).unsqueeze(-2)
         opp_logits = self.opp_action_pointer(
             opp_action_query, opp_action_embeddings
@@ -568,6 +577,7 @@ class Model(nn.Module):
 
         logits = my_logits.unsqueeze(-1) @ opp_logits.unsqueeze(-2)
         logits = logits.mean(-1)
+        # logits = my_logits
 
         policy = _legal_policy(logits, legal)
         log_policy = _legal_log_policy(logits, legal)

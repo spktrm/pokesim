@@ -78,6 +78,11 @@ NUM_SPECIES = len(DATA["species"])
 NUM_ABILITIES = len(DATA["abilities"])
 NUM_ITEMS = len(DATA["items"])
 NUM_MOVES = len(DATA["moves"])
+
+print(f"NUM_SPECIES: {NUM_SPECIES}")
+print(f"NUM_ABILITIES: {NUM_ABILITIES}")
+print(f"NUM_ITEMS: {NUM_ITEMS}")
+print(f"NUM_MOVES: {NUM_MOVES}")
 # NUM_TYPES = len(DATA["types"])
 
 NUM_TERRAIN = len(DATA["terrain"])
@@ -86,11 +91,20 @@ NUM_WEATHER = len(DATA["weathers"])
 NUM_SIDE_CONDITIONS = len(DATA["sideConditions"])
 NUM_PSEUDOWEATHER = len(DATA["pseudoWeather"])
 
+print(f"NUM_TERRAIN: {NUM_TERRAIN}")
+print(f"NUM_VOLATILE_STATUS: {NUM_VOLATILE_STATUS}")
+print(f"NUM_WEATHER: {NUM_WEATHER}")
+print(f"NUM_SIDE_CONDITIONS: {NUM_SIDE_CONDITIONS}")
+print(f"NUM_PSEUDOWEATHER: {NUM_PSEUDOWEATHER}")
+
 MAX_HP = 1024
 NUM_HP_BUCKETS = int(MAX_HP**0.5 + 1)
 
 NUM_STATUS = len(STATUS_MAPPING)
 NUM_BOOSTS = len(BOOSTS_MAPPING)
+
+print(f"NUM_STATUS: {NUM_STATUS}")
+print(f"NUM_BOOSTS: {NUM_BOOSTS}")
 
 
 def get_positional_encoding_matrix(

@@ -372,11 +372,12 @@ class PointerLogits(nn.Module):
             [keys_input_size for _ in range(num_layers_keys)] + [key_size],
             use_layer_norm=use_layer_norm,
         )
+        self.denom = 1 / math.sqrt(key_size)
 
     def forward(self, query: torch.Tensor, keys: torch.Tensor) -> torch.Tensor:
         query = self.query_mlp(query)
         keys = self.keys_mlp(keys)
-        logits = keys @ query.transpose(-2, -1)
+        logits = (keys @ query.transpose(-2, -1)) * self.denom
         return logits
 
 

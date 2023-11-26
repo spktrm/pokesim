@@ -91,12 +91,13 @@ def get_most_recent_file(dir_path):
 def main(debug):
     # init = torch.load("ckpts/038847.pt", map_location="cpu")
     # init = init["params"]
-    # init = None
-    # learner = Learner(init=init, debug=debug, trace_nets=False)
 
-    fpath = get_most_recent_file("ckpts")
-    print(fpath)
-    learner = Learner.from_fpath(fpath, trace_nets=False)
+    init = None
+    learner = Learner(init=init, debug=debug, trace_nets=False)
+
+    # fpath = get_most_recent_file("ckpts")
+    # print(fpath)
+    # learner = Learner.from_fpath(fpath, trace_nets=False)
 
     if not debug:
         config = learner.get_config()
