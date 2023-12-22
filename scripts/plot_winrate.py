@@ -11,7 +11,7 @@ def main(run_id: str, window: int, num_samples: int = int(200e3)):
 
     rows = []
 
-    for column in {"prev_r", "random_r", "default_r"}:
+    for column in {"prev_r", "random_r", "default_r", "maxdmg_r"}:
         try:
             values = df[column].dropna().reset_index().drop(["index"], axis=1)
             rows.append(values)

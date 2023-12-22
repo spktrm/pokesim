@@ -29,7 +29,7 @@ from pokesim.nn.helpers import _layer_init
 from pokesim.nn.modules import (
     GatingType,
     PointerLogits,
-    ResNet,
+    Resnet,
     ToVector,
     VectorMerge,
     VectorQuantizer,
@@ -195,7 +195,7 @@ class Model(nn.Module):
             use_layer_norm=_USE_LAYER_NORM,
         )
 
-        self.value_resnet = ResNet(vector_size, use_layer_norm=_USE_LAYER_NORM)
+        self.value_resnet = Resnet(vector_size, use_layer_norm=_USE_LAYER_NORM)
         self.value_mlp = MLP([vector_size, 1], use_layer_norm=_USE_LAYER_NORM)
 
     def embed_action_history(

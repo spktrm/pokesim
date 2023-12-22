@@ -6,74 +6,80 @@ import torch.nn.functional as F
 
 from enum import Enum
 from typing import Dict, Optional, Sequence, Tuple
+from functools import partial
 
 from pokesim.nn.helpers import _layer_init
 
 
-def get_layer(
-    input_size: int,
-    output_size: int = None,
-    use_layer_norm: bool = False,
-) -> nn.Module:
-    if use_layer_norm and input_size is None:
-        raise ValueError("Must provide input size if using layer norm")
-    output_size = output_size or input_size
-    layers = []
-    if use_layer_norm:
-        layers.append(nn.LayerNorm(input_size))
-    layers += [nn.SiLU(), _layer_init(nn.Linear(input_size, output_size))]
-    return nn.Sequential(*layers)
+class Resblock(nn.Module):
+    """Fully connected residual block."""
 
-
-class ResBlock(nn.Module):
     def __init__(
         self,
         input_size: int,
-        hidden_size: int = None,
-        output_size: int = None,
         num_layers: int = 2,
-        bias: bool = True,
+        hidden_size: Optional[int] = None,
         use_layer_norm: bool = True,
-    ) -> None:
-        super().__init__()
+        affine_layer_norm: bool = False,
+    ):
+        """Initializes VectorResblock module.
 
-        output_size = output_size or input_size
-        hidden_size = hidden_size or input_size
-        sizes = (
-            [input_size]
-            + [hidden_size for _ in range(max(0, num_layers - 1))]
-            + [output_size]
-        )
-        layers = []
-        for size1, size2 in zip(sizes, sizes[1:]):
-            layers += [get_layer(size1, size2, use_layer_norm)]
-        self.net = nn.Sequential(*layers)
+        Args:
+          num_layers: Number of layers in the residual block.
+          hidden_size: Size of the activation vector in the residual block.
+          use_layer_norm: Whether to use layer normalization.
+          name: The name of this component.
+        """
+        super().__init__()
+        self._input_size = input_size
+        self._num_layers = num_layers
+        self._hidden_size = hidden_size or input_size
+        self._use_layer_norm = use_layer_norm
+
+        # Create layers
+        self.layers = nn.ModuleList()
+
+        if num_layers < 1:
+            raise ValueError("Must have at least 1 Layer")
+
+        layer_sizes = [input_size, input_size]
+        for _ in range(num_layers - 1):
+            layer_sizes.insert(1, self._hidden_size)
+
+        layer_init = partial(_layer_init, std=0.005, bias_value=0)
+
+        for input_size, output_size in zip(layer_sizes[:-1], layer_sizes[1:]):
+            if use_layer_norm:
+                self.layers.append(
+                    nn.LayerNorm(input_size, elementwise_affine=affine_layer_norm)
+                )
+            self.layers.append(nn.ReLU())
+            self.layers.append(layer_init(nn.Linear(input_size, output_size)))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x) + x
+        shortcut = x
+        for layer in self.layers:
+            x = layer(x)
+        return x + shortcut
 
 
-class ResNet(nn.Module):
+class Resnet(nn.Module):
     def __init__(
         self,
         input_size: int,
-        hidden_size: int = None,
-        output_size: int = None,
-        num_resblocks: int = 2,
+        num_resblocks: int,
         use_layer_norm: bool = True,
+        affine_layer_norm: bool = False,
     ):
         super().__init__()
-        self.resblocks = nn.ModuleList(
-            [
-                ResBlock(
-                    input_size=input_size,
-                    hidden_size=hidden_size,
-                    output_size=output_size,
-                    use_layer_norm=use_layer_norm,
-                )
-                for i in range(num_resblocks)
-            ]
-        )
+        self.resblocks = nn.ModuleList()
+        for _ in range(num_resblocks):
+            resblock = Resblock(
+                input_size=input_size,
+                use_layer_norm=use_layer_norm,
+                affine_layer_norm=affine_layer_norm,
+            )
+            self.resblocks.append(resblock)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         for resblock in self.resblocks:
@@ -85,18 +91,25 @@ class MLP(nn.Module):
     def __init__(
         self,
         layer_sizes: Sequence[int] = None,
-        bias: bool = True,
         use_layer_norm: bool = True,
+        affine_layer_norm: bool = False,
     ):
         super().__init__()
         self.layer_sizes = layer_sizes
-        layers = []
-        for size1, size2 in zip(layer_sizes, layer_sizes[1:]):
-            layers += [get_layer(size1, size2, use_layer_norm)]
-        self.net = nn.Sequential(*layers)
+        self.layers = nn.ModuleList()
+
+        for input_size, output_size in zip(layer_sizes[:-1], layer_sizes[1:]):
+            if use_layer_norm:
+                self.layers.append(
+                    nn.LayerNorm(input_size, elementwise_affine=affine_layer_norm)
+                )
+            self.layers.append(nn.ReLU())
+            self.layers.append(_layer_init(nn.Linear(input_size, output_size)))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)
+        for layer in self.layers:
+            x = layer(x)
+        return x
 
 
 class MultiHeadAttention(nn.Module):
@@ -104,36 +117,54 @@ class MultiHeadAttention(nn.Module):
         self,
         num_heads: int,
         key_size: int,
-        with_bias: bool = True,
+        query_size: int = None,
         value_size: int = None,
+        with_bias: bool = True,
         model_size: int = None,
+        d_k: int = None,
+        d_q: int = None,
+        d_v: int = None,
     ):
         super().__init__()
-        self.key_size = key_size
-        self.num_heads = num_heads
-        self.value_size = value_size or key_size
-        self.model_size = model_size or key_size * num_heads
-        self.denom = 1 / math.sqrt(key_size)
+        self._key_size = key_size
+        self._query_size = query_size or key_size
+        self._value_size = value_size or key_size
+        self._num_heads = num_heads
+        self._model_size = model_size or key_size * num_heads
+        self._denom = 1 / math.sqrt(key_size)
 
-        self.queries = _layer_init(
-            nn.Linear(self.model_size, num_heads * self.key_size, bias=with_bias)
+        self.query_lin = _layer_init(
+            nn.Linear(
+                d_q or self._model_size,
+                self._num_heads * self._key_size,
+                bias=with_bias,
+            )
         )
-        self.keys = _layer_init(
-            nn.Linear(self.model_size, num_heads * self.key_size, bias=with_bias)
+        self.key_lin = _layer_init(
+            nn.Linear(
+                d_k or self._model_size,
+                self._num_heads * self._key_size,
+                bias=with_bias,
+            )
         )
-        self.values = _layer_init(
-            nn.Linear(self.model_size, num_heads * self.value_size, bias=with_bias)
+        self.value_lin = _layer_init(
+            nn.Linear(
+                d_v or self._model_size,
+                self._num_heads * self._value_size,
+                bias=with_bias,
+            )
         )
         self.final_proj = _layer_init(
-            nn.Linear(self.value_size * num_heads, self.model_size)
+            nn.Linear(
+                self._num_heads * self._value_size,
+                self._model_size,
+            )
         )
 
-    def _linear_projection(
-        self, x: torch.Tensor, mod: nn.Module, head_size: int
-    ) -> torch.Tensor:
+    def _linear_projection(self, x: torch.Tensor, mod: nn.Module) -> torch.Tensor:
         y = mod(x)
         *leading_dims, _ = x.shape
-        return y.reshape((*leading_dims, self.num_heads, head_size))
+        return y.reshape((*leading_dims, self._num_heads, -1))
 
     def forward(
         self,
@@ -144,12 +175,12 @@ class MultiHeadAttention(nn.Module):
     ) -> torch.Tensor:
         *leading_dims, sequence_length, _ = query.shape
 
-        query_heads = self._linear_projection(query, self.queries, self.key_size)
-        key_heads = self._linear_projection(key, self.keys, self.key_size)
-        value_heads = self._linear_projection(value, self.values, self.value_size)
+        query_heads = self._linear_projection(query, self.query_lin)
+        key_heads = self._linear_projection(key, self.key_lin)
+        value_heads = self._linear_projection(value, self.value_lin)
 
         attn_logits = torch.einsum("...thd,...Thd->...htT", query_heads, key_heads)
-        attn_logits = attn_logits * self.denom
+        attn_logits = attn_logits * self._denom
         if mask is not None:
             if mask.ndim != attn_logits.ndim:
                 raise ValueError(
@@ -168,93 +199,136 @@ class MultiHeadAttention(nn.Module):
 class Transformer(nn.Module):
     def __init__(
         self,
+        units_stream_size: int,
         transformer_num_layers: int,
         transformer_num_heads: int,
         transformer_key_size: int,
         transformer_value_size: int,
-        transformer_model_size: int,
         resblocks_num_before: int,
         resblocks_num_after: int,
-        resblocks_hidden_size: int = None,
+        resblocks_hidden_size: Optional[int] = None,
         use_layer_norm: bool = True,
     ):
         super().__init__()
 
-        self.attn = nn.ModuleList(
+        self._units_stream_size = units_stream_size
+        self._transformer_num_layers = transformer_num_layers
+        self._transformer_num_heads = transformer_num_heads
+        self._transformer_key_size = transformer_key_size
+        self._transformer_value_size = transformer_value_size
+        self._resblocks_num_before = resblocks_num_before
+        self._resblocks_num_after = resblocks_num_after
+        self._resblocks_hidden_size = resblocks_hidden_size
+        self._use_layer_norm = use_layer_norm
+
+        # Define the PyTorch modules here
+        self.resblocks_before = nn.ModuleList(
+            [
+                Resblock(
+                    input_size=units_stream_size,
+                    hidden_size=self._resblocks_hidden_size,
+                    use_layer_norm=self._use_layer_norm,
+                )
+                for _ in range(self._resblocks_num_before)
+            ]
+        )
+        self.layernorms = nn.ModuleList(
+            [
+                nn.LayerNorm(self._units_stream_size)
+                for _ in range(self._transformer_num_layers)
+            ]
+        )
+        self.transformer_layers = nn.ModuleList(
             [
                 MultiHeadAttention(
-                    transformer_num_heads,
-                    transformer_key_size,
-                    value_size=transformer_value_size,
-                    model_size=transformer_model_size,
+                    num_heads=self._transformer_num_heads,
+                    model_size=self._units_stream_size,
+                    key_size=self._transformer_key_size,
+                    value_size=self._transformer_value_size,
                 )
-                for i in range(transformer_num_layers)
+                for _ in range(self._transformer_num_layers)
             ]
         )
-        self.use_layer_norm = use_layer_norm
-        self.pre = nn.ModuleList(
+        self.resblocks_after = nn.ModuleList(
             [
-                get_layer(transformer_model_size, use_layer_norm=use_layer_norm)
-                for _ in range(transformer_num_layers)
+                Resblock(
+                    input_size=units_stream_size,
+                    hidden_size=self._resblocks_hidden_size,
+                    use_layer_norm=self._use_layer_norm,
+                )
+                for _ in range(self._resblocks_num_after)
             ]
-        )
-        self.resnet_before = ResNet(
-            input_size=transformer_model_size,
-            hidden_size=resblocks_hidden_size,
-            output_size=transformer_model_size,
-            num_resblocks=resblocks_num_before,
-            use_layer_norm=use_layer_norm,
-        )
-        self.resnet_after = ResNet(
-            input_size=transformer_model_size,
-            hidden_size=resblocks_hidden_size,
-            output_size=transformer_model_size,
-            num_resblocks=resblocks_num_after,
-            use_layer_norm=use_layer_norm,
         )
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        x = self.resnet_before(x)
-        for i, attn in enumerate(self.attn):
+        logits_mask = mask[..., None, None, :]
+        for resblock in self.resblocks_before:
+            x = resblock(x)
+        for layer, ln in zip(self.transformer_layers, self.layernorms):
             x1 = x
-            x1 = self.pre[i](x1)
-            logits_mask = mask[..., None, None, :]
-            x1 = attn(x1, x1, x1, logits_mask)
-            x1 = torch.where(mask.unsqueeze(-1), x1, 0)
+            if self._use_layer_norm:
+                x1 = ln(x1)
+            x1 = F.relu(x1)
+            x1 = layer(query=x1, key=x1, value=x1, mask=logits_mask)
+            x1 = torch.where(mask[..., None], x1, 0)
             x = x + x1
-        x = self.resnet_after(x)
-        x = torch.where(mask.unsqueeze(-1), x, 0)
+        for resblock in self.resblocks_after:
+            x = resblock(x)
+        x = torch.where(mask[..., None], x, 0)
         return x
 
 
 class ToVector(nn.Module):
     def __init__(
         self,
-        input_size: int,
-        output_size: int,
+        units_stream_size: int,
+        units_hidden_sizes: Sequence[int],
+        vector_stream_size: int,
         use_layer_norm: bool = True,
+        affine_layer_norm: bool = False,
     ):
         super().__init__()
 
-        self.input_size = input_size
-        self.output_size = output_size
+        self._units_stream_size = units_stream_size
+        self._units_hidden_sizes = units_hidden_sizes
+        self._vector_stream_size = vector_stream_size
+        self._use_layer_norm = use_layer_norm
 
-        self.qk = MLP([input_size, output_size], use_layer_norm=use_layer_norm)
-        self.denom = 1 / (input_size**0.5)
+        hidden_layer_sizes = [self._units_stream_size] + self._units_hidden_sizes
+        self._hidden_layers = nn.ModuleList()
+        for input_size, output_size in zip(
+            hidden_layer_sizes[:-1], hidden_layer_sizes[1:]
+        ):
+            if use_layer_norm:
+                self._hidden_layers.append(
+                    nn.LayerNorm(input_size, elementwise_affine=affine_layer_norm)
+                )
+            self._hidden_layers.append(nn.ReLU())
+            self._hidden_layers.append(_layer_init(nn.Linear(input_size, output_size)))
 
-        self.v = MLP([input_size, output_size], use_layer_norm=use_layer_norm)
-        self.out = MLP([output_size, output_size], use_layer_norm=use_layer_norm)
+        final_hidden_size = self._units_hidden_sizes[-1]
+        self._final_layers = nn.ModuleList()
+        if use_layer_norm:
+            self._final_layers.append(
+                nn.LayerNorm(final_hidden_size, elementwise_affine=affine_layer_norm)
+            )
+        self._final_layers.append(nn.ReLU())
+        self._final_layers.append(
+            _layer_init(nn.Linear(final_hidden_size, self._vector_stream_size))
+        )
 
     def forward(
-        self, entity_embeddings: torch.Tensor
+        self, entity_embeddings: torch.Tensor, mask: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        qk = self.qk(entity_embeddings)
-        queries, keys = torch.chunk(qk, 2, -1)
-        values = self.v(entity_embeddings)
-        attention_logits = queries @ keys.transpose(-2, -1)
-        attention_weights = (attention_logits * self.denom).softmax(-1)
-        entity_embeddings = attention_weights @ values
-        return self.out(entity_embeddings.mean(-2)), entity_embeddings
+        x = entity_embeddings
+        for layer in self._hidden_layers:
+            x = layer(x)
+        entity_count = mask.sum(-1, keepdim=True)
+        x_masked = x * mask.unsqueeze(-1)
+        x = x_masked.sum(-2) / entity_count.clamp(min=1)
+        for layer in self._final_layers:
+            x = layer(x)
+        return x
 
 
 class GatingType(Enum):
@@ -270,85 +344,89 @@ class VectorMerge(nn.Module):
         output_size: int,
         gating_type: GatingType = GatingType.NONE,
         use_layer_norm: bool = True,
+        affine_layer_norm: bool = False,
     ):
         super().__init__()
 
         if not input_sizes:
             raise ValueError("input_sizes cannot be empty")
 
-        self.input_sizes = input_sizes
-        self.output_size = output_size
-        self.gating_type = gating_type
-        self.use_layer_norm = use_layer_norm
+        self._input_sizes = input_sizes
+        self._output_size = output_size
+        self._gating_type = gating_type
+        self._use_layer_norm = use_layer_norm
 
-        self.linear_layers = nn.ModuleDict(
+        self._linear_layers = nn.ModuleDict(
             {
-                name: _layer_init(
-                    nn.Linear(size if size is not None else 1, output_size)
-                )
-                for name, size in input_sizes.items()
+                input_name: _layer_init(nn.Linear(input_size, output_size))
+                for input_name, input_size in input_sizes.items()
             }
         )
 
+        if gating_type == GatingType.GLOBAL:
+            gate_size = 1
+        elif gating_type == GatingType.POINTWISE:
+            gate_size = output_size
+
         if gating_type != GatingType.NONE:
-            self.gate_size = output_size if gating_type == GatingType.POINTWISE else 1
-            self.gate_layers = nn.ModuleDict(
+            gate_init = partial(
+                _layer_init, std=0.005, bias_value=0, init_func=nn.init.normal_
+            )
+            self.gate_size = gate_size
+            self._gate_layers = nn.ModuleDict(
                 {
-                    name: _layer_init(
-                        nn.Linear(
-                            size,
-                            len(input_sizes) * self.gate_size,
-                        )
+                    input_name: gate_init(
+                        nn.Linear(input_size, len(input_sizes) * gate_size)
                     )
-                    for name, size in input_sizes.items()
+                    for input_name, input_size in input_sizes.items()
                 }
             )
 
-        self.pre = nn.ModuleDict(
-            {
-                name: get_layer(input_size=size, use_layer_norm=use_layer_norm)
-                for name, size in input_sizes.items()
-            }
-        )
+        if use_layer_norm:
+            self._layernorms = nn.ModuleDict(
+                {
+                    input_name: nn.LayerNorm(
+                        input_size, elementwise_affine=affine_layer_norm
+                    )
+                    for input_name, input_size in input_sizes.items()
+                }
+            )
 
-    def _compute_gate(self, init_gate: torch.Tensor) -> torch.Tensor:
-        gate = torch.stack([self.gate_layers[name](gate) for name, gate in init_gate])
-        gate = gate.sum(0)
-        gate = gate.view(*gate.shape[:-1], -1, self.gate_size)
-        return F.softmax(gate, dim=-2)
+    def _compute_gate(
+        self,
+        inputs_to_gate: Sequence[torch.Tensor],
+        init_gate: Sequence[Tuple[str, torch.Tensor]],
+    ) -> torch.Tensor:
+        gate = torch.stack([self._gate_layers[name](y) for name, y in init_gate])
+        gate = torch.sum(gate, dim=0)
+        gate = gate.reshape(*gate.shape[:-1], len(inputs_to_gate), self.gate_size)
+        gate = F.softmax(gate, dim=-2)
+        return [gate[..., i, :] for i in range(gate.shape[-2])]
 
     def _encode(
         self, inputs: Dict[str, torch.Tensor]
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        outputs = []
-        gates = []
-
-        for name in self.input_sizes.keys():
+    ) -> Tuple[Sequence[Tuple[str, torch.Tensor]], Sequence[torch.Tensor]]:
+        gates, outputs = [], []
+        for name in self._input_sizes:
             feature = inputs[name]
-            if self.input_sizes[name] is None:
-                feature = feature.unsqueeze(-1)
-
-            feature = self.pre[name](feature)
-
+            if self._use_layer_norm:
+                feature = self._layernorms[name](feature)
+            feature = F.relu(feature)
             gates.append((name, feature))
-            outputs.append(self.linear_layers[name](feature))
-
+            outputs.append(self._linear_layers[name](feature))
         return gates, outputs
 
     def forward(self, inputs: Dict[str, torch.Tensor]) -> torch.Tensor:
         gates, outputs = self._encode(inputs)
-
         if len(outputs) == 1:
             # Special case of 1-D inputs that do not need any gating.
             output = outputs[0]
-        elif self.gating_type is GatingType.NONE:
-            output = torch.stack(outputs).sum(0)
+        elif self._gating_type is GatingType.NONE:
+            output = torch.stack(outputs).sum(dim=0)
         else:
-            gate = self._compute_gate(gates)
-            outputs = torch.stack(outputs, dim=-2)
-
-            output = (outputs * gate).sum(-2)
-
+            gate = self._compute_gate(outputs, gates)
+            data = [g * d for g, d in zip(gate, outputs)]
+            output = sum(data)
         return output
 
 
@@ -361,51 +439,27 @@ class PointerLogits(nn.Module):
         num_layers_keys: int = 2,
         key_size: int = 64,
         use_layer_norm: bool = True,
+        affine_layer_norm: bool = False,
     ):
         super().__init__()
 
         self.query_mlp = MLP(
             [query_input_size for _ in range(num_layers_query)] + [key_size],
             use_layer_norm=use_layer_norm,
+            affine_layer_norm=affine_layer_norm,
         )
         self.keys_mlp = MLP(
             [keys_input_size for _ in range(num_layers_keys)] + [key_size],
             use_layer_norm=use_layer_norm,
+            affine_layer_norm=affine_layer_norm,
         )
         self.denom = 1 / math.sqrt(key_size)
 
     def forward(self, query: torch.Tensor, keys: torch.Tensor) -> torch.Tensor:
         query = self.query_mlp(query)
         keys = self.keys_mlp(keys)
-        logits = (keys @ query.transpose(-2, -1)) * self.denom
+        logits = keys @ query.transpose(-2, -1) * self.denom
         return logits
-
-
-class VectorQuantizer(nn.Module):
-    def __init__(self, num_embeddings: int, embedding_dim: int, beta: float = 0.25):
-        super().__init__()
-
-        self.num_embeddings = num_embeddings
-        self.embedding_dim = embedding_dim
-        self.embeddings = _layer_init(nn.Embedding(num_embeddings, embedding_dim))
-        self.beta = beta
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x_flat = x.view(-1, self.embedding_dim)
-        d = (
-            torch.sum(x_flat**2, dim=1, keepdim=True)
-            + torch.sum(self.embeddings.weight**2, dim=1)
-            - 2 * torch.matmul(x_flat, self.embeddings.weight.t())
-        )
-        min_encoding_indices = torch.argmin(d, dim=1)
-        x_q = self.embeddings(min_encoding_indices)
-        x_q = x_q.view_as(x)
-        x_q = x + (x_q - x).detach()
-
-        loss = ((x_q.detach() - x) ** 2) + self.beta * ((x_q - x.detach()) ** 2)
-        loss = loss.mean(-1).flatten(2).mean(-1)
-
-        return x_q, loss
 
 
 class GLU(nn.Module):

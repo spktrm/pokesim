@@ -257,14 +257,10 @@ class EnvironmentNoStackSingleStep:
     threshold: int
 
     @classmethod
-    async def create(
-        cls, worker_index: int, act_fn: Callable, reset_fn: Callable, threshold: int = 2
-    ):
+    async def create(cls, worker_index: int, threshold: int = 2):
         reader, writer = await asyncio.open_unix_connection(SOCKET_PATH)
         self = cls()
         self.worker_index = worker_index
-        self.act_fn = act_fn
-        self.reset_fn = reset_fn
         self.reader = reader
         self.writer = writer
         self.threshold = threshold
@@ -273,19 +269,19 @@ class EnvironmentNoStackSingleStep:
 
     async def run(self):
         while True:
-            self.reset_fn()
             obs, player_index = await self.reset()
-            reward = np.zeros((1,))
-            valid = True
-            done = False
+            reward = 0
 
             while True:
-                action = self.act_fn(obs, reward, valid, player_index)
-                obs, reward, done, player_index = await self.step(action)
-                valid = not bool(reward)
-                if done:
-                    self.act_fn(obs, reward, valid, player_index)
-                    break
+                action = self.act_fn(
+                    obs, reward, self.dones[player_index], player_index
+                )
+                state = await self.step(action)
+                obs, reward, done, player_index = state
+                self.dones[player_index] |= done
+
+                if self.dones.all():
+                    self.reset_fn()
 
     def reset_env_vars(self):
         self.dones = np.array([0, 0], dtype=bool)
@@ -310,31 +306,22 @@ class EnvironmentNoStackSingleStep:
     async def reset(self):
         self.reset_env_vars()
         await self.recvenv()
-        state, *_, player_index = self.process_state()
-        return state, player_index
-
-    def is_current_player_done(self):
-        return self.dones[self.current_player] == 1
-
-    async def step(self, action_index: int):
-        is_current_player_done = self.is_current_player_done()
-
-        if not is_current_player_done:
-            action = f"{self.current_player}|{action_index}\n"
-            self.writer.write(action.encode(ENCODING))
-            await self.writer.drain()
-
-        await self.recvenv()
-
         return self.process_state()
 
-    def process_state(self) -> Tuple[Dict[str, np.ndarray], int, bool]:
+    async def step(self, action_index: int):
+        action = f"{self.current_player}|{action_index}\n"
+        self.writer.write(action.encode(ENCODING))
+        await self.writer.drain()
+        await self.recvenv()
+        return self.process_state()
+
+    def process_state(self) -> Tuple[Dict[str, np.ndarray], int, bool, int]:
         reward = np.zeros(1)
 
+        # worker_index = self.observation.get_worker_index()
         player_index = self.observation.get_player_index()
         self.current_player = player_index.item()
         done = self.observation.get_done()
-        self.dones[self.current_player] |= bool(done)
         state = self.observation.get_state()
         reward = self.observation.get_reward()
         self.history[self.current_player].append(state)
@@ -351,11 +338,10 @@ class EnvironmentNoStackSingleStep:
 
         state["legal"] = self.observation.get_legal_moves_raw()
 
-        is_done = self.is_done()
         reward = reward.reshape((1,))
         return (
             state,
             reward.copy(),  # * is_done,
-            is_done,
+            bool(done),
             self.current_player,
         )

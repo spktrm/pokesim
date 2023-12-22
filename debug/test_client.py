@@ -34,13 +34,20 @@ def main(worker_index):
     state_dict = ckpt["params"]
 
     model = Model()
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict, strict=False)
 
     filler_queue = FillerQueue()
     run_environment(
-        worker_index, model, None, filler_queue, filler_queue, verbose=True, threshold=1
+        worker_index,
+        model,
+        None,
+        filler_queue,
+        filler_queue,
+        None,
+        verbose=True,
+        threshold=1,
     )
 
 
 if __name__ == "__main__":
-    main(1000)
+    main(100)

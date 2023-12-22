@@ -12,7 +12,7 @@ from pokesim.data import NUM_PLAYERS
 from pokesim.nn.modelv2 import Model
 from pokesim.structs import Batch, ModelOutput, State
 
-from pokesim.rnad.utils import EntropySchedule, v_trace, _player_others
+from pokesim.rnad.utils import EntropySchedule, v_trace, _player_others, _policy_ratio
 from pokesim.rnad.config import RNaDConfig
 
 from pokesim.utils import finetune, _print_params, SGDTowardsModel
@@ -22,7 +22,7 @@ def get_loss_v(
     v_list: List[torch.Tensor],
     v_target_list: List[torch.Tensor],
     mask_list: List[torch.Tensor],
-) -> Sequence[torch.Tensor]:
+) -> torch.Tensor:
     """Define the loss function for the critic."""
     loss_v_list = []
     for v_n, v_target, mask in zip(v_list, v_target_list, mask_list):
@@ -37,11 +37,10 @@ def apply_force_with_threshold(
     decision_outputs: torch.Tensor,
     force: torch.Tensor,
     threshold: float,
-    threshold_center: torch.Tensor,
 ) -> torch.Tensor:
     """Apply the force with below a given threshold."""
-    can_decrease = decision_outputs - threshold_center > -threshold
-    can_increase = decision_outputs - threshold_center < threshold
+    can_decrease = decision_outputs > -threshold
+    can_increase = decision_outputs < threshold
     force_negative = torch.minimum(force, torch.tensor(0.0))
     force_positive = torch.maximum(force, torch.tensor(0.0))
     clipped_force = can_decrease * force_negative + can_increase * force_positive
@@ -65,9 +64,12 @@ def get_loss_nerd(
     importance_sampling_correction: List[torch.Tensor],
     clip: float = 100,
     threshold: float = 2,
-) -> Sequence[torch.Tensor]:
+) -> torch.Tensor:
     """Define the nerd loss."""
     loss_pi_list = []
+
+    legal_action_sum = legal_actions.sum(-1, keepdim=True)
+
     for k, (logit_pi, pi, q_vr, is_c) in enumerate(
         zip(logit_list, policy_list, q_vr_list, importance_sampling_correction)
     ):
@@ -76,15 +78,15 @@ def get_loss_nerd(
         adv_pi = is_c * adv_pi  # importance sampling correction
         adv_pi = torch.clip(adv_pi, min=-clip, max=clip).detach()
 
-        logits = logit_pi - torch.mean(logit_pi * legal_actions, dim=-1, keepdim=True)
-
-        threshold_center = torch.zeros_like(logits)
+        valid_logit_sum = torch.sum(logit_pi * legal_actions, dim=-1, keepdim=True)
+        logit_mean = valid_logit_sum / legal_action_sum
+        logits = logit_pi - logit_mean
 
         nerd_loss = torch.sum(
-            legal_actions
-            * apply_force_with_threshold(logits, adv_pi, threshold, threshold_center),
-            axis=-1,
-        )
+            legal_actions * apply_force_with_threshold(logits, adv_pi, threshold),
+            dim=-1,
+        ) / legal_action_sum.squeeze(-1)
+
         nerd_loss = -renormalize(nerd_loss, valid * (player_ids == k))
         loss_pi_list.append(nerd_loss)
     return sum(loss_pi_list)
@@ -133,25 +135,29 @@ class Learner:
         self.extra_config = {
             "num_params": _print_params(self.params)[0],
             "entity_size": self.params.entity_size,
-            "vector_size": self.params.vector_size,
+            "vector1_size": self.params.vector1_size,
+            "vector2_size": self.params.vector2_size,
         }
 
         self.params_actor = deepcopy(self.params).share_memory()
         self.params_actor.eval()
 
         self.params_target = deepcopy(self.params)
-        # self.params_prev = deepcopy(self.params)
-        # self.params_prev_ = deepcopy(self.params)
+        if self.config.enable_regularization:
+            self.params_prev = deepcopy(self.params)
+            self.params_prev_ = deepcopy(self.params)
 
         self.params_target.train()
-        # self.params_prev.train()
-        # self.params_prev_.train()
+        if self.config.enable_regularization:
+            self.params_prev.train()
+            self.params_prev_.train()
 
         self.params.to(self.config.learner_device)
         self.params_actor.to(self.config.actor_device)
         self.params_target.to(self.config.learner_device)
-        # self.params_prev.to(self.config.learner_device)
-        # self.params_prev_.to(self.config.learner_device)
+        if self.config.enable_regularization:
+            self.params_prev.to(self.config.learner_device)
+            self.params_prev_.to(self.config.learner_device)
 
         if not debug and trace_nets:
             actor_example = get_example(1, 1, self.config.actor_device)
@@ -168,8 +174,13 @@ class Learner:
                 self.params_target = torch.jit.trace(
                     self.params_target, learner_example
                 )
-                # self.params_prev = torch.jit.trace(self.params_prev, learner_example)
-                # self.params_prev_ = torch.jit.trace(self.params_prev_, learner_example)
+                if self.config.enable_regularization:
+                    self.params_prev = torch.jit.trace(
+                        self.params_prev, learner_example
+                    )
+                    self.params_prev_ = torch.jit.trace(
+                        self.params_prev_, learner_example
+                    )
 
         # Parameter optimizers.
         self.optimizer = optim.Adam(
@@ -185,20 +196,19 @@ class Learner:
         self.learner_steps = 0
 
     def save(self, fpath: str):
-        torch.save(
-            {
-                "config": self.config,
-                "params": self.params.state_dict(),
-                "params_actor": self.params_actor.state_dict(),
-                "params_target": self.params_target.state_dict(),
-                # "params_prev": self.params_prev.state_dict(),
-                # "params_prev_": self.params_prev_.state_dict(),
-                "optimizer": self.optimizer.state_dict(),
-                "scaler": self.scaler.state_dict(),
-                "learner_steps": self.learner_steps,
-            },
-            fpath,
-        )
+        obj = {
+            "config": self.config,
+            "params": self.params.state_dict(),
+            "params_actor": self.params_actor.state_dict(),
+            "params_target": self.params_target.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "scaler": self.scaler.state_dict(),
+            "learner_steps": self.learner_steps,
+        }
+        if self.config.enable_regularization:
+            obj["params_prev"] = self.params_prev.state_dict()
+            obj["params_prev_"] = self.params_prev_.state_dict()
+        torch.save(obj, fpath)
 
     @classmethod
     def from_fpath(cls, fpath: str, ignore_config: bool = False, **kwargs):
@@ -209,11 +219,18 @@ class Learner:
         obj.params.load_state_dict(ckpt["params"])
         obj.params_actor.load_state_dict(ckpt["params_actor"])
         obj.params_target.load_state_dict(ckpt["params_target"])
-        # obj.params_prev.load_state_dict(ckpt["params_prev"])
-        # obj.params_prev_.load_state_dict(ckpt["params_prev_"])
         obj.optimizer.load_state_dict(ckpt["optimizer"])
         obj.scaler.load_state_dict(ckpt["scaler"])
         obj.learner_steps = ckpt["learner_steps"]
+        if obj.config.enable_regularization:
+            try:
+                obj.params_prev.load_state_dict(ckpt["params_prev"])
+            except:
+                obj.params_prev.load_state_dict(ckpt["params_target"])
+            try:
+                obj.params_prev_.load_state_dict(ckpt["params_prev_"])
+            except:
+                obj.params_prev_.load_state_dict(ckpt["params_target"])
         return obj
 
     def get_config(self):
@@ -250,32 +267,23 @@ class Learner:
 
         params: ModelOutput = self.params(**forward_batch)
 
-        order = torch.from_numpy(
-            np.argsort(np.concatenate((batch.ts[:, ::2], batch.ts[:, 1::2])), axis=0)
-        ).to(self.config.learner_device)
-
-        batch = batch.to_flat()
-        max_index = batch.valid.shape[0]
-
         with torch.no_grad():
             params_target: ModelOutput = self.params_target(**forward_batch)
-            # params_prev: ModelOutput = self.params_prev(**forward_batch)
-            # params_prev_: ModelOutput = self.params_prev_(**forward_batch)
 
-            params_target = params_target.to_flat(order, max_index)
-            # params_prev = params_prev.to_flat(order, max_index)
-            # params_prev_ = params_prev_.to_flat(order, max_index)
-
-        params = params.to_flat(order, max_index)
+            if self.config.enable_regularization:
+                params_prev: ModelOutput = self.params_prev(**forward_batch)
+                params_prev_: ModelOutput = self.params_prev_(**forward_batch)
 
         # This line creates the reward transform log(pi(a|x)/pi_reg(a|x)).
         # For the stability reasons, reward changes smoothly between iterations.
         # The mixing between old and new reward transform is a convex combination
         # parametrised by alpha.
-        # log_policy_reg = params.log_policy - (
-        #     alpha * params_prev.log_policy + (1 - alpha) * params_prev_.log_policy
-        # )
-        log_policy_reg = torch.zeros_like(params.log_policy)
+        if self.config.enable_regularization:
+            log_policy_reg = params.log_policy - (
+                alpha * params_prev.log_policy + (1 - alpha) * params_prev_.log_policy
+            )
+        else:
+            log_policy_reg = torch.zeros_like(params.log_policy)
 
         v_target_list, has_played_list, v_trace_policy_target_list = [], [], []
 
@@ -284,6 +292,7 @@ class Learner:
         _policy_pprocessed = finetune(
             params.policy.detach().cpu(), torch.from_numpy(batch.legal)
         ).numpy()
+        # _policy_pprocessed = params.policy.detach().cpu().numpy()
         _log_policy_reg = log_policy_reg.detach().cpu().numpy()
         valid = self._to_torch(batch.valid)
         player_id = self._to_torch(batch.player_id)
@@ -317,16 +326,17 @@ class Learner:
             has_played_list.append(has_played)
             v_trace_policy_target_list.append(policy_target_)
 
-        # policy_ratio = np.array(
-        #     _policy_ratio(_policy_pprocessed, batch.policy, action_oh, batch.valid)
-        # )
-        # is_vector = torch.unsqueeze(self._to_torch(policy_ratio), axis=-1)
-        is_vector = torch.unsqueeze(torch.ones_like(valid), axis=-1)
-        importance_sampling_correction = [is_vector] * NUM_PLAYERS
-
         loss_v = get_loss_v(
             [params.value] * NUM_PLAYERS, v_target_list, has_played_list
         )
+
+        policy_ratio = np.array(
+            _policy_ratio(_policy_pprocessed, batch.policy, action_oh, batch.valid)
+        )
+        is_vector = torch.unsqueeze(self._to_torch(policy_ratio), axis=-1)
+        is_vector = is_vector.clamp(max=1)
+        # is_vector = torch.unsqueeze(torch.ones_like(valid), axis=-1)
+        importance_sampling_correction = [is_vector] * NUM_PLAYERS
 
         # Uses v-trace to define q-values for Nerd
         loss_nerd = get_loss_nerd(
@@ -342,12 +352,19 @@ class Learner:
         )
 
         valid_sum = valid.sum()
-        # loss_dyn = (params.forward_dynamics_loss * valid).sum() / valid_sum
 
-        loss_entropy = (params.policy * params.log_policy).sum(-1)
-        loss_entropy = (loss_entropy * valid).sum() / valid_sum
+        loss = loss_v + loss_nerd
 
-        loss = loss_v + loss_nerd + 1e-4 * loss_entropy  # + loss_dyn
+        if not self.config.enable_regularization:
+            loss_entropy = (params.policy * params.log_policy).sum(-1)
+            loss_entropy = (loss_entropy * valid).sum() / valid_sum
+            loss = loss + 1e-3 * loss_entropy
+
+        else:
+            with torch.no_grad():
+                loss_entropy = (params.policy * params.log_policy).sum(-1)
+                loss_entropy = (loss_entropy * valid).sum() / valid_sum
+
         self.scaler.scale(loss).backward()
 
         return {
@@ -362,29 +379,30 @@ class Learner:
 
         loss_vals = self.loss(batch, alpha)
 
-        self.scaler.unscale_(self.optimizer)
+        if self.learner_steps % 1 == 0:
+            self.scaler.unscale_(self.optimizer)
 
-        nn.utils.clip_grad.clip_grad_value_(
-            self.params.parameters(), self.config.clip_gradient
-        )
+            nn.utils.clip_grad.clip_grad_value_(
+                self.params.parameters(), self.config.clip_gradient
+            )
 
-        # Update `params`` using the computed gradient.
-        self.scaler.step(self.optimizer)
-        self.scaler.update()
+            # Update `params`` using the computed gradient.
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
 
-        self.optimizer.zero_grad(set_to_none=True)
+            self.optimizer.zero_grad(set_to_none=True)
 
-        # Update `params_target` towards `params`.
-        self.optimizer_target.step()
+            # Update `params_target` towards `params`.
+            self.optimizer_target.step()
 
-        # Rolls forward the prev and prev_ params if update_target_net is 1.
-        # pyformat: disable
-        # if update_target_net:
-        #     print(f"Updating regularization nets @ {self.learner_steps:,}")
-        #     self.params_prev_.load_state_dict(self.params_prev.state_dict())
-        #     self.params_prev.load_state_dict(self.params_target.state_dict())
+            # Rolls forward the prev and prev_ params if update_target_net is 1.
+            # pyformat: disable
+            if update_target_net and self.config.enable_regularization:
+                print(f"Updating regularization nets @ {self.learner_steps:,}")
+                self.params_prev_.load_state_dict(self.params_prev.state_dict())
+                self.params_prev.load_state_dict(self.params_target.state_dict())
 
-        self.params_actor.load_state_dict(self.params.state_dict())
+            self.params_actor.load_state_dict(self.params.state_dict())
 
         draws = abs(batch.rewards).sum(0).sum(1) == 0
         draw_ratio = draws.sum() / batch.valid.shape[1]

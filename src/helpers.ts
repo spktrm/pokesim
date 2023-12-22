@@ -151,6 +151,60 @@ type identType = { active: (string | undefined)[]; team: string[] };
 //     }
 // }
 
+class MaxdmgPlayer {
+    handler: BattlesHandler;
+    playerIndex: number;
+    legalMask: Int8Array;
+
+    constructor(
+        handler: BattlesHandler,
+        playerIndex: number,
+        legalMask: Int8Array,
+    ) {
+        this.handler = handler;
+        this.playerIndex = playerIndex;
+        this.legalMask = legalMask;
+    }
+
+    getAction(): string {
+        const battle = this.handler.getMyBattle();
+        const request = battle.request as AnyObject;
+        const active = (request?.active ?? [])[0] as AnyObject;
+        const canMove = this.legalMask.slice(0, 4).reduce((a, b) => a + b) > 0;
+
+        let maxMoveIndex: number = -1;
+        if (active !== undefined && canMove) {
+            const moves: string[] = active.moves.map(
+                (value: { id: any }) => value.id,
+            );
+            const basePowers = moves.map((moveId, moveIndex) => {
+                const valid = this.legalMask[moveIndex];
+                const returnLength = "return".length;
+                if (
+                    moveId.startsWith("return") &&
+                    moveId.length !== returnLength
+                ) {
+                    return (
+                        valid * parseInt(moveId.slice(returnLength)) +
+                        (1 - valid) * -1
+                    );
+                }
+                return (
+                    valid * battle.gen.dex.moves.get(moveId).basePower +
+                    (1 - valid) * -1
+                );
+            });
+            maxMoveIndex = basePowers.reduce(
+                (maxIndex, currentValue, currentIndex, array) =>
+                    currentValue > array[maxIndex] ? currentIndex : maxIndex,
+                0,
+            );
+        }
+
+        return maxMoveIndex === -1 ? "default" : `move ${maxMoveIndex + 1}`;
+    }
+}
+
 export class BattlesHandler {
     battles: clientBattle[];
     turns: AnyObject;
@@ -205,14 +259,14 @@ export class BattlesHandler {
         done: number,
         playerIndex: number,
         workerIndex?: number,
-        reward?: number
+        reward?: number,
     ) {
         const stateHandler = new Int8State(
             this,
             playerIndex,
             workerIndex ?? 0,
             done,
-            reward ?? 0
+            reward ?? 0,
         );
         const state = stateHandler.getState();
         const sides: Side[] = [
@@ -235,10 +289,23 @@ export class BattlesHandler {
             playerIndex,
             workerIndex ?? 0,
             0,
-            0
+            0,
         );
         const legalMask = stateHandler.getLegalMask();
         return getRandomAction(legalMask);
+    }
+
+    getMaxdmgAction(playerIndex: number, workerIndex?: number): string {
+        const stateHandler = new Int8State(
+            this,
+            playerIndex,
+            workerIndex ?? 0,
+            0,
+            0,
+        );
+        const legalMask = stateHandler.getLegalMask();
+        const player = new MaxdmgPlayer(this, playerIndex, legalMask);
+        return player.getAction();
     }
 
     getHeuristicAction(playerIndex: number, workerIndex?: number): string {
@@ -299,7 +366,7 @@ export function isActionRequired(battle: clientBattle, chunk: string): boolean {
 
 export function formatTeamPreviewAction(
     action: string,
-    totalPokemon: number
+    totalPokemon: number,
 ): string {
     const actionIndex = parseInt(action.split(" ")[1]);
     const remainder = arange(1, totalPokemon + 1)

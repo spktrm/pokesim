@@ -146,19 +146,20 @@ class Learner:
 
         # Create initial parameters.
         self.params = Model()
-        # self.params_target = Model()
+        self.params_target = Model()
 
         if init is not None:
             self.params.load_state_dict(init)
-            # self.params_target.load_state_dict(init)
+            self.params_target.load_state_dict(init)
 
         self.params.train()
-        # self.params_target.train()
+        self.params_target.train()
 
         self.extra_config = {
             "num_params": _print_params(self.params)[0],
             "entity_size": self.params.entity_size,
-            "vector_size": self.params.vector_size,
+            "vector1_size": self.params.vector1_size,
+            "vector2_size": self.params.vector2_size,
         }
 
         self.params_actor = deepcopy(self.params).share_memory()
@@ -168,7 +169,7 @@ class Learner:
         # self.params_actor_prev.eval()
 
         self.params.to(self.config.learner_device)
-        # self.params_target.to(self.config.learner_device)
+        self.params_target.to(self.config.learner_device)
         self.params_actor.to(self.config.actor_device)
 
         if not debug and trace_nets:
@@ -183,9 +184,9 @@ class Learner:
                 learner_example = get_example(1, 1, self.config.learner_device)
 
                 self.params = torch.jit.trace(self.params, learner_example)
-                # self.params_target = torch.jit.trace(
-                #     self.params_target, learner_example
-                # )
+                self.params_target = torch.jit.trace(
+                    self.params_target, learner_example
+                )
 
         # Parameter optimizers.
         self.optimizer = optim.Adam(
@@ -268,15 +269,15 @@ class Learner:
         bootstrap_value = learner_outputs.value[-1].squeeze(-1)
 
         with torch.no_grad():
-            # learner_target_outputs: ModelOutput = self.params_target(**forward_batch)
-            # target_values = learner_target_outputs.value[:-1].cpu().squeeze(-1)
+            learner_target_outputs: ModelOutput = self.params_target(**forward_batch)
+            target_values = learner_target_outputs.value[:-1].cpu().squeeze(-1)
             vtrace_returns = from_logits(
                 behavior_policy_logits=behavior_policy_logits,
                 target_policy_logits=target_policy_logits,
                 actions=action,
                 discounts=discounts,
                 rewards=rewards,
-                values=values.cpu(),
+                values=target_values,
                 bootstrap_value=bootstrap_value.cpu(),
             )
 
@@ -297,7 +298,7 @@ class Learner:
         # wm_loss = (learner_outputs.pred_state_embedding_loss * discounts[:-1]).sum(0)
 
         discounts_sum = discounts.sum()
-        loss = pg_loss + baseline_loss + 1e-4 * entropy_loss  # + wm_loss
+        loss = pg_loss + baseline_loss + 1e-3 * entropy_loss  # + wm_loss
         loss = loss / discounts_sum
         loss = loss.mean()
 
@@ -329,17 +330,17 @@ class Learner:
 
         self.params_actor.load_state_dict(self.params.state_dict())
 
-        # state_dict = self.params.state_dict()
-        # target_state_dict = self.params_target.state_dict()
+        state_dict = self.params.state_dict()
+        target_state_dict = self.params_target.state_dict()
 
-        # for (key, value), (_, value_target) in zip(
-        #     state_dict.items(), target_state_dict.items()
-        # ):
-        #     target_state_dict[key] = (
-        #         value_target * (1 - self.config.tau) + value * self.config.tau
-        #     )
+        for (key, value), (_, value_target) in zip(
+            state_dict.items(), target_state_dict.items()
+        ):
+            target_state_dict[key] = (
+                value_target * (1 - self.config.tau) + value * self.config.tau
+            )
 
-        # self.params_target.load_state_dict(target_state_dict)
+        self.params_target.load_state_dict(target_state_dict)
 
         draws = abs(batch.rewards).sum(0).sum(1) == 0
         draw_ratio = draws.sum() / batch.valid.shape[1]

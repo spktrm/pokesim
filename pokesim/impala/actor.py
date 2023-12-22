@@ -52,10 +52,7 @@ async def _run_environment_async(
         0: [],
         1: [],
     }
-    hidden_states = {
-        0: model.get_hidden_state(1),
-        1: model.get_hidden_state(1),
-    }
+
     action_space = list(range(10))
 
     num_battles = 0
@@ -73,13 +70,10 @@ async def _run_environment_async(
             actor_model = model
 
         with torch.no_grad():
-            model_output: ModelOutput = actor_model(
-                **model_input, hidden_state=hidden_states[player_index]
-            )
+            model_output: ModelOutput = actor_model(**model_input)
 
         pi = model_output.policy
         value = model_output.value
-        hidden_states[player_index] = model_output.hidden_state
 
         pi = pi.cpu().numpy().flatten()
         value = value.cpu().numpy().flatten()
@@ -115,9 +109,10 @@ async def _run_environment_async(
         nonlocal num_battles
 
         if worker_index < EVAL_WORKER_INDEX:
-            if timesteps[0]:
-                trajectory = Trajectory.from_env_steps(timesteps[0], fix_rewards=False)
-                learn_queue.put(trajectory.serialize())
+            for player_index in range(2):
+                if timesteps[player_index]:
+                    trajectory = Trajectory.from_env_steps(timesteps[player_index])
+                    learn_queue.put(trajectory)  # .serialize())
 
         else:
             if timesteps[0]:
@@ -125,7 +120,6 @@ async def _run_environment_async(
                 eval_queue.put((num_battles, worker_index, final_reward))
 
         for player_index in range(2):
-            hidden_states[player_index] = model.get_hidden_state(1)
             timesteps[player_index] = []
 
         num_battles += 1

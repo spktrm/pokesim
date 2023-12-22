@@ -1,12 +1,12 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { BattleStreams, Teams } from "@pkmn/sim";
 import { TeamGenerators } from "@pkmn/randoms";
-import { Battle as clientBattle } from "@pkmn/client";
+import { Battle } from "@pkmn/client";
 import { Generations } from "@pkmn/data";
 import { Dex } from "@pkmn/dex";
 import { ObjectReadWriteStream } from "@pkmn/streams";
-import { BattleStreamsType } from "./types";
-import { formatId } from "./data";
+import { BattleStreamsType } from "../types";
+import { formatId } from "../data";
 import {
     AsyncQueue,
     BattlesHandler,
@@ -16,7 +16,7 @@ import {
     isAction,
     isActionRequired,
     getIsTeamPreview,
-} from "./helpers";
+} from "../helpers";
 
 Teams.setGeneratorFactory(TeamGenerators);
 
@@ -62,8 +62,8 @@ function isEvalPlayer(workerIndex: number, playerIndex: number): boolean {
 async function runPlayer(
     stream: ObjectReadWriteStream<string>,
     playerIndex: number,
-    p1battle: clientBattle,
-    p2battle: clientBattle
+    p1battle: Battle,
+    p2battle: Battle
 ) {
     // const handler = new BattlesHandler([p1battle, p2battle]);
     const handler = new BattlesHandler([p1battle]);
@@ -175,8 +175,8 @@ async function runGame() {
     streams = BattleStreams.getPlayerStreams(stream);
     const spec = { formatid: formatId };
 
-    const p1battle = new clientBattle(generations);
-    const p2battle = new clientBattle(generations);
+    const p1battle = new Battle(new Generations(Dex));
+    const p2battle = new Battle(new Generations(Dex));
 
     const players = Promise.all([
         runPlayer(streams.p1, 0, p1battle, p2battle),

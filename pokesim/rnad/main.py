@@ -9,7 +9,7 @@ import wandb
 import threading
 import traceback
 
-import multiprocessing as mp
+from torch import multiprocessing as mp
 
 from tqdm import tqdm
 from typing import List
@@ -50,21 +50,30 @@ def learn(learner: Learner, batch: Batch, lock=threading.Lock()):
         return logs
 
 
-def learn_loop(learner: Learner, queue: mp.Queue, debug: bool = False):
+def learn_loop(
+    learner: Learner,
+    queue: mp.Queue,
+    condition: mp.Condition,
+    debug: bool = False,
+):
     progress = tqdm(desc="Learning")
     env_steps = 0
 
     while True:
         batch = []
+
         for _ in range(learner.config.batch_size):
-            t1, t2 = queue.get()
-            batch += [Trajectory.deserialize(t) for t in [t1, t2]]
+            trajectory = queue.get()
+            batch.append(Trajectory.deserialize(trajectory))
 
         batch = Batch.from_trajectories(batch)
         env_steps += batch.valid.sum()
 
         logs = learn(learner, batch)
         # logs["env_steps"] = env_steps
+
+        # with condition:
+        #     condition.notify_all()
 
         if not debug:
             wandb.log(logs)
@@ -88,15 +97,16 @@ def get_most_recent_file(dir_path):
     return most_recent_file
 
 
-def main(debug):
+def main(ctx, debug):
     # init = torch.load("ckpts/038847.pt", map_location="cpu")
+    # fpath = get_most_recent_file("ckpts")
+    # print(fpath)
+    # init = torch.load(fpath, map_location="cpu")
     # init = init["params"]
 
     init = None
     learner = Learner(init=init, debug=debug, trace_nets=False)
 
-    # fpath = get_most_recent_file("ckpts")
-    # print(fpath)
     # learner = Learner.from_fpath(fpath, trace_nets=False)
 
     if not debug:
@@ -111,19 +121,20 @@ def main(debug):
     else:
         num_workers = 1
 
-    processes: List[mp.Process] = []
+    processes: List[ctx.Process] = []
     threads: List[threading.Thread] = []
 
-    learn_queue = mp.Queue(maxsize=learner.config.batch_size)
-    eval_queue = mp.Queue()
+    learn_queue = ctx.Queue(maxsize=2 * learner.config.batch_size)
+    eval_queue = ctx.Queue()
 
     if not debug:
         eval_thread = threading.Thread(target=read_eval, args=(eval_queue,))
         threads.append(eval_thread)
         eval_thread.start()
 
+    batch_condition = ctx.Condition()
     for worker_index in range(num_workers):
-        process = mp.Process(
+        process = ctx.Process(
             target=run_environment_wrapper,
             args=(
                 worker_index,
@@ -131,6 +142,7 @@ def main(debug):
                 None,
                 learn_queue,
                 eval_queue,
+                batch_condition,
             ),
         )
         process.start()
@@ -139,7 +151,7 @@ def main(debug):
     for _ in range(1):
         learn_thread = threading.Thread(
             target=learn_loop,
-            args=(learner, learn_queue, debug),
+            args=(learner, learn_queue, batch_condition, debug),
         )
         learn_thread.start()
         threads.append(learn_thread)
@@ -171,5 +183,5 @@ def main(debug):
 
 
 if __name__ == "__main__":
-    mp.set_start_method("fork")
-    main(False)
+    ctx = mp.get_context("fork")
+    main(ctx, False)

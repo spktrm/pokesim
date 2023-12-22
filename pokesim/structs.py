@@ -34,17 +34,9 @@ class ModelOutput(NamedTuple):
     log_policy: torch.Tensor
     logits: torch.Tensor
     value: torch.Tensor
-    hidden_state: torch.Tensor = None
-    forward_dynamics_loss: torch.Tensor = None
 
     def to_flat(self, order: torch.Tensor, max_index: int):
-        VALID_KEYS = {
-            "policy",
-            "log_policy",
-            "logits",
-            "value",
-            # "forward_dynamics_loss",
-        }
+        VALID_KEYS = {"policy", "log_policy", "logits", "value"}
         return ModelOutput(
             **{
                 k: torch.take_along_dim(
@@ -73,15 +65,8 @@ class TimeStep(NamedTuple):
 
 
 actor_fields = set(ActorStep._fields)
-env_fields = {"player_id", "state", "valid", "legal", "history_mask"}
+env_fields = {"player_id", "state", "valid", "legal"}
 _FIELDS_TO_STORE = actor_fields | env_fields | {"ts"}
-
-
-def _fix_rewards(rewards: np.ndarray, player_id: np.ndarray, valid: np.ndarray):
-    new_rewards = np.zeros((player_id.shape[0] - 2, 2))
-    for player_index in range(2):
-        new_rewards[-1, player_index] = rewards[player_id == player_index][-1]
-    return new_rewards
 
 
 class Trajectory(NamedTuple):
@@ -98,11 +83,8 @@ class Trajectory(NamedTuple):
     value: np.ndarray
     ts: np.ndarray
 
-    # extra
-    history_mask: np.ndarray = None
-
     def get_length(self):
-        return max(self.valid.sum(0, keepdims=True))
+        return max(self.valid.sum(0, keepdims=True)) + 1
 
     def save(self, fpath: str):
         print(f"Saving `{fpath}`")
@@ -119,9 +101,7 @@ class Trajectory(NamedTuple):
         return self.valid.sum() > 0
 
     @classmethod
-    def from_env_steps(
-        cls, traj: List[TimeStep], fix_rewards: bool = True
-    ) -> "Trajectory":
+    def from_env_steps(cls, traj: List[TimeStep]) -> "Trajectory":
         store = {k: [] for k in _FIELDS_TO_STORE}
         for _, actor_step, env_step, ts in traj:
             for key in actor_fields:
@@ -138,12 +118,6 @@ class Trajectory(NamedTuple):
 
         elements = {key: np.stack(value) for key, value in store.items() if value}
         elements["rewards"][:-1] = elements["rewards"][1:]
-        # if fix_rewards:
-        #     rewards_fixed = _fix_rewards(
-        #         elements["rewards"], elements["player_id"], elements["valid"]
-        #     )
-        #     elements = {key: value[:-2] for key, value in elements.items()}
-        #     elements["rewards"] = rewards_fixed
 
         return cls(**elements)
 
@@ -190,26 +164,6 @@ class Batch(Trajectory):
             store["ts"][trajectory_length:, batch_index] = int(1e4)
 
         return cls(**store)
-
-    def to_flat(self):
-        order = np.argsort(np.concatenate((self.ts[:, ::2], self.ts[:, 1::2])), axis=0)
-        max_length = max(self.valid[:, ::2].sum(0) + self.valid[:, 1::2].sum(0)).item()
-        concat = {
-            k: np.take_along_axis(
-                np.concatenate((v[:, ::2], v[:, 1::2])),
-                order.reshape(order.shape + ((1,) * (len(v.shape) - 2))),
-                0,
-            )[:max_length]
-            for k, v in self._asdict().items()
-            if v is not None
-        }
-        concat["rewards"] = np.zeros((*concat["rewards"].shape[:2], 2))
-        final_indices = concat["valid"].sum(0) - 1
-        for batch_index in range(self.valid.shape[1]):
-            concat["rewards"][
-                final_indices[batch_index // 2], batch_index // 2, batch_index % 2
-            ] = (self.rewards[:, batch_index].sum(0).item())
-        return Batch(**concat)
 
 
 class State(NamedTuple):

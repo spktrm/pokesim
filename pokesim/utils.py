@@ -23,15 +23,6 @@ class SGDTowardsModel:
 
 
 def _print_params(model: nn.Module):
-    from pokesim.nn.modules import (
-        MLP,
-        PointerLogits,
-        ResNet,
-        ToVector,
-        VectorMerge,
-        GLU,
-    )
-
     trainable_params_count = sum(
         x.numel() for x in model.parameters() if x.requires_grad
     )
@@ -42,24 +33,15 @@ def _print_params(model: nn.Module):
     rows = []
     for name, mod in model.named_modules():
         if (
-            isinstance(
-                mod,
-                (
-                    MLP,
-                    nn.LSTM,
-                    nn.GRU,
-                    ToVector,
-                    VectorMerge,
-                    ResNet,
-                    PointerLogits,
-                    GLU,
-                ),
-            )
+            name
             and name.count(".") == 0
+            or (isinstance(mod, nn.Embedding) and mod.weight.requires_grad)
         ):
             mod_params_count = sum(
                 x.numel() for x in mod.parameters() if x.requires_grad
             )
+            if mod_params_count == 0:
+                continue
             rows.append(
                 [
                     name,
@@ -74,18 +56,39 @@ def _print_params(model: nn.Module):
 
 @torch.jit.script_if_tracing
 def _legal_policy(logits: torch.Tensor, legal_actions: torch.Tensor) -> torch.Tensor:
-    return torch.where(legal_actions, logits, float("-inf")).softmax(-1)
+    """A soft-max policy that respects legal_actions."""
+    # Fiddle a bit to make sure we don't generate NaNs or Inf in the middle.
+    l_min = logits.min(dim=-1, keepdim=True).values
+    logits = torch.where(legal_actions, logits, l_min)
+    logits -= logits.max(dim=-1, keepdim=True).values
+    logits *= legal_actions
+    exp_logits = torch.where(
+        legal_actions, torch.exp(logits), 0
+    )  # Illegal actions become 0.
+    exp_logits_sum = torch.sum(exp_logits, dim=-1, keepdim=True)
+    return exp_logits / exp_logits_sum
 
 
 @torch.jit.script_if_tracing
 def _legal_log_policy(
     logits: torch.Tensor, legal_actions: torch.Tensor
 ) -> torch.Tensor:
-    return torch.where(
-        legal_actions,
-        torch.where(legal_actions, logits, float("-inf")).log_softmax(-1),
-        0,
-    )
+    """Return the log of the policy on legal action, 0 on illegal action."""
+    # logits_masked has illegal actions set to -inf.
+    logits_masked = logits + torch.log(legal_actions)
+    max_legal_logit = logits_masked.max(dim=-1, keepdim=True).values
+    logits_masked = logits_masked - max_legal_logit
+    # exp_logits_masked is 0 for illegal actions.
+    exp_logits_masked = torch.exp(logits_masked)
+
+    baseline = torch.log(torch.sum(exp_logits_masked, dim=-1, keepdim=True))
+    # Subtract baseline from logits. We do not simply return
+    #     logits_masked - baseline
+    # because that has -inf for illegal actions, or
+    #     legal_actions * (logits_masked - baseline)
+    # because that leads to 0 * -inf == nan for illegal actions.
+    log_policy = torch.multiply(legal_actions, (logits - max_legal_logit - baseline))
+    return log_policy
 
 
 def _threshold(
@@ -132,5 +135,5 @@ def _discretize(policy: torch.Tensor, n_disc: float = 16) -> torch.Tensor:
 @torch.jit.script_if_tracing
 def finetune(policy: torch.Tensor, mask: torch.Tensor):
     policy = _threshold(policy, mask)
-    policy = _discretize(policy)
+    # policy = _discretize(policy)
     return policy

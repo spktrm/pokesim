@@ -56,7 +56,7 @@ def learn_loop(learner: Learner, queue: mp.Queue, debug: bool = False):
         batch = Batch.from_trajectories(
             tuple(
                 [
-                    Trajectory.deserialize(queue.get())
+                    queue.get()  # Trajectory.deserialize(queue.get())
                     for _ in range(learner.config.batch_size)
                 ]
             )

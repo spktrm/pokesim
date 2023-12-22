@@ -5,12 +5,27 @@ import * as net from "net";
 import * as fs from "fs";
 import * as yaml from "js-yaml";
 
-import { InternalState } from "./helpers";
+import { InternalState } from "../helpers";
+import { argv } from "node:process";
 
 type Config = { [k: string]: any };
-const config = yaml.load(
-    fs.readFileSync(path.resolve("config.yml"), "utf-8"),
-) as Config;
+
+const debug = argv[2] === "debug";
+
+function loadConfig(path: string): Config {
+    let config = yaml.load(fs.readFileSync(path, "utf-8")) as Config;
+    const numWorkers = config.num_workers as number;
+    for (const [key, value] of Object.entries(config)) {
+        if (key.endsWith("worker_index")) {
+            if (value <= 0) {
+                config[key] = numWorkers + value;
+            }
+        }
+    }
+    return { ...config };
+}
+
+const config = loadConfig(path.resolve("config.yml"));
 console.log(config);
 
 const numWorkers = config.num_workers as number;
@@ -48,10 +63,10 @@ const emptyWriteObject = {
 
 function createWorker(
     workerIndex: number,
-    clientSocket: net.Socket | typeof emptyWriteObject = emptyWriteObject,
+    clientSocket: net.Socket | typeof emptyWriteObject = emptyWriteObject
 ) {
-    const worker = new Worker(path.resolve(__dirname, "worker.js"), {
-        workerData: { workerIndex, config },
+    const worker = new Worker(path.resolve(__dirname, "../worker/online.js"), {
+        workerData: { workerIndex, config: { ...config }, debug },
     });
     worker.on("message", (buffer: Buffer) => {
         const workerIndex = buffer[0];
@@ -84,46 +99,53 @@ const maxWorkerIndexLength = 4;
 const maxStepsLength = 15;
 const maxThroughputLength = 6;
 const updateFreq = 1000 / serverUpdateFreq;
+const minEvalIndex = Math.min(
+    config.default_worker_index,
+    config.random_worker_index,
+    config.heuristic_worker_index
+);
 
-setInterval(() => {
-    let log = "";
+if (!debug) {
+    setInterval(() => {
+        let log = "";
 
-    let totalThroughputs = 0;
-    let totalSteps = 0;
+        let totalThroughputs = 0;
+        let totalSteps = 0;
 
-    for (let index = 0, len = throughputs.length; index < len; index++) {
-        const value = throughputs[index];
-        const throughput = value - prevThroughputs[index];
-        prevThroughputs[index] = value;
+        for (let index = 0, len = throughputs.length; index < len; index++) {
+            const value = throughputs[index];
+            const throughput = value - prevThroughputs[index];
+            prevThroughputs[index] = value;
+
+            log +=
+                "Worker " +
+                index.toString().padEnd(maxWorkerIndexLength) +
+                " Steps: " +
+                value.toString().padEnd(maxStepsLength) +
+                " Throughput/sec: " +
+                (throughput * serverUpdateFreq)
+                    .toFixed(0)
+                    .padEnd(maxThroughputLength) +
+                "\n";
+
+            if (index < minEvalIndex) {
+                totalThroughputs += throughput;
+                totalSteps += value;
+            }
+        }
 
         log +=
-            "Worker " +
-            index.toString().padEnd(maxWorkerIndexLength) +
-            " Steps: " +
-            value.toString().padEnd(maxStepsLength) +
-            " Throughput/sec: " +
-            (throughput * serverUpdateFreq)
-                .toFixed(0)
-                .padEnd(maxThroughputLength) +
-            "\n";
+            "\nTotal - Steps: " +
+            totalSteps
+                .toString()
+                .padEnd(maxStepsLength + maxWorkerIndexLength + 8) +
+            " Throughput/Sec: " +
+            (totalThroughputs * serverUpdateFreq).toFixed(2);
 
-        if (index < config.default_worker_index) {
-            totalThroughputs += throughput;
-            totalSteps += value;
-        }
-    }
-
-    log +=
-        "\nTotal - Steps: " +
-        totalSteps
-            .toString()
-            .padEnd(maxStepsLength + maxWorkerIndexLength + 8) +
-        " Throughput/Sec: " +
-        (totalThroughputs * serverUpdateFreq).toFixed(2);
-
-    console.clear();
-    console.log(log);
-}, updateFreq);
+        console.clear();
+        console.log(log);
+    }, updateFreq);
+}
 
 let numConnections = 0;
 const socketStates = new Map<net.Socket, InternalState>();

@@ -381,9 +381,8 @@ export class Int8State {
     }
 
     getMyPrivateTeam(): Int8Array {
-        const side = this.getMyPublicSide();
         const request = this.getMyPrivateSide();
-        return this.getPrivateTeam(request, side.team);
+        return this.getPrivateTeam(request);
     }
 
     getMyPublicTeam(): Int8Array {
@@ -435,13 +434,12 @@ export class Int8State {
         return teamArray;
     }
 
-    getPrivateTeam(request: AnyObject, team: Pokemon[]): Int8Array {
+    getPrivateTeam(request: AnyObject): Int8Array {
         const requestSide = (request?.side ?? { pokemon: [] }).pokemon;
         const teamArray = new Int8Array(paddedPokemonArray.length * 6);
         for (let i = 0; i < 6; i++) {
             const amalgam = {
                 ...paddedPokemonObj,
-                ...team[i],
                 ...(requestSide[i] ?? {}),
             };
             teamArray.set(
