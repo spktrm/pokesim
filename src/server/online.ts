@@ -63,7 +63,7 @@ const emptyWriteObject = {
 
 function createWorker(
     workerIndex: number,
-    clientSocket: net.Socket | typeof emptyWriteObject = emptyWriteObject
+    clientSocket: net.Socket | typeof emptyWriteObject = emptyWriteObject,
 ) {
     const worker = new Worker(path.resolve(__dirname, "../worker/online.js"), {
         workerData: { workerIndex, config: { ...config }, debug },
@@ -102,7 +102,7 @@ const updateFreq = 1000 / serverUpdateFreq;
 const minEvalIndex = Math.min(
     config.default_worker_index,
     config.random_worker_index,
-    config.heuristic_worker_index
+    config.heuristic_worker_index,
 );
 
 if (!debug) {
