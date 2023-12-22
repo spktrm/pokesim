@@ -26,7 +26,7 @@ class EnvStep(NamedTuple):
     rewards: np.ndarray
     valid: np.ndarray
     legal: np.ndarray
-    history_mask: np.ndarray
+    history_mask: np.ndarray = None
 
 
 class ModelOutput(NamedTuple):
@@ -34,7 +34,20 @@ class ModelOutput(NamedTuple):
     log_policy: torch.Tensor
     logits: torch.Tensor
     value: torch.Tensor
-    step_recon: torch.Tensor = None
+
+    def to_flat(self, order: torch.Tensor, max_index: int):
+        VALID_KEYS = {"policy", "log_policy", "logits", "value"}
+        return ModelOutput(
+            **{
+                k: torch.take_along_dim(
+                    torch.cat((v[:, ::2], v[:, 1::2])),
+                    order.reshape(order.shape + ((1,) * (len(v.shape) - 2))),
+                    0,
+                )[:max_index]
+                for k, v in self._asdict().items()
+                if k in VALID_KEYS
+            }
+        )
 
 
 class ActorStep(NamedTuple):
@@ -48,11 +61,12 @@ class TimeStep(NamedTuple):
     id: str
     actor: ActorStep
     env: EnvStep
+    ts: int
 
 
 actor_fields = set(ActorStep._fields)
-env_fields = {"player_id", "state", "valid", "legal", "history_mask"}
-_FIELDS_TO_STORE = actor_fields | env_fields
+env_fields = {"player_id", "state", "valid", "legal"}
+_FIELDS_TO_STORE = actor_fields | env_fields | {"ts"}
 
 
 class Trajectory(NamedTuple):
@@ -62,15 +76,15 @@ class Trajectory(NamedTuple):
     rewards: np.ndarray
     valid: np.ndarray
     legal: np.ndarray
-    history_mask: np.ndarray
 
     # Actor fields
     policy: np.ndarray
     action: np.ndarray
     value: np.ndarray
+    ts: np.ndarray
 
-    def __len__(self):
-        return max(self.valid.sum(0, keepdims=True))
+    def get_length(self):
+        return max(self.valid.sum(0, keepdims=True)) + 1
 
     def save(self, fpath: str):
         print(f"Saving `{fpath}`")
@@ -89,14 +103,23 @@ class Trajectory(NamedTuple):
     @classmethod
     def from_env_steps(cls, traj: List[TimeStep]) -> "Trajectory":
         store = {k: [] for k in _FIELDS_TO_STORE}
-        for _, actor_step, env_step in traj:
+        for _, actor_step, env_step, ts in traj:
             for key in actor_fields:
-                store[key].append(getattr(actor_step, key))
+                value = getattr(actor_step, key)
+                if value is not None:
+                    store[key].append(value)
+
             for key in env_fields:
-                store[key].append(getattr(env_step, key))
-        return cls(
-            **{key: np.stack(value) for key, value in store.items()},
-        )
+                value = getattr(env_step, key)
+                if value is not None:
+                    store[key].append(value)
+
+            store["ts"].append(ts)
+
+        elements = {key: np.stack(value) for key, value in store.items() if value}
+        elements["rewards"][:-1] = elements["rewards"][1:]
+
+        return cls(**elements)
 
     def serialize(self):
         return {
@@ -113,24 +136,32 @@ class Trajectory(NamedTuple):
 class Batch(Trajectory):
     @classmethod
     def from_trajectories(cls, traj_list: Tuple[Trajectory]) -> "Batch":
-        lengths = np.array([len(t) for t in traj_list])
+        lengths = np.array([t.get_length() for t in traj_list])
         max_index = lengths.argmax(-1)
         batch_size = len(traj_list)
 
         store = {}
         for k in Trajectory._fields:
-            value = getattr(traj_list[max_index], k)[:, None]
+            value = getattr(traj_list[max_index], k)
+            if value is None:
+                continue
+
+            value = value[:, None]
             new_shape = (1, batch_size, *((1,) * len(value.shape[2:])))
             store[k] = np.tile(value, new_shape)
 
-        traj_list = [traj_list[i] for i in np.argsort(lengths)]
+        # traj_list = [traj_list[i] for i in np.argsort(lengths)]
 
         for batch_index, trajectory in enumerate(traj_list):
-            trajectory_length = len(trajectory)
+            trajectory_length = trajectory.get_length()
             for key, values in trajectory._asdict().items():
-                store[key][:trajectory_length, batch_index] = values
+                if values is not None:
+                    store[key][:trajectory_length, batch_index] = values[
+                        :trajectory_length
+                    ]
             store["valid"][trajectory_length:, batch_index] = False
             store["rewards"][trajectory_length:, batch_index] = 0
+            store["ts"][trajectory_length:, batch_index] = int(1e4)
 
         return cls(**store)
 
@@ -152,7 +183,7 @@ class State(NamedTuple):
 
     def get_teams(self, leading_dims: Sequence[int]):
         teams = self.view_teams(leading_dims)
-        active_moveset = teams[..., -1, 0, 0, -4:].astype(int) + 2
+        active_moveset = teams[..., 0, 0, -4:].astype(int)
         return active_moveset, teams
 
     def get_side_conditions(self, leading_dims: Sequence[int]):
@@ -185,14 +216,17 @@ class State(NamedTuple):
 
     def _get_history(self, leading_dims: Sequence[int]):
         history = self.raw[..., HISTORY_OFFSET:].view(np.int16)
-        return history.reshape(*leading_dims, -1, 3)
+        return history.reshape(*leading_dims, -1, 4)
 
     def get_history(self, leading_dims: Sequence[int]):
         history = self._get_history(leading_dims)
         return history.astype(int)
 
     def dense(self):
-        leading_dims = self.raw.shape[:-1]
+        if len(self.raw.shape) > 2:
+            leading_dims = self.raw.shape[:-1]
+        else:
+            leading_dims = (1, 1) + (self.raw.shape[0],)
         turn_enc = self.get_turn(leading_dims)
         active_moveset_enc, teams_enc = self.get_teams(leading_dims)
         side_conditions_enc = self.get_side_conditions(leading_dims)
@@ -219,10 +253,13 @@ class Observation(NamedTuple):
     def get_state(self):
         return self.raw[..., 4:-10]
 
+    def get_legal_moves_raw(self):
+        return self.raw[..., -10:].copy().astype(np.bool_)
+
     def get_legal_moves(self, policy_select: np.ndarray):
-        mask = self.raw[..., -10:]
-        move_mask = mask[..., :4].copy()
-        switch_mask = mask[..., 4:].copy()
+        mask = self.raw[..., -10:].copy()
+        move_mask = mask[..., :4]
+        switch_mask = mask[..., 4:]
         action_type_mask = np.concatenate(
             (
                 move_mask.any(-1, keepdims=True),

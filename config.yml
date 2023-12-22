@@ -3,5 +3,7 @@ encoding: utf-8
 server_update_freq: 1
 num_workers: 20
 prev_worker_index: 100
-default_worker_index: 19
-random_worker_index: 18
+maxdmg_worker_index: -2
+random_worker_index: 100
+default_worker_index: -1
+heuristic_worker_index: 100

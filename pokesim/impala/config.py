@@ -22,31 +22,23 @@ class NerdConfig:
 
 
 @dataclass
-class RNaDConfig:
+class ImpalaConfig:
     """Configuration parameters for the RNaDSolver."""
 
     actor_device = "cpu"
     learner_device = "cuda"
 
     # The batch size to use when learning/improving parameters.
-    batch_size: int = 8
+    batch_size: int = 32
     # The learning rate for `params`.
-    learning_rate: float = 3e-5
+    learning_rate: float = 5e-5
     # The config related to the ADAM optimizer used for updating `params`.
     adam: AdamConfig = AdamConfig()
     # All gradients values are clipped to [-clip_gradient, clip_gradient].
     clip_gradient: float = 10000
-    # The "speed" at which `params_target` is following `params`.
-    target_network_avg: float = 1e-3
 
-    # RNaD algorithm configuration.
-    # Entropy schedule configuration. See EntropySchedule class documentation.
-    entropy_schedule_repeats: List[int] = (1,)
-    entropy_schedule_size: List[int] = (10000,)
-    # The weight of the reward regularisation term in RNaD.
-    eta_reward_transform: float = 0.2
     nerd: NerdConfig = NerdConfig()
     c_vtrace: float = 1.0
     rho: float = np.inf
 
-    enable_regularization: bool = True
+    tau: float = 1e-3

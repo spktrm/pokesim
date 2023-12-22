@@ -3,13 +3,12 @@ import os
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
-import torch
 import time
 import wandb
 import threading
 import traceback
 
-from torch import multiprocessing as mp
+import multiprocessing as mp
 
 from tqdm import tqdm
 from typing import List
@@ -17,8 +16,8 @@ from typing import List
 from pokesim.data import EVAL_MAPPING, NUM_WORKERS
 from pokesim.structs import Batch, Trajectory
 
-from pokesim.rnad.learner import Learner
-from pokesim.rnad.actor import run_environment
+from pokesim.impala.learner import Learner
+from pokesim.impala.actor import run_environment
 
 
 def run_environment_wrapper(*args, **kwargs):
@@ -34,14 +33,13 @@ def run_environment_wrapper(*args, **kwargs):
 def read_eval(eval_queue: mp.Queue):
     while True:
         n, o, r = eval_queue.get()
-        pi = EVAL_MAPPING[o]
+        pi = EVAL_MAPPING.get(o)
         wandb.log({f"{pi}_n": n, f"{pi}_r": r})
 
 
 def learn(learner: Learner, batch: Batch, lock=threading.Lock()):
     with lock:
-        alpha, update_target_net = learner._entropy_schedule(learner.learner_steps)
-        logs = learner.update_parameters(batch, alpha, update_target_net)
+        logs = learner.update_parameters(batch)
 
         learner.learner_steps += 1
 
@@ -50,64 +48,35 @@ def learn(learner: Learner, batch: Batch, lock=threading.Lock()):
         return logs
 
 
-def learn_loop(
-    learner: Learner,
-    queue: mp.Queue,
-    condition: mp.Condition,
-    debug: bool = False,
-):
+def learn_loop(learner: Learner, queue: mp.Queue, debug: bool = False):
     progress = tqdm(desc="Learning")
     env_steps = 0
 
     while True:
-        batch = []
-
-        for _ in range(learner.config.batch_size):
-            trajectory = queue.get()
-            batch.append(Trajectory.deserialize(trajectory))
-
-        batch = Batch.from_trajectories(batch)
+        batch = Batch.from_trajectories(
+            tuple(
+                [
+                    queue.get()  # Trajectory.deserialize(queue.get())
+                    for _ in range(learner.config.batch_size)
+                ]
+            )
+        )
         env_steps += batch.valid.sum()
 
         logs = learn(learner, batch)
         # logs["env_steps"] = env_steps
-
-        # with condition:
-        #     condition.notify_all()
 
         if not debug:
             wandb.log(logs)
         progress.update(1)
 
 
-def get_most_recent_file(dir_path):
-    # List all files in the directory
-    files = [
-        os.path.join(dir_path, f)
-        for f in os.listdir(dir_path)
-        if os.path.isfile(os.path.join(dir_path, f))
-    ]
-
-    if not files:
-        return None
-
-    # Sort files by creation time
-    most_recent_file = max(files, key=os.path.getctime)
-
-    return most_recent_file
-
-
-def main(ctx, debug):
-    # init = torch.load("ckpts/038847.pt", map_location="cpu")
-    # fpath = get_most_recent_file("ckpts")
-    # print(fpath)
-    # init = torch.load(fpath, map_location="cpu")
-    # init = init["params"]
-
+def main(debug):
+    # # init = torch.load("ckpts/320895.pt", map_location="cpu")
+    # # init = init["params"]
     init = None
     learner = Learner(init=init, debug=debug, trace_nets=False)
-
-    # learner = Learner.from_fpath(fpath, trace_nets=False)
+    # learner = Learner.from_fpath("ckpts/129303.pt", trace_nets=False)
 
     if not debug:
         config = learner.get_config()
@@ -121,28 +90,26 @@ def main(ctx, debug):
     else:
         num_workers = 1
 
-    processes: List[ctx.Process] = []
+    processes: List[mp.Process] = []
     threads: List[threading.Thread] = []
 
-    learn_queue = ctx.Queue(maxsize=2 * learner.config.batch_size)
-    eval_queue = ctx.Queue()
+    learn_queue = mp.Queue(maxsize=learner.config.batch_size)
+    eval_queue = mp.Queue()
 
     if not debug:
         eval_thread = threading.Thread(target=read_eval, args=(eval_queue,))
         threads.append(eval_thread)
         eval_thread.start()
 
-    batch_condition = ctx.Condition()
     for worker_index in range(num_workers):
-        process = ctx.Process(
+        process = mp.Process(
             target=run_environment_wrapper,
             args=(
                 worker_index,
                 learner.params_actor,
-                None,
+                None,  # learner.params_actor_prev,
                 learn_queue,
                 eval_queue,
-                batch_condition,
             ),
         )
         process.start()
@@ -151,7 +118,7 @@ def main(ctx, debug):
     for _ in range(1):
         learn_thread = threading.Thread(
             target=learn_loop,
-            args=(learner, learn_queue, batch_condition, debug),
+            args=(learner, learn_queue, debug),
         )
         learn_thread.start()
         threads.append(learn_thread)
@@ -165,7 +132,7 @@ def main(ctx, debug):
         while True:
             time.sleep(1)
 
-            if (time.time() - prev_time) >= 30 * 60:
+            if (time.time() - prev_time) >= 5 * 60:
                 learner.save(
                     f"ckpts/{learner.learner_steps:06}.pt",
                 )
@@ -183,5 +150,5 @@ def main(ctx, debug):
 
 
 if __name__ == "__main__":
-    ctx = mp.get_context("fork")
-    main(ctx, False)
+    mp.set_start_method("fork")
+    main(False)

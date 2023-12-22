@@ -12,15 +12,44 @@ with open(os.path.abspath("./config.yml"), "r") as f:
 SOCKET_PATH = CONFIG["socket_path"]
 ENCODING = CONFIG["encoding"]
 NUM_WORKERS = CONFIG["num_workers"]
+
 DEFAULT_WORKER_INDEX = CONFIG.get("default_worker_index")
+if DEFAULT_WORKER_INDEX < 0:
+    DEFAULT_WORKER_INDEX = NUM_WORKERS + DEFAULT_WORKER_INDEX
+
 RANDOM_WORKER_INDEX = CONFIG.get("random_worker_index")
+if RANDOM_WORKER_INDEX < 0:
+    RANDOM_WORKER_INDEX = NUM_WORKERS + RANDOM_WORKER_INDEX
+
+MAXDMG_WORKER_INDEX = CONFIG.get("maxdmg_worker_index")
+if MAXDMG_WORKER_INDEX < 0:
+    MAXDMG_WORKER_INDEX = NUM_WORKERS + MAXDMG_WORKER_INDEX
+
 PREV_WORKER_INDEX = CONFIG.get("prev_worker_index")
-EVAL_WORKER_INDEX = min(DEFAULT_WORKER_INDEX, RANDOM_WORKER_INDEX, PREV_WORKER_INDEX)
+if PREV_WORKER_INDEX < 0:
+    PREV_WORKER_INDEX = NUM_WORKERS + PREV_WORKER_INDEX
+
+HEURISTIC_WORKER_INDEX = CONFIG.get("heuristic_worker_index")
+if HEURISTIC_WORKER_INDEX < 0:
+    HEURISTIC_WORKER_INDEX = NUM_WORKERS + HEURISTIC_WORKER_INDEX
+
+
+EVAL_WORKER_INDEX = min(
+    DEFAULT_WORKER_INDEX,
+    RANDOM_WORKER_INDEX,
+    PREV_WORKER_INDEX,
+    HEURISTIC_WORKER_INDEX,
+    MAXDMG_WORKER_INDEX,
+)
+
+ACTION_SPACE = list(range(10))
 
 EVAL_MAPPING = {
     DEFAULT_WORKER_INDEX: "default",
     RANDOM_WORKER_INDEX: "random",
     PREV_WORKER_INDEX: "prev",
+    HEURISTIC_WORKER_INDEX: "heuristic",
+    MAXDMG_WORKER_INDEX: "maxdmg",
 }
 
 TURN_OFFSET = 0
@@ -47,9 +76,6 @@ HISTORY_OFFSET = FIELD_OFFSET + FIELD_SIZE
 with open(os.path.abspath("./src/data.json"), "r") as f:
     DATA = json.load(f)
 
-with open(os.path.abspath("./src/tokens.json"), "r") as f:
-    TOKENS = json.load(f)
-
 
 STATUS_MAPPING = {
     "slp": 0,
@@ -70,12 +96,14 @@ BOOSTS_MAPPING = {
     "evasion": 6,
 }
 
+VERBOSE = False
 
-NUM_SPECIES = len(TOKENS["species"])
-NUM_ABILITIES = len(TOKENS["abilities"])
-NUM_ITEMS = len(TOKENS["items"])
-NUM_MOVES = len(TOKENS["moves"])
-NUM_TYPES = len(TOKENS["types"])
+NUM_SPECIES = len(DATA["species"])
+NUM_ABILITIES = len(DATA["abilities"])
+NUM_ITEMS = len(DATA["items"])
+NUM_MOVES = len(DATA["moves"])
+
+# NUM_TYPES = len(DATA["types"])
 
 NUM_TERRAIN = len(DATA["terrain"])
 NUM_VOLATILE_STATUS = len(DATA["volatileStatus"])
@@ -83,11 +111,25 @@ NUM_WEATHER = len(DATA["weathers"])
 NUM_SIDE_CONDITIONS = len(DATA["sideConditions"])
 NUM_PSEUDOWEATHER = len(DATA["pseudoWeather"])
 
+
 MAX_HP = 1024
 NUM_HP_BUCKETS = int(MAX_HP**0.5 + 1)
 
 NUM_STATUS = len(STATUS_MAPPING)
 NUM_BOOSTS = len(BOOSTS_MAPPING)
+
+if VERBOSE:
+    print(f"NUM_SPECIES: {NUM_SPECIES}")
+    print(f"NUM_ABILITIES: {NUM_ABILITIES}")
+    print(f"NUM_ITEMS: {NUM_ITEMS}")
+    print(f"NUM_MOVES: {NUM_MOVES}")
+    print(f"NUM_TERRAIN: {NUM_TERRAIN}")
+    print(f"NUM_VOLATILE_STATUS: {NUM_VOLATILE_STATUS}")
+    print(f"NUM_WEATHER: {NUM_WEATHER}")
+    print(f"NUM_SIDE_CONDITIONS: {NUM_SIDE_CONDITIONS}")
+    print(f"NUM_PSEUDOWEATHER: {NUM_PSEUDOWEATHER}")
+    print(f"NUM_STATUS: {NUM_STATUS}")
+    print(f"NUM_BOOSTS: {NUM_BOOSTS}")
 
 
 def get_positional_encoding_matrix(

@@ -1,6 +1,6 @@
 import * as fs from "fs";
 
-export const formatId = "gen9randombattle";
+export const formatId = "gen3randombattle";
 
 const data = fs.readFileSync("./src/data.json");
 const {
@@ -9,16 +9,11 @@ const {
     pseudoWeather: pseudoWeatherMapping,
     terrain: terrainMapping,
     volatileStatus: volatileStatusMapping,
-} = JSON.parse(data.toString());
-
-const tokens = fs.readFileSync("./src/tokens.json");
-const {
     species: pokemonMapping,
-    types,
     items: itemMapping,
     abilities: abilityMapping,
     moves: moveMapping,
-} = JSON.parse(tokens.toString());
+} = JSON.parse(data.toString());
 
 const statusMapping: { [k: string]: number } = {
     slp: 0,

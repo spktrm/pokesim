@@ -1,58 +1,53 @@
-import asyncio
-import aiofiles
-import yaml
-import sys
 import os
-from random import choices
-from typing import Any, Dict
+import torch
+from pokesim.nn.modelv2 import Model
+from pokesim.rnad.actor import run_environment
 
 
-def weighted_random_sample(weights: list[int], k: int) -> int:
-    total = len(weights)
-    return choices(range(total), weights=weights, k=k)[0]
+class FillerQueue:
+    def put(self, *args, **kwargs):
+        pass
 
 
-async def read_config(file_path: str) -> Dict[str, Any]:
-    async with aiofiles.open(file_path, mode="r") as file:
-        content = await file.read()
-    return yaml.safe_load(content)
+def get_most_recent_file(dir_path):
+    # List all files in the directory
+    files = [
+        os.path.join(dir_path, f)
+        for f in os.listdir(dir_path)
+        if os.path.isfile(os.path.join(dir_path, f))
+    ]
+
+    if not files:
+        return None
+
+    # Sort files by creation time
+    most_recent_file = max(files, key=os.path.getctime)
+
+    return most_recent_file
 
 
-async def worker(worker_index: int, socket_path: str):
-    reader, writer = await asyncio.open_unix_connection(socket_path)
+def main(worker_index):
+    fpath = get_most_recent_file("ckpts")
+    print(fpath)
 
-    print(f"Worker {worker_index} connected to server!")
+    ckpt = torch.load(fpath, map_location="cpu")
+    state_dict = ckpt["params"]
 
-    try:
-        while True:
-            buffer = await reader.read(534)
-            if not buffer:
-                print("Disconnected from server")
-                break
+    model = Model()
+    model.load_state_dict(state_dict, strict=False)
 
-            player_index = buffer[1]
-            legal_mask = buffer[-10:]
-            random_action = weighted_random_sample(list(legal_mask), 1)
-            message = f"{player_index}|d\n".encode()
-            writer.write(message)
-            await writer.drain()
-
-    except Exception as e:
-        print(e)
-    finally:
-        writer.close()
-        await writer.wait_closed()
-
-
-async def main():
-    max_workers = max(int(sys.argv[1]) if len(sys.argv) > 1 else 1, 1)
-    config_path = os.path.join(os.path.dirname(__file__), "config.yml")
-    config = await read_config(config_path)
-    print(config)
-    socket_path = config["socket_path"]
-
-    await asyncio.gather(*(worker(i, socket_path) for i in range(max_workers)))
+    filler_queue = FillerQueue()
+    run_environment(
+        worker_index,
+        model,
+        None,
+        filler_queue,
+        filler_queue,
+        None,
+        verbose=True,
+        threshold=1,
+    )
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main(100)

@@ -1,15 +1,22 @@
 import { parentPort, workerData } from "node:worker_threads";
-import { AnyObject, BattleStreams, Teams } from "@pkmn/sim";
+import { BattleStreams, Teams } from "@pkmn/sim";
 import { TeamGenerators } from "@pkmn/randoms";
-import { Battle as clientBattle } from "@pkmn/client";
+import { Battle } from "@pkmn/client";
 import { Generations } from "@pkmn/data";
 import { Dex } from "@pkmn/dex";
 import { ObjectReadWriteStream } from "@pkmn/streams";
-import { BattleStreamsType } from "./types";
-import { formatId } from "./data";
-import { getRandomAction } from "./random";
-import { AsyncQueue, actionCharToString, delay } from "./helpers";
-import { Int8State } from "./state";
+import { BattleStreamsType } from "../types";
+import { formatId } from "../data";
+import {
+    AsyncQueue,
+    BattlesHandler,
+    actionCharToString,
+    formatTeamPreviewAction,
+    delay,
+    isAction,
+    isActionRequired,
+    getIsTeamPreview,
+} from "../helpers";
 
 Teams.setGeneratorFactory(TeamGenerators);
 
@@ -32,66 +39,10 @@ class QueueManager {
 
 const queueManager = new QueueManager();
 
-function isActionRequired(battle: clientBattle, chunk: string): boolean {
-    const request = (battle.request ?? {}) as AnyObject;
-    if (request === undefined) {
-        return false;
-    }
-    if (!!request.wait) {
-        return false;
-    }
-    if (chunk.includes("|turn")) {
-        return true;
-    }
-    if (!chunk.includes("|request")) {
-        return !!request.forceSwitch;
-    }
-    return false;
-}
-
-export class BattlesHandler {
-    battles: clientBattle[];
-    turns: AnyObject;
-    constructor(battles: clientBattle[]) {
-        this.battles = battles;
-        this.turns = {};
-    }
-}
-
-function getState(
-    handler: BattlesHandler,
-    done: number,
-    playerIndex: number,
-    reward: number = 0
-) {
-    const stateHandler = new Int8State(
-        handler,
-        playerIndex,
-        workerIndex,
-        done,
-        reward
-    );
-    const state = stateHandler.getState();
-    const stateBuffer = Buffer.from(state.buffer);
-    return stateBuffer;
-}
-
-function isAction(line: string): boolean {
-    const splitString = line.split("|");
-    const actionType = splitString[1];
-    switch (actionType) {
-        case "move":
-            return true;
-        case "switch":
-            return true;
-        default:
-            return false;
-    }
-}
-
 const defaultWorkerIndex = workerData.config.default_worker_index as number;
 const randomWorkerIndex = workerData.config.random_worker_index as number;
 const prevWorkerIndex = workerData.config.prev_worker_index as number;
+const heuristicWorkerIndex = workerData.config.heuristic_worker_index as number;
 
 function isEvalPlayer(workerIndex: number, playerIndex: number): boolean {
     if (playerIndex === 1) {
@@ -111,16 +62,28 @@ function isEvalPlayer(workerIndex: number, playerIndex: number): boolean {
 async function runPlayer(
     stream: ObjectReadWriteStream<string>,
     playerIndex: number,
-    p1battle: clientBattle,
-    p2battle: clientBattle
+    p1battle: Battle,
+    p2battle: Battle,
 ) {
-    const handler = new BattlesHandler([p1battle, p2battle]);
+    // const handler = new BattlesHandler([p1battle, p2battle]);
+    const handler = new BattlesHandler([p1battle]);
     const isEval = isEvalPlayer(workerIndex, playerIndex);
 
     const log = [];
 
-    let action: string = "";
-    let winner: string = "";
+    let isTeamPreview = false;
+    let action = "";
+    let winner = "";
+    let reward = 0;
+
+    // if (parseInt(formatId[3]) >= 5 && !formatId.includes("random")) {
+    //     state = getState(handler, 0, playerIndex, workerIndex); //, reward);
+    //     parentPort?.postMessage(state, [state.buffer]);
+    //     const actionChar = await queueManager.queues[playerIndex].dequeue();
+    //     action = actionCharToString(actionChar);
+    //     stream.write(action);
+    //     p1battle.request = undefined;
+    // }
 
     for await (const chunk of stream) {
         const turn = p1battle.turn ?? 0;
@@ -139,10 +102,7 @@ async function runPlayer(
             }
             log.push(line);
             if (isAction(line)) {
-                if (handler.turns[turn] === undefined) {
-                    handler.turns[turn] = [];
-                }
-                handler.turns[turn].push(line);
+                handler.appendTurnLine(turn, line);
             }
         }
         if (chunk.includes("|request")) {
@@ -150,56 +110,72 @@ async function runPlayer(
         }
 
         if (isActionRequired(p1battle, chunk)) {
+            isTeamPreview = getIsTeamPreview(p1battle.request ?? {});
+
             if (!isEval) {
-                state = getState(handler, 0, playerIndex);
+                state = handler.getState(0, playerIndex, workerIndex); //, reward);
                 parentPort?.postMessage(state, [state.buffer]);
-                const actionChar = await queueManager.queues[
-                    playerIndex
-                ].dequeue();
+                const actionChar =
+                    await queueManager.queues[playerIndex].dequeue();
                 action = actionCharToString(actionChar);
             } else {
                 if (workerIndex === defaultWorkerIndex) {
                     action = "default";
                 } else if (workerIndex === randomWorkerIndex) {
-                    const stateHandler = new Int8State(
-                        handler,
+                    action = handler.getRandomAction(playerIndex, workerIndex);
+                } else if (workerIndex === heuristicWorkerIndex) {
+                    action = handler.getHeuristicAction(
                         playerIndex,
                         workerIndex,
-                        0,
-                        0
                     );
-                    const legalMask = stateHandler.getLegalMask();
-                    action = getRandomAction(legalMask);
                 } else {
-                    action = "default";
+                    action = handler.getHeuristicAction(
+                        playerIndex,
+                        workerIndex,
+                    );
                 }
             }
+
+            if (isTeamPreview && action != "default") {
+                action = formatTeamPreviewAction(
+                    action,
+                    p1battle.sides[playerIndex].totalPokemon,
+                );
+            }
+
             stream.write(action);
             p1battle.request = undefined;
         }
     }
-    const reward = winner === p1battle.sides[playerIndex].name ? 1 : -1;
-    state = getState(handler, 1, playerIndex, reward);
+    const hp_count = p1battle.sides.map((side) =>
+        side.team.map((x) => x.hp / x.maxhp).reduce((a, b) => a + b),
+    );
+    reward = hp_count[playerIndex] > hp_count[1 - playerIndex] ? 1 : -1;
+    // reward = winner === p1battle.sides[playerIndex].name ? 1 : -1;
+    state = handler.getState(1, playerIndex, workerIndex, reward);
     parentPort?.postMessage(state, [state.buffer]);
     p1battle.request = undefined;
 }
 
 const exampleTeam = [
-    "spiritomb||sitrusberry|pressure|shadowball,darkpulse,psychic,sucherpunch||85,,85,85,85,85|N|,0,,,,||78|,,,,,Grass",
-    "roserade||expertbelt|poisonpoint|dazzlinggleam,shadowball,sludgebomb,energyball||85,85,85,85,85,85|N|||80|,,,,,Fighting",
-    "gastrodon||Leftovers|stormdrain|scald,earthquake,slugdebomb,rocktomb||85,85,85,85,85,85|N|||84|,,,,,Steel",
-    "lucario||wiseglasses|innerfocus|aurasphere,dragonpulse,flashcannon,nastyplot||85,85,85,85,85,85||||85|,,,,,Dark",
-    "milotic||flameorb|marvelscale|recover,mirrorcoat,icebeam,scald||85,85,85,85,85,85||||84|,,,,,Ground",
-    "garchomp||yacheberry|roughskin|dragonclaw,earthquake,swordsdance,poisonjab||85,85,85,85,85,85|N|||65|,,,,,Fighting",
+    "charmander|||blaze|ember,,,||85,,85,85,85,85|N|,0,,,,||5|,,,,,Grass",
+    "bulbasaur|||torrent|bubble,,,||85,85,85,85,85,85|N|||5|,,,,,Fighting",
+    "squirtle|||overgrow|vinewhip,,,||85,85,85,85,85,85|N|||5|,,,,,Steel",
 ];
+
+const shuffle = (arr: any[]) =>
+    arr
+        .map((value) => ({ value, sort: Math.random() }))
+        .sort((a, b) => a.sort - b.sort)
+        .map(({ value }) => value);
 
 async function runGame() {
     const stream = new BattleStreams.BattleStream();
     streams = BattleStreams.getPlayerStreams(stream);
     const spec = { formatid: formatId };
 
-    const p1battle = new clientBattle(generations);
-    const p2battle = new clientBattle(generations);
+    const p1battle = new Battle(new Generations(Dex));
+    const p2battle = new Battle(new Generations(Dex));
 
     const players = Promise.all([
         runPlayer(streams.p1, 0, p1battle, p2battle),
@@ -209,12 +185,12 @@ async function runGame() {
     const p1spec = {
         name: `Bot${workerIndex}1`,
         team: Teams.pack(Teams.generate(formatId)),
-        // team: exampleTeam.join("]"),
+        // team: shuffle(exampleTeam).join("]"),
     };
     const p2spec = {
         name: `Bot${workerIndex}2`,
         team: Teams.pack(Teams.generate(formatId)),
-        // team: exampleTeam.join("]"),
+        // team: shuffle(exampleTeam).join("]"),
     };
 
     void streams.omniscient.write(`>start ${JSON.stringify(spec)}

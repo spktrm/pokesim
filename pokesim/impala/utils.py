@@ -13,14 +13,14 @@ from jax import tree_util as tree
 from functools import partial
 from typing import Any, Dict, List, Tuple
 
-from pokesim.rnad.config import RNaDConfig
+from pokesim.impala.config import ImpalaConfig
 from pokesim.structs import ModelOutput
 
 
 def optimized_forward(
     module: nn.Module,
     inputs: Dict[str, torch.Tensor],
-    config: RNaDConfig,
+    config: ImpalaConfig,
 ) -> ModelOutput:
     results = []
 
@@ -277,11 +277,9 @@ def v_trace(
         jnp.ones_like(merged_policy), acting_policy, actions_oh, valid
     )
 
-    entropy_norm = jnp.log(jnp.sum(merged_policy > 0, axis=-1))
     eta_reg_entropy = (
         -eta
         * jnp.sum(merged_policy * merged_log_policy, axis=-1)
-        * (1 / jnp.where(entropy_norm <= 0, 1, entropy_norm))
         * jnp.squeeze(player_others, axis=-1)
     )
     eta_log_policy = -eta * merged_log_policy * player_others
