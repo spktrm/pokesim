@@ -23,7 +23,7 @@ import { formatId } from "../data";
 
 type Config = { [k: string]: any };
 const config = yaml.load(
-    fs.readFileSync(path.resolve("config.yml"), "utf-8"),
+    fs.readFileSync(path.resolve("config.yml"), "utf-8")
 ) as Config;
 console.log(config);
 
@@ -44,15 +44,15 @@ function logRequest(request: AnyObject) {
     try {
         actions.push(
             ...((request ?? {}).active ?? [])[0].moves.map(
-                (x: { [k: string]: any }) => x.id,
-            ),
+                (x: { [k: string]: any }) => x.id
+            )
         );
     } catch {}
     try {
         actions.push(
             ...(((request ?? {}).side ?? {}).pokemon ?? []).map(
-                (x: { [k: string]: any }) => x.ident,
-            ),
+                (x: { [k: string]: any }) => x.ident
+            )
         );
     } catch {}
 
@@ -73,6 +73,7 @@ class PokemonShowdownBot {
     playerIndexIsSet: boolean;
     clientSocket: net.Socket;
     msgQueue: AsyncQueue;
+    started: boolean;
     battleId: string | undefined;
 
     constructor(clientSocket: net.Socket, username: string, password?: string) {
@@ -87,7 +88,7 @@ class PokemonShowdownBot {
         this.playerIndexIsSet = false;
         this.clientSocket = clientSocket;
         this.battleId = undefined;
-        this.msgQueue = new AsyncQueue();
+        (this.started = false), (this.msgQueue = new AsyncQueue());
     }
 
     private async onMessage(data: WebSocket.Data): Promise<void> {
@@ -113,17 +114,21 @@ class PokemonShowdownBot {
                 if (line.startsWith("|error")) {
                     console.error(line);
                 }
-                if (isAction(line)) {
-                    this.handler.appendTurnLine(turn, line);
+                // if (isAction(line)) {
+                if (this.started) {
+                    this.handler.appendTurnLine(line);
                 }
                 try {
                     this.clientBattle.add(line);
                 } catch (err) {}
+                if (line.startsWith("|start")) {
+                    this.started = true;
+                }
                 if (line.startsWith("|win")) {
-                    const state = this.handler.getState(
-                        1,
-                        this.playerIndex ?? 0,
-                    );
+                    const state = this.handler.getState({
+                        done: 1,
+                        playerIndex: this.playerIndex ?? 0,
+                    });
                     this.sendMessage("", `/search ${formatId}`);
                 }
             }
@@ -135,7 +140,7 @@ class PokemonShowdownBot {
                             parseInt(
                                 (
                                     this.clientBattle.request as AnyObject
-                                ).side.id.slice(1),
+                                ).side.id.slice(1)
                             ) - 1;
                         this.playerIndexIsSet = true;
                     }
@@ -145,13 +150,16 @@ class PokemonShowdownBot {
             if (isActionRequired(this.clientBattle, message)) {
                 const rqid = this.clientBattle.request?.rqid;
                 logRequest(this.clientBattle.request ?? {});
-                const state = this.handler.getState(0, this.playerIndex ?? 0);
+                const state = this.handler.getState({
+                    done: 0,
+                    playerIndex: this.playerIndex ?? 0,
+                });
                 this.clientSocket.write(state);
                 const actionChar = await this.msgQueue.dequeue();
                 const action = actionCharToString(actionChar);
                 this.sendMessage(
                     this.battleId ?? "",
-                    `/choose ${action}|${rqid}`,
+                    `/choose ${action}|${rqid}`
                 );
             }
         }
@@ -164,7 +172,7 @@ class PokemonShowdownBot {
 
     private async getAssertion(
         username: string,
-        challstr: string,
+        challstr: string
     ): Promise<string | null> {
         try {
             const params = new URLSearchParams({
@@ -175,7 +183,7 @@ class PokemonShowdownBot {
 
             const response = await fetch(
                 "https://play.pokemonshowdown.com/action.php?" +
-                    params.toString(),
+                    params.toString()
             );
             const assertion: string = await response.text();
 

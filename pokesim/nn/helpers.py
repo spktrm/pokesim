@@ -20,6 +20,12 @@ def _layer_init(
             n = getattr(layer, "num_embeddings", None) or getattr(layer, "in_features")
             std = 1 / math.sqrt(n)
         init_func(layer.weight, mean=(mean or 0), std=std)
+    if hasattr(layer, "data"):
+        init_func = init_func or nn.init.normal_
+        if std is None:
+            n = getattr(layer, "data").shape[-1]
+            std = 1 / math.sqrt(n)
+        init_func(layer.data, mean=(mean or 0), std=std)
     if hasattr(layer, "bias") and getattr(layer, "bias", None) is not None:
         nn.init.constant_(layer.bias, val=(bias_value or 0))
     return layer

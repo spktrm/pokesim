@@ -6,10 +6,16 @@ import numpy as np
 import torch.nn as nn
 import torch.multiprocessing as mp
 
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from pokesim.data import ENCODING, EVAL_WORKER_INDEX, MODEL_INPUT_KEYS, ACTION_SPACE
 from pokesim.env import EnvironmentNoStackSingleStep
-from pokesim.structs import ActorStep, EnvStep, ModelOutput, TimeStep
+from pokesim.structs import (
+    ActorStep,
+    EnvStep,
+    ModelOutput,
+    Observation,
+    TimeStep,
+)
 
 from pokesim.structs import Trajectory
 from pokesim.utils import finetune
@@ -31,6 +37,7 @@ def handle_verbose(
 
 
 _MODEL_INPUT_KEYS = MODEL_INPUT_KEYS.copy()
+_MODEL_INPUT_KEYS.remove("history_mask")
 
 
 def _actor_step(
@@ -68,15 +75,13 @@ async def _apply_action(env: EnvironmentNoStackSingleStep, action: int):
     return await env.step(action)
 
 
-def _state_as_env_step(
-    worker_index, obs, rewards, is_terminal, player_index
-) -> EnvStep:
+def _state_as_env_step(worker_index, obs, rewards, done, player_index) -> EnvStep:
     return EnvStep(
         game_id=worker_index,
         player_id=player_index,
         state=obs["raw"],
         rewards=rewards,
-        valid=not is_terminal,
+        valid=not done,
         legal=obs["legal"],
     )
 
@@ -86,15 +91,30 @@ def _reset(
     learn_queue: mp.Queue,
     eval_queue: mp.Queue,
     num_battles: int,
-    timesteps: List[TimeStep],
+    timesteps: Dict[int, List[TimeStep]],
 ):
-    if timesteps:
-        trajectory = Trajectory.from_env_steps(timesteps)
-        if worker_index < EVAL_WORKER_INDEX:
-            learn_queue.put(trajectory.serialize())
+    if worker_index < EVAL_WORKER_INDEX:
+        for player_index in range(2):
+            if timesteps[player_index]:
+                last_timestep = timesteps[player_index][-1]
+                second_last_timestep = timesteps[player_index][-2]
+                timesteps[player_index][-2] = TimeStep(
+                    id=second_last_timestep.id,
+                    env=second_last_timestep.env,
+                    actor=ActorStep(
+                        action=second_last_timestep.actor.action,
+                        policy=second_last_timestep.actor.policy,
+                        rewards=last_timestep.actor.rewards,
+                        value=second_last_timestep.actor.value,
+                    ),
+                    ts=second_last_timestep.ts,
+                )
+                trajectory = Trajectory.from_env_steps(timesteps[player_index][:-1])
+                learn_queue.put(trajectory.serialize())
 
-        else:
-            final_reward = trajectory.rewards.sum(0)[0].item()
+    else:
+        if timesteps[0]:
+            final_reward = timesteps[0][-1].actor.rewards
             eval_queue.put((num_battles, worker_index, final_reward))
 
 
@@ -107,21 +127,19 @@ async def _drain(player_index: int, env: EnvironmentNoStackSingleStep):
 async def _run_environment_async(
     worker_index: int,
     model: nn.Module,
-    model_prev: nn.Module,
     learn_queue: mp.Queue,
     eval_queue: mp.Queue,
-    condition: mp.Condition,
     verbose: bool = False,
-    threshold: int = 2,
+    threshold: int = 1,
 ):
-    timesteps: List[TimeStep] = []
+    timesteps: Dict[int, List[TimeStep]] = {0: [], 1: []}
 
     num_battles = 0
 
     env = await EnvironmentNoStackSingleStep.create(worker_index, threshold=threshold)
 
     while True:
-        is_terminal = 0
+        dones = 0
         num_steps = 0
 
         sid, obs, reward, done, player_index = await env.reset()
@@ -134,32 +152,45 @@ async def _run_environment_async(
             sid, obs, reward, done, player_index = await _apply_action(
                 env, actor_step.action
             )
-            env_step = _state_as_env_step(
-                worker_index, obs, reward, is_terminal > 0, player_index
-            )
-            is_terminal += done
-            rewards = np.zeros((2,))
+            env_step = _state_as_env_step(worker_index, obs, reward, done, player_index)
+            dones += done
+            rewards = np.zeros(2)
             rewards[player_index] = reward
             rewards[1 - player_index] = -reward
-            if is_terminal <= 1:
-                timesteps.append(
+            timesteps[prev_env_step.player_id].append(
+                TimeStep(
+                    id=f"{sid}{prev_env_step.player_id}",
+                    env=prev_env_step,
+                    actor=ActorStep(
+                        action=actor_step.action,
+                        policy=actor_step.policy,
+                        rewards=rewards[prev_env_step.player_id].item(),
+                        value=actor_step.value,
+                    ),
+                    ts=num_steps,
+                )
+            )
+
+            num_steps += 1
+            if dones >= 2:
+                actor_step = _actor_step(worker_index, model, obs, verbose)
+                timesteps[env_step.player_id].append(
                     TimeStep(
-                        id=f"{sid}{player_index}",
-                        env=prev_env_step,
+                        id=f"{worker_index}{env_step.player_id}",
+                        env=env_step,
                         actor=ActorStep(
                             action=actor_step.action,
                             policy=actor_step.policy,
-                            rewards=rewards,
+                            rewards=rewards[env_step.player_id].item(),
                             value=actor_step.value,
                         ),
                         ts=num_steps,
                     )
                 )
-                num_steps += 1
-            if is_terminal >= 2:
                 _reset(worker_index, learn_queue, eval_queue, num_battles, timesteps)
-                timesteps = []
                 await _drain(player_index, env)
+                for player_index in range(2):
+                    timesteps[player_index] = []
                 break
 
         num_battles += 1
@@ -168,22 +199,13 @@ async def _run_environment_async(
 def run_environment(
     worker_index: int,
     model: nn.Module,
-    model_prev: nn.Module,
     learn_queue: mp.Queue,
     eval_queue: mp.Queue,
-    condition: mp.Condition,
     verbose: bool = False,
     threshold: int = 1,
 ):
     return asyncio.run(
         _run_environment_async(
-            worker_index,
-            model,
-            model_prev,
-            learn_queue,
-            eval_queue,
-            condition,
-            verbose,
-            threshold,
+            worker_index, model, learn_queue, eval_queue, verbose, threshold
         )
     )

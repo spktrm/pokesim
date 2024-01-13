@@ -5,6 +5,8 @@ import numpy as np
 
 from typing import Any, Dict
 
+STATE_SIZE = 4231
+
 
 with open(os.path.abspath("./config.yml"), "r") as f:
     CONFIG: Dict[str, Any] = yaml.safe_load(f)
@@ -55,8 +57,11 @@ EVAL_MAPPING = {
 TURN_OFFSET = 0
 TURN_SIZE = 1
 
-TEAM_OFFSET = TURN_OFFSET + TURN_SIZE
-TEAM_SIZE = 3 * 6 * 22
+HEURISTIC_OFFSET = TURN_OFFSET + TURN_SIZE
+HEURISTIC_SIZE = 1
+
+TEAM_OFFSET = HEURISTIC_OFFSET + HEURISTIC_SIZE
+TEAM_SIZE = 3 * 6 * 32
 
 SIDE_CONDITION_OFFSET = TEAM_OFFSET + TEAM_SIZE
 SIDE_CONDITION_SIZE = 2 * 15
@@ -71,6 +76,14 @@ FIELD_OFFSET = BOOSTS_OFFSET + BOOSTS_SIZE
 FIELD_SIZE = 9 + 6
 
 HISTORY_OFFSET = FIELD_OFFSET + FIELD_SIZE
+
+HISTORY_SIDE_CONDITION_OFFSET = 0
+
+HISTORY_VOLATILE_STATUS_OFFSET = HISTORY_SIDE_CONDITION_OFFSET + SIDE_CONDITION_SIZE
+
+HISTORY_BOOSTS_OFFSET = HISTORY_VOLATILE_STATUS_OFFSET + VOLATILE_STATUS_SIZE
+
+HISTORY_FIELD_OFFSET = HISTORY_BOOSTS_OFFSET + BOOSTS_SIZE
 
 
 with open(os.path.abspath("./src/data.json"), "r") as f:
@@ -157,7 +170,11 @@ MODEL_INPUT_KEYS = {
     "volatile_status",
     "boosts",
     "field",
+    "history_side_conditions",
+    "history_volatile_status",
+    "history_boosts",
+    "history_field",
+    "history_entities",
+    "history_stats",
     "legal",
-    "history",
-    "history_mask",
 }

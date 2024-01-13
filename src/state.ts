@@ -15,7 +15,7 @@ import {
 } from "./data";
 import { SideConditions } from "./types";
 import { BoostID } from "@pkmn/dex";
-import { BattlesHandler } from "./helpers";
+import { BattlesHandler, historyVectorSize } from "./helpers";
 
 let stateSize: number | undefined = undefined;
 
@@ -80,15 +80,23 @@ function getPublicPokemon(
     buckets: number = 1024
 ): Int8Array {
     let moveTokens = [];
-    let moveToken: number;
+    let movepps = [];
+
+    const moveSlots = pokemon.moveSlots ?? [];
+    const moves = pokemon.moves ?? [];
+
     for (let i = 0; i < 4; i++) {
-        moveToken = getMappingValueWrapper(
-            pokemon,
-            moveMapping,
-            pokemon.moves[i] ?? ""
+        moveTokens.push(
+            getMappingValueWrapper(pokemon, moveMapping, moves[i] ?? "")
         );
-        moveTokens.push(moveToken);
+        const ppUsed = (moveSlots[i] ?? {})?.ppUsed ?? 0;
+        movepps.push(ppUsed);
     }
+    const lastMoveToken =
+        pokemon.lastMove === "" && !!pokemon.newlySwitched
+            ? switchToken
+            : getMappingValueWrapper(pokemon, moveMapping, pokemon.lastMove);
+
     const formatedPokemonName = formatKey(pokemon.name);
     const speciesToken = getMappingValueWrapper(
         pokemon,
@@ -117,7 +125,9 @@ function getPublicPokemon(
         active ? 1 : 0,
         pokemon.fainted ? 1 : 0,
         statusMapping[pokemon.status] ?? paddingToken,
+        lastMoveToken,
         ...moveTokens,
+        ...movepps,
     ];
     return new Int8Array(new Int16Array(pokemonArray).buffer);
 }
@@ -127,15 +137,22 @@ function getPrivatePokemon(
     buckets: number = 1024
 ): Int8Array {
     let moveTokens = [];
-    let moveToken: number;
+    let movepps = [];
+
+    const moveSlots = pokemon.moveSlots ?? [];
+    const moves = pokemon.moves ?? [];
+
     for (let i = 0; i < 4; i++) {
-        moveToken = getMappingValueWrapper(
-            pokemon,
-            moveMapping,
-            pokemon.moves[i]
+        moveTokens.push(
+            getMappingValueWrapper(pokemon, moveMapping, moves[i] ?? "")
         );
-        moveTokens.push(moveToken);
+        const ppUsed = (moveSlots[i] ?? {})?.ppUsed ?? 0;
+        movepps.push(ppUsed);
     }
+    const lastMoveToken =
+        pokemon.lastMove === "" && !!pokemon.newlySwitched
+            ? switchToken
+            : getMappingValueWrapper(pokemon, moveMapping, pokemon.lastMove);
     const formatedPokemonName = formatKey(pokemon.name);
     const speciesToken = getMappingValueWrapper(
         pokemon,
@@ -164,7 +181,9 @@ function getPrivatePokemon(
         pokemon.active ? 1 : 0,
         pokemon.fainted ? 1 : 0,
         statusMapping[pokemon.status] ?? paddingToken,
+        lastMoveToken,
         ...moveTokens,
+        ...movepps,
     ];
     return new Int8Array(new Int16Array(pokemonArray).buffer);
 }
@@ -183,13 +202,14 @@ export class Int8State {
     workerIndex: number;
     done: number;
     reward: number;
-    constructor(
-        handler: BattlesHandler,
-        playerIndex: number,
-        workerIndex: number,
-        done: number,
-        reward: number
-    ) {
+    constructor(args: {
+        handler: BattlesHandler;
+        playerIndex: number;
+        workerIndex: number;
+        done: number;
+        reward: number;
+    }) {
+        const { handler, playerIndex, workerIndex, done, reward } = args;
         this.handler = handler;
         this.playerIndex = playerIndex;
         this.workerIndex = workerIndex;
@@ -197,79 +217,15 @@ export class Int8State {
         this.reward = reward;
     }
 
-    actionToVector(actionLine: string): Int8Array {
-        if (actionLine === undefined) {
-            return new Int8Array(
-                new Int16Array([
-                    paddingToken,
-                    paddingToken,
-                    paddingToken,
-                    paddingToken,
-                ]).buffer
-            );
-        }
-        const [_, actionType, userOrTarget, moveName, ...rest] =
-            actionLine.split("|");
-
-        const sideIndex = parseInt(userOrTarget.slice(1, 2)) - 1;
-        const isMe = this.playerIndex === sideIndex ? 0 : 1;
-
-        const myPrevIdents = this.handler.prevIdents[0];
-        const oppPrevIdents = this.handler.prevIdents[1];
-
-        // const myActiveIdent = myPrevIdents.active[0];
-        // const oppActiveIdent = oppPrevIdents.active[0];
-
-        let actionToken: number, actionUser: string, actionTarget: string;
-        if (actionType === "move") {
-            actionUser = userOrTarget;
-            const formattedMoveName = formatKey(moveName);
-            actionToken = getMappingValueWrapper(
-                {},
-                moveMapping,
-                formattedMoveName
-            );
-            actionTarget = this.handler.prevIdents[1 - isMe].active[0] ?? "";
-        } else {
-            actionUser = this.handler.prevIdents[isMe].active[0] ?? "";
-            actionToken = switchToken;
-            actionTarget = userOrTarget;
-        }
-
-        const prevP1keys = myPrevIdents.team.slice(0, 6);
-        const prevP2keys = oppPrevIdents.team.slice(0, 6);
-
-        // const currP1keys = this.getMyPublicSide()
-        //     .team.map((x) => x.ident.toString())
-        //     .slice(0, 6);
-        // const currP2keys = this.getOppSide()
-        //     .team.map((x) => x.ident.toString())
-        //     .slice(0, 6);
-
-        const prevKeys = [
-            ...prevP1keys,
-            ...Array(6 - prevP1keys.length),
-            ...prevP2keys,
-            ...Array(6 - prevP2keys.length),
-        ];
-
-        // const currKeys = [
-        //     ...currP1keys,
-        //     ...Array(6 - currP1keys.length),
-        //     ...currP2keys,
-        //     ...Array(6 - currP2keys.length),
-        // ];
-
-        const userIndex = prevKeys.indexOf(actionUser);
-        const targetIndex = prevKeys.indexOf(actionTarget);
-        const actionVector = [
-            isMe,
-            userIndex === paddingToken ? unknownToken : userIndex,
-            targetIndex === paddingToken ? unknownToken : targetIndex,
-            actionToken,
-        ];
-
-        return new Int8Array(new Int16Array(actionVector).buffer);
+    actionToVector(actionLine: string | undefined): Int8Array {
+        return new Int8Array(
+            new Int16Array([
+                paddingToken,
+                paddingToken,
+                paddingToken,
+                paddingToken,
+            ]).buffer
+        );
     }
 
     getMyBoosts(): Int8Array {
@@ -422,11 +378,9 @@ export class Int8State {
                     );
                 }
             } else {
+                const ident = team[i].ident;
                 teamArray.set(
-                    getPublicPokemon(
-                        team[i],
-                        activeIdents.includes(team[i].ident)
-                    ),
+                    getPublicPokemon(team[i], activeIdents.includes(ident)),
                     i * paddedPokemonArray.length
                 );
             }
@@ -437,10 +391,19 @@ export class Int8State {
     getPrivateTeam(request: AnyObject): Int8Array {
         const requestSide = (request?.side ?? { pokemon: [] }).pokemon;
         const teamArray = new Int8Array(paddedPokemonArray.length * 6);
+
+        const privateId =
+            (this.handler.getMyBattle().request?.side ?? {})?.id ?? "";
+        const privateIndex = parseInt(privateId.slice(1)) - 1;
+
         for (let i = 0; i < 6; i++) {
+            const entity = requestSide[i];
+            const ident = (entity ?? {}).ident ?? "";
             const amalgam = {
                 ...paddedPokemonObj,
-                ...(requestSide[i] ?? {}),
+                ...(entity === undefined
+                    ? {}
+                    : this.handler.getPokemon(privateIndex, ident)),
             };
             teamArray.set(
                 getPrivatePokemon(amalgam),
@@ -526,20 +489,70 @@ export class Int8State {
         return mask;
     }
 
+    updatetHistoryVectors(contextVector: Int8Array): void {
+        let offset = 0;
+        for (const [key, moveStore] of [
+            ...Object.entries(this.handler.damageInfos),
+        ].reverse()) {
+            if (moveStore.hasVector) {
+                return;
+            }
+            const {
+                user,
+                target,
+                userSide,
+                targetSide,
+                isCritical,
+                damage,
+                effectiveness,
+                missed,
+                moveName,
+                targetFainted,
+            } = moveStore.context;
+            const userProps = this.handler.getPokemon(userSide, user);
+            const targetProps = this.handler.getPokemon(targetSide, target);
+            const moveArray = new Int8Array(
+                new Int16Array([
+                    isCritical ? 1 : 0,
+                    effectiveness,
+                    missed ? 1 : 0,
+                    targetFainted ? 1 : 0,
+                    damage <= 0 ? 1 : 0,
+                    Math.floor(1024 * Math.abs(damage)),
+                    moveMapping[formatKey(moveName) ?? ""],
+                ]).buffer
+            );
+            const history: Array<Int8Array> = [
+                contextVector,
+                userSide === this.playerIndex
+                    ? getPublicPokemon(userProps, true)
+                    : getPrivatePokemon(userProps),
+                targetSide === this.playerIndex
+                    ? getPublicPokemon(targetProps, true)
+                    : getPrivatePokemon(targetProps),
+                moveArray,
+            ];
+            for (const datum of history) {
+                this.handler.damageInfos[key].vector.set(datum, offset);
+                offset += datum.length;
+            }
+            moveStore.hasVector = true;
+        }
+    }
+
     getState(): Int8Array {
         const turn = Math.min(127, this.handler.getMyBattle().turn - 1 ?? 0);
-        const actionLines = this.handler.getTurnLines(turn);
-        const data = [
-            new Int8Array([
-                this.workerIndex,
-                this.playerIndex,
-                this.done,
-                this.reward,
-                turn,
-            ]),
-            this.getMyPrivateTeam(),
-            this.getMyPublicTeam(),
-            this.getOppTeam(),
+        this.handler.getAggregatedTurnLines();
+
+        const heuristicAction = this.done
+            ? -1
+            : this.handler.getHeuristicAction(
+                  this.playerIndex,
+                  this.workerIndex
+              );
+        const legalMask = this.getLegalMask();
+
+        const context = [
             this.getMySideConditions(),
             this.getOppSideConditions(),
             this.getMyVolatileStatus(),
@@ -547,12 +560,50 @@ export class Int8State {
             this.getMyBoosts(),
             this.getOppBoosts(),
             this.getField(),
-            this.actionToVector(actionLines[0]),
-            this.actionToVector(actionLines[1]),
-            this.actionToVector(actionLines[2]),
-            this.actionToVector(actionLines[3]),
-            this.getLegalMask(),
         ];
+        const contextVector = new Int8Array(99);
+        let contextOffset = 0;
+        for (const datum of context) {
+            contextVector.set(datum, contextOffset);
+            contextOffset += datum.length;
+        }
+
+        this.updatetHistoryVectors(contextVector);
+
+        const damageInfos = Object.values(this.handler.damageInfos).slice(-20);
+        const historyVectors =
+            damageInfos.length > 0
+                ? damageInfos.map(({ vector }) => vector)
+                : [];
+        const historyPadding = new Int8Array(
+            historyVectorSize * (20 - historyVectors.length)
+        );
+        historyPadding.fill(-1);
+
+        const data = [
+            new Int8Array([
+                this.workerIndex,
+                this.playerIndex,
+                this.done,
+                this.reward,
+                turn,
+                heuristicAction,
+            ]),
+            this.getMyPrivateTeam(),
+            this.getMyPublicTeam(),
+            this.getOppTeam(),
+            contextVector,
+            ...historyVectors,
+            historyPadding,
+            legalMask,
+        ];
+        if (heuristicAction >= 0) {
+            for (const [actionIndex, legalMaskValue] of legalMask.entries()) {
+                if (actionIndex === heuristicAction && legalMaskValue === 0) {
+                    console.error("bad action");
+                }
+            }
+        }
         if (stateSize === undefined) {
             stateSize = data.reduce(
                 (accumulator, currentValue) =>

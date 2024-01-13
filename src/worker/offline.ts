@@ -63,7 +63,7 @@ async function runPlayer(
     stream: ObjectReadWriteStream<string>,
     playerIndex: number,
     p1battle: Battle,
-    p2battle: Battle,
+    p2battle: Battle
 ) {
     // const handler = new BattlesHandler([p1battle, p2battle]);
     const handler = new BattlesHandler([p1battle]);
@@ -101,9 +101,7 @@ async function runPlayer(
                 winner = line.split("|")[2];
             }
             log.push(line);
-            if (isAction(line)) {
-                handler.appendTurnLine(turn, line);
-            }
+            handler.appendTurnLine(line);
         }
         if (chunk.includes("|request")) {
             p1battle.update(); // optional, only relevant if stream contains |request|
@@ -113,33 +111,31 @@ async function runPlayer(
             isTeamPreview = getIsTeamPreview(p1battle.request ?? {});
 
             if (!isEval) {
-                state = handler.getState(0, playerIndex, workerIndex); //, reward);
+                state = handler.getState({ done: 0, playerIndex, workerIndex }); //, reward);
                 parentPort?.postMessage(state, [state.buffer]);
-                const actionChar =
-                    await queueManager.queues[playerIndex].dequeue();
+                const actionChar = await queueManager.queues[
+                    playerIndex
+                ].dequeue();
                 action = actionCharToString(actionChar);
             } else {
                 if (workerIndex === defaultWorkerIndex) {
                     action = "default";
                 } else if (workerIndex === randomWorkerIndex) {
                     action = handler.getRandomAction(playerIndex, workerIndex);
-                } else if (workerIndex === heuristicWorkerIndex) {
-                    action = handler.getHeuristicAction(
-                        playerIndex,
-                        workerIndex,
-                    );
+                    // } else if (workerIndex === heuristicWorkerIndex) {
+                    //     action = handler.getHeuristicAction(
+                    //         playerIndex,
+                    //         workerIndex
+                    //     );
                 } else {
-                    action = handler.getHeuristicAction(
-                        playerIndex,
-                        workerIndex,
-                    );
+                    action = "default";
                 }
             }
 
             if (isTeamPreview && action != "default") {
                 action = formatTeamPreviewAction(
                     action,
-                    p1battle.sides[playerIndex].totalPokemon,
+                    p1battle.sides[playerIndex].totalPokemon
                 );
             }
 
@@ -148,11 +144,11 @@ async function runPlayer(
         }
     }
     const hp_count = p1battle.sides.map((side) =>
-        side.team.map((x) => x.hp / x.maxhp).reduce((a, b) => a + b),
+        side.team.map((x) => x.hp / x.maxhp).reduce((a, b) => a + b)
     );
     reward = hp_count[playerIndex] > hp_count[1 - playerIndex] ? 1 : -1;
     // reward = winner === p1battle.sides[playerIndex].name ? 1 : -1;
-    state = handler.getState(1, playerIndex, workerIndex, reward);
+    state = handler.getState({ done: 1, playerIndex, workerIndex, reward });
     parentPort?.postMessage(state, [state.buffer]);
     p1battle.request = undefined;
 }

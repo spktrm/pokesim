@@ -187,7 +187,7 @@ class MultiHeadAttention(nn.Module):
                     f"Mask dimensionality {mask.ndim} must match logits dimensionality "
                     f"{attn_logits.ndim}."
                 )
-            attn_logits = torch.where(mask, attn_logits, -1e30)
+            # attn_logits = torch.where(mask, attn_logits, -1e30)
         attn_weights = attn_logits.softmax(-1)
 
         attn = torch.einsum("...htT,...Thd->...thd", attn_weights, value_heads)
@@ -208,6 +208,7 @@ class Transformer(nn.Module):
         resblocks_num_after: int,
         resblocks_hidden_size: Optional[int] = None,
         use_layer_norm: bool = True,
+        affine_layer_norm: bool = True,
     ):
         super().__init__()
 
@@ -228,16 +229,20 @@ class Transformer(nn.Module):
                     input_size=units_stream_size,
                     hidden_size=self._resblocks_hidden_size,
                     use_layer_norm=self._use_layer_norm,
+                    affine_layer_norm=affine_layer_norm,
                 )
                 for _ in range(self._resblocks_num_before)
             ]
         )
-        self.layernorms = nn.ModuleList(
-            [
-                nn.LayerNorm(self._units_stream_size)
-                for _ in range(self._transformer_num_layers)
-            ]
-        )
+        if self._use_layer_norm:
+            self._layernorms = nn.ModuleList(
+                [
+                    nn.LayerNorm(
+                        self._units_stream_size, elementwise_affine=affine_layer_norm
+                    )
+                    for _ in range(self._transformer_num_layers)
+                ]
+            )
         self.transformer_layers = nn.ModuleList(
             [
                 MultiHeadAttention(
@@ -255,6 +260,7 @@ class Transformer(nn.Module):
                     input_size=units_stream_size,
                     hidden_size=self._resblocks_hidden_size,
                     use_layer_norm=self._use_layer_norm,
+                    affine_layer_norm=affine_layer_norm,
                 )
                 for _ in range(self._resblocks_num_after)
             ]
@@ -264,18 +270,102 @@ class Transformer(nn.Module):
         logits_mask = mask[..., None, None, :]
         for resblock in self.resblocks_before:
             x = resblock(x)
-        for layer, ln in zip(self.transformer_layers, self.layernorms):
+        for layer_index, layer in enumerate(self.transformer_layers):
             x1 = x
             if self._use_layer_norm:
-                x1 = ln(x1)
+                x1 = self._layernorms[layer_index](x1)
             x1 = F.relu(x1)
             x1 = layer(query=x1, key=x1, value=x1, mask=logits_mask)
-            x1 = torch.where(mask[..., None], x1, 0)
+            # x1 = torch.where(mask[..., None], x1, 0)
             x = x + x1
         for resblock in self.resblocks_after:
             x = resblock(x)
-        x = torch.where(mask[..., None], x, 0)
+        # x = torch.where(mask[..., None], x, 0)
         return x
+
+
+class CrossTransformer(nn.Module):
+    def __init__(
+        self,
+        units_stream_size: int,
+        transformer_num_heads: int,
+        transformer_key_size: int,
+        transformer_value_size: int,
+        use_layer_norm: bool = True,
+        affine_layer_norm: bool = True,
+    ):
+        super().__init__()
+
+        self._units_stream_size = units_stream_size
+        self._transformer_num_heads = transformer_num_heads
+        self._transformer_key_size = transformer_key_size
+        self._transformer_value_size = transformer_value_size
+        self._use_layer_norm = use_layer_norm
+
+        if self._use_layer_norm:
+            self._layernorms1 = nn.LayerNorm(
+                self._units_stream_size, elementwise_affine=affine_layer_norm
+            )
+            self._layernorms2 = nn.LayerNorm(
+                self._units_stream_size, elementwise_affine=affine_layer_norm
+            )
+            self._layernorms3 = nn.LayerNorm(
+                self._units_stream_size, elementwise_affine=affine_layer_norm
+            )
+            self._layernorms4 = nn.LayerNorm(
+                self._units_stream_size, elementwise_affine=affine_layer_norm
+            )
+
+        self.mha1 = MultiHeadAttention(
+            num_heads=self._transformer_num_heads,
+            model_size=self._units_stream_size,
+            key_size=self._transformer_key_size,
+            value_size=self._transformer_value_size,
+        )
+        self.mha2 = MultiHeadAttention(
+            num_heads=self._transformer_num_heads,
+            model_size=self._units_stream_size,
+            key_size=self._transformer_key_size,
+            value_size=self._transformer_value_size,
+        )
+
+        self.mlp = MLP(
+            [self._units_stream_size, self._units_stream_size, self._units_stream_size],
+            use_layer_norm=use_layer_norm,
+            affine_layer_norm=affine_layer_norm,
+        )
+
+    def forward(
+        self, x: torch.Tensor, y: torch.Tensor, mask: torch.Tensor
+    ) -> torch.Tensor:
+        logits_mask = mask[..., None, None, :]
+
+        if self._use_layer_norm:
+            x1 = self._layernorms1(x)
+            y1 = self._layernorms2(y)
+
+        x1 = F.relu(x1)
+        y1 = F.relu(y1)
+
+        x1 = self.mha1(query=x1, key=y1, value=y1, mask=logits_mask)
+        x = x + x1
+
+        return self.mlp(x)
+
+
+class AdaNorm(nn.Module):
+    def __init__(self, adanorm_scale: float = 1.0, eps: float = 1e-5):
+        self._adanorm_scale = adanorm_scale
+        self._eps = eps
+
+    def forward(self, input: torch.Tensor):
+        mean = input.mean(-1, keepdim=True)
+        std = input.std(-1, keepdim=True)
+        input = input - mean
+        mean = input.mean(-1, keepdim=True)
+        graNorm = (1 / 10 * (input - mean) / (std + self._eps)).detach()
+        input_norm = (input - input * graNorm) / (std + self._eps)
+        return input_norm * self._adanorm_scale
 
 
 class ToVector(nn.Module):
@@ -317,15 +407,30 @@ class ToVector(nn.Module):
             _layer_init(nn.Linear(final_hidden_size, self._vector_stream_size))
         )
 
+        self._gate_layers = nn.ModuleList()
+        if use_layer_norm:
+            self._gate_layers.append(
+                nn.LayerNorm(final_hidden_size, elementwise_affine=affine_layer_norm)
+            )
+        self._gate_layers.append(nn.ReLU())
+        self._gate_layers.append(
+            _layer_init(nn.Linear(final_hidden_size, 1), mean=0.005)
+        )
+
     def forward(
-        self, entity_embeddings: torch.Tensor, mask: torch.Tensor
+        self, entity_embeddings: torch.Tensor, mask: torch.Tensor = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if mask is None:
+            mask = torch.ones_like(entity_embeddings[..., 0], dtype=torch.bool)
         x = entity_embeddings
         for layer in self._hidden_layers:
             x = layer(x)
-        entity_count = mask.sum(-1, keepdim=True)
-        x_masked = x * mask.unsqueeze(-1)
-        x = x_masked.sum(-2) / entity_count.clamp(min=1)
+        gate = x
+        for layer in self._gate_layers:
+            gate = layer(gate)
+        mask[..., 0] = True
+        gate = torch.where(mask.unsqueeze(-1), gate, float("-inf")).softmax(-2)
+        x = (x * gate).sum(-2)
         for layer in self._final_layers:
             x = layer(x)
         return x
@@ -444,12 +549,16 @@ class PointerLogits(nn.Module):
         super().__init__()
 
         self.query_mlp = MLP(
-            [query_input_size for _ in range(num_layers_query)] + [key_size],
+            [query_input_size]
+            + [query_input_size for _ in range(num_layers_query - 1)]
+            + [key_size],
             use_layer_norm=use_layer_norm,
             affine_layer_norm=affine_layer_norm,
         )
         self.keys_mlp = MLP(
-            [keys_input_size for _ in range(num_layers_keys)] + [key_size],
+            [keys_input_size]
+            + [keys_input_size for _ in range(num_layers_keys - 1)]
+            + [key_size],
             use_layer_norm=use_layer_norm,
             affine_layer_norm=affine_layer_norm,
         )

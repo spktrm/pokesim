@@ -8,6 +8,13 @@ import msgpack_numpy as m
 from typing import List, Dict, NamedTuple, Sequence, Tuple
 
 from pokesim.data import (
+    FIELD_SIZE,
+    HEURISTIC_OFFSET,
+    HISTORY_BOOSTS_OFFSET,
+    HISTORY_FIELD_OFFSET,
+    HISTORY_SIDE_CONDITION_OFFSET,
+    HISTORY_VOLATILE_STATUS_OFFSET,
+    SIDE_CONDITION_SIZE,
     TEAM_OFFSET,
     FIELD_OFFSET,
     BOOSTS_OFFSET,
@@ -16,6 +23,7 @@ from pokesim.data import (
     TURN_MAX,
     TURN_OFFSET,
     VOLATILE_STATUS_OFFSET,
+    VOLATILE_STATUS_SIZE,
 )
 
 
@@ -65,12 +73,13 @@ class TimeStep(NamedTuple):
 
 
 actor_fields = set(ActorStep._fields)
-env_fields = {"player_id", "state", "valid", "legal"}
+env_fields = {"game_id", "player_id", "state", "valid", "legal"}
 _FIELDS_TO_STORE = actor_fields | env_fields | {"ts"}
 
 
 class Trajectory(NamedTuple):
     # Env fields
+    game_id: np.ndarray
     player_id: np.ndarray
     state: np.ndarray
     rewards: np.ndarray
@@ -84,7 +93,7 @@ class Trajectory(NamedTuple):
     ts: np.ndarray
 
     def get_length(self):
-        return max(self.valid.sum(0, keepdims=True)) + 1
+        return max(self.valid.sum(0, keepdims=True))  # + 1
 
     def save(self, fpath: str):
         print(f"Saving `{fpath}`")
@@ -117,7 +126,6 @@ class Trajectory(NamedTuple):
             store["ts"].append(ts)
 
         elements = {key: np.stack(value) for key, value in store.items() if value}
-        elements["rewards"][:-1] = elements["rewards"][1:]
 
         return cls(**elements)
 
@@ -171,8 +179,15 @@ class State(NamedTuple):
 
     def get_turn(self, leading_dims: Sequence[int]):
         return (
-            self.raw[..., TURN_OFFSET:TEAM_OFFSET]
+            self.raw[..., TURN_OFFSET:HEURISTIC_OFFSET]
             .clip(max=TURN_MAX)
+            .reshape(*leading_dims)
+            .astype(int)
+        )
+
+    def get_heuristic_action(self, leading_dims: Sequence[int]):
+        return (
+            self.raw[..., HEURISTIC_OFFSET:TEAM_OFFSET]
             .reshape(*leading_dims)
             .astype(int)
         )
@@ -215,12 +230,39 @@ class State(NamedTuple):
         )
 
     def _get_history(self, leading_dims: Sequence[int]):
-        history = self.raw[..., HISTORY_OFFSET:].view(np.int16)
-        return history.reshape(*leading_dims, -1, 4)
+        history = self.raw[..., HISTORY_OFFSET:].view(np.int8)
+        history = history.reshape(*leading_dims, -1, 177)
+        history_right = history[..., 99:].view(np.int16)
+        return history[..., :99], history_right[..., :-7], history_right[..., -7:]
 
     def get_history(self, leading_dims: Sequence[int]):
-        history = self._get_history(leading_dims)
-        return history.astype(int)
+        history_context, history_entities, history_stats = self._get_history(
+            leading_dims
+        )
+        return {
+            "history_side_conditions": history_context[
+                ..., HISTORY_SIDE_CONDITION_OFFSET:HISTORY_VOLATILE_STATUS_OFFSET
+            ]
+            .reshape(*leading_dims, 20, 2, -1)
+            .astype(int),
+            "history_volatile_status": history_context[
+                ..., HISTORY_VOLATILE_STATUS_OFFSET:HISTORY_BOOSTS_OFFSET
+            ]
+            .reshape(*leading_dims, 20, 2, -1, 2)
+            .astype(int),
+            "history_boosts": history_context[
+                ..., HISTORY_BOOSTS_OFFSET:HISTORY_FIELD_OFFSET
+            ]
+            .reshape(*leading_dims, 20, 2, -1)
+            .astype(int),
+            "history_field": history_context[..., HISTORY_FIELD_OFFSET:]
+            .reshape(*leading_dims, 20, 5, 3)
+            .astype(int),
+            "history_entities": history_entities.reshape(
+                *history_entities.shape[:-1], 2, -1
+            ).astype(int),
+            "history_stats": history_stats.astype(int),
+        }
 
     def dense(self):
         if len(self.raw.shape) > 2:
@@ -228,6 +270,7 @@ class State(NamedTuple):
         else:
             leading_dims = (1, 1) + (self.raw.shape[0],)
         turn_enc = self.get_turn(leading_dims)
+        heuristic_action = self.get_heuristic_action(leading_dims)
         active_moveset_enc, teams_enc = self.get_teams(leading_dims)
         side_conditions_enc = self.get_side_conditions(leading_dims)
         volatile_status_enc = self.get_volatile_status(leading_dims)
@@ -237,13 +280,14 @@ class State(NamedTuple):
         return {
             "raw": self.raw,
             "turn": turn_enc,
+            "heuristic_action": heuristic_action,
             "active_moveset": active_moveset_enc,
             "teams": teams_enc,
             "side_conditions": side_conditions_enc,
             "volatile_status": volatile_status_enc,
             "boosts": boosts_enc,
             "field": field_enc,
-            "history": history_enc,
+            **history_enc,
         }
 
 

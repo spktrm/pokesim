@@ -2,6 +2,17 @@ import * as fs from "fs";
 
 export const formatId = "gen3randombattle";
 
+import * as dex from "@pkmn/dex";
+import { Generations } from "@pkmn/data";
+
+const generations = new Generations(dex.Dex);
+
+const maxPP = Object.fromEntries(
+    (generations.dex.mod(formatId.slice(0, 4) as dex.GenID).moves as any)
+        .all()
+        .map((move: { id: any; pp: number }) => [move.id, (move.pp * 8) / 5])
+);
+
 const data = fs.readFileSync("./src/data.json");
 const {
     sideConditions: sideConditionsMapping,
@@ -46,4 +57,5 @@ export {
     pseudoWeatherMapping,
     statusMapping,
     boostsMapping,
+    maxPP,
 };

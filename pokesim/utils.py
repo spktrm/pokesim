@@ -1,7 +1,42 @@
+import os
 import torch
 import torch.nn as nn
 
 from tabulate import tabulate
+
+from pokesim.data import NUM_HISTORY
+
+
+def get_most_recent_file(dir_path):
+    # List all files in the directory
+    files = [
+        os.path.join(dir_path, f)
+        for f in os.listdir(dir_path)
+        if os.path.isfile(os.path.join(dir_path, f))
+    ]
+
+    if not files:
+        return None
+
+    # Sort files by creation time
+    most_recent_file = max(files, key=os.path.getctime)
+
+    return most_recent_file
+
+
+def get_example(T: int, B: int, H: int = NUM_HISTORY, device: str = "cpu"):
+    mask = torch.ones(T, B, 10, dtype=torch.bool, device=device)
+    return (
+        torch.zeros(T, B, H, dtype=torch.long, device=device),
+        torch.zeros(T, B, H, 4, dtype=torch.long, device=device),
+        torch.zeros(T, B, H, 3, 6, 17, dtype=torch.long, device=device),
+        torch.zeros(T, B, H, 2, 15, dtype=torch.long, device=device),
+        torch.zeros(T, B, H, 2, 10, 2, dtype=torch.long, device=device),
+        torch.zeros(T, B, H, 2, 7, dtype=torch.long, device=device),
+        torch.zeros(T, B, H, 5, 3, dtype=torch.long, device=device),
+        mask,
+        torch.ones(T, B, H, 4, 4, dtype=torch.long, device=device),
+    )
 
 
 class SGDTowardsModel:
@@ -14,9 +49,8 @@ class SGDTowardsModel:
         target_state_dict = self._params_target.state_dict()
         state_dict = self._params.state_dict()
 
-        for (key, param_target), (_, param) in zip(
-            target_state_dict.items(), state_dict.items()
-        ):
+        for key, param_target in target_state_dict.items():
+            param = state_dict[key]
             target_state_dict[key] = self._lr * param + (1 - self._lr) * param_target
 
         self._params_target.load_state_dict(target_state_dict)
@@ -92,7 +126,7 @@ def _legal_log_policy(
 
 
 def _threshold(
-    policy: torch.Tensor, mask: torch.Tensor, threshold: float = 0.03
+    policy: torch.Tensor, mask: torch.Tensor, threshold: float = 0.05
 ) -> torch.Tensor:
     """Remove from the support the actions 'a' where policy(a) < threshold."""
     if threshold <= 0:
@@ -132,7 +166,6 @@ def _discretize(policy: torch.Tensor, n_disc: float = 16) -> torch.Tensor:
     return final_probs
 
 
-@torch.jit.script_if_tracing
 def finetune(policy: torch.Tensor, mask: torch.Tensor):
     policy = _threshold(policy, mask)
     # policy = _discretize(policy)

@@ -1,8 +1,10 @@
-from typing import List
-
 import numpy as np
 
+from typing import List
+from dataclasses import dataclass
 
+
+@dataclass
 class AdamConfig:
     """Adam optimizer related params."""
 
@@ -11,7 +13,16 @@ class AdamConfig:
     eps: float = 10e-8
 
 
-class SACConfig:
+@dataclass
+class NerdConfig:
+    """Nerd related params."""
+
+    beta: float = 2.0
+    clip: float = 10_000
+
+
+@dataclass
+class ImpalaConfig:
     """Configuration parameters for the RNaDSolver."""
 
     actor_device = "cpu"
@@ -26,15 +37,8 @@ class SACConfig:
     # All gradients values are clipped to [-clip_gradient, clip_gradient].
     clip_gradient: float = 10000
 
-    gamma = 0.99
-    gae_param = 0.95
+    nerd: NerdConfig = NerdConfig()
+    c_vtrace: float = 1.0
+    rho: float = np.inf
 
-    clip_param = 0.1
-    # Weight of value function loss in the total loss.
-    vf_coeff = 0.5
-    # Weight of entropy bonus in the total loss.
-    entropy_coeff = 0.01
-    tau = 1e-2
-
-    forward_batch_size: int = 512
-    backward_batch_size: int = 256
+    tau: float = 1e-2
