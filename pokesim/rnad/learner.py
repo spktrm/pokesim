@@ -10,7 +10,7 @@ from dataclasses import asdict
 from typing import Any, List, Mapping
 
 from pokesim.data import MODEL_INPUT_KEYS, NUM_HISTORY, NUM_PLAYERS
-from pokesim.nn.modelv2 import Model
+from pokesim.nn.model import Model
 from pokesim.structs import Batch, ModelOutput, State
 
 from pokesim.rnad.utils import EntropySchedule, v_trace, _player_others, _policy_ratio

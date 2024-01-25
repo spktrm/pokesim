@@ -75,7 +75,7 @@ def main(debug):
     # init = torch.load("ckpts/093855.pt", map_location="cpu")
     # init = init["params"]
     init = None
-    learner = Learner(init=init, debug=debug, trace_nets=not debug)
+    learner = Learner(init=init, debug=debug, trace_nets=False)  # not debug)
     # learner = Learner.from_fpath("ckpts/129303.pt", trace_nets=False)
 
     if not debug:

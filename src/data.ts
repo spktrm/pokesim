@@ -6,11 +6,25 @@ import * as dex from "@pkmn/dex";
 import { Generations } from "@pkmn/data";
 
 const generations = new Generations(dex.Dex);
+const formatDex = generations.dex.mod(formatId.slice(0, 4) as dex.GenID);
 
 const maxPP = Object.fromEntries(
-    (generations.dex.mod(formatId.slice(0, 4) as dex.GenID).moves as any)
+    (formatDex.moves as any)
         .all()
         .map((move: { id: any; pp: number }) => [move.id, (move.pp * 8) / 5])
+);
+
+const typeMapping = Object.fromEntries(
+    ((formatDex.types as any).all() as dex.Type[])
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .filter((type) => type.isNonstandard !== "Future")
+        .map(({ id, damageTaken }, index) => [
+            id,
+            {
+                index,
+                damageTaken,
+            },
+        ])
 );
 
 const data = fs.readFileSync("./src/data.json");

@@ -5,7 +5,7 @@ import numpy as np
 
 from typing import Any, Dict
 
-STATE_SIZE = 4231
+STATE_SIZE = 5199
 
 
 with open(os.path.abspath("./config.yml"), "r") as f:
@@ -61,7 +61,7 @@ HEURISTIC_OFFSET = TURN_OFFSET + TURN_SIZE
 HEURISTIC_SIZE = 1
 
 TEAM_OFFSET = HEURISTIC_OFFSET + HEURISTIC_SIZE
-TEAM_SIZE = 3 * 6 * 32
+TEAM_SIZE = 3 * 6 * 48
 
 SIDE_CONDITION_OFFSET = TEAM_OFFSET + TEAM_SIZE
 SIDE_CONDITION_SIZE = 2 * 15

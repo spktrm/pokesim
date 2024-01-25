@@ -8,17 +8,9 @@ from dataclasses import dataclass
 class AdamConfig:
     """Adam optimizer related params."""
 
-    b1: float = 0.0
+    b1: float = 0.9
     b2: float = 0.999
     eps: float = 10e-8
-
-
-@dataclass
-class NerdConfig:
-    """Nerd related params."""
-
-    beta: float = 2.0
-    clip: float = 10_000
 
 
 @dataclass
@@ -36,8 +28,6 @@ class ImpalaConfig:
     adam: AdamConfig = AdamConfig()
     # All gradients values are clipped to [-clip_gradient, clip_gradient].
     clip_gradient: float = 10000
-
-    nerd: NerdConfig = NerdConfig()
     c_vtrace: float = 1.0
     rho: float = np.inf
 

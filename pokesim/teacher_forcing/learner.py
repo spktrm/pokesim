@@ -10,9 +10,9 @@ import collections
 from copy import deepcopy
 from dataclasses import asdict
 from typing import Any, Mapping
-from pokesim.data import NUM_HISTORY
+from pokesim.data import MODEL_INPUT_KEYS, NUM_HISTORY
 
-from pokesim.nn.modelv2 import Model
+from pokesim.nn.model import Model
 from pokesim.structs import Batch, ModelOutput, State
 
 from pokesim.teacher_forcing.config import ImpalaConfig
@@ -122,10 +122,10 @@ def compute_baseline_loss(advantages: torch.Tensor) -> torch.Tensor:
 
 
 def compute_policy_gradient_loss(
-    logits: torch.Tensor, actions: torch.Tensor
+    logits: torch.Tensor, actions: torch.Tensor, legal: torch.Tensor
 ) -> torch.Tensor:
     cross_entropy = F.cross_entropy(
-        torch.flatten(logits, 0, 1),
+        torch.flatten(torch.where(legal, logits, float("-inf")), 0, 1),
         target=torch.flatten(actions, 0, 1),
         reduction="none",
     )
@@ -239,20 +239,7 @@ class Learner:
             "legal": batch.legal,
         }
 
-        forward_batch = {
-            key: self._to_torch(state[key])
-            for key in [
-                "turn",
-                "active_moveset",
-                "teams",
-                "side_conditions",
-                "volatile_status",
-                "boosts",
-                "field",
-                "history",
-                "legal",
-            ]
-        }
+        forward_batch = {key: self._to_torch(state[key]) for key in MODEL_INPUT_KEYS}
 
         heuristic_action = torch.from_numpy(state["heuristic_action"][..., -1])
         heuristic_policy = torch.eye(10)[heuristic_action]
@@ -290,6 +277,7 @@ class Learner:
         pg_loss = compute_policy_gradient_loss(
             learner_outputs.logits - learner_outputs.logits.mean(-1, keepdim=True),
             heuristic_action.to(self.config.learner_device),
+            forward_batch["legal"],
         )
         baseline_loss = compute_baseline_loss(vs - values)
         entropy_loss = get_loss_entropy(

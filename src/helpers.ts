@@ -1,6 +1,6 @@
 import { Pokemon, Side, Battle as clientBattle } from "@pkmn/client";
 import { AnyObject } from "@pkmn/sim";
-import { Int8State } from "./state";
+import { Int8State, getPrivatePokemon, getPublicPokemon } from "./state";
 import {
     arange,
     getRandomAction,
@@ -463,37 +463,43 @@ class moveInfo {
     isCritical: boolean = false;
     targetFainted: boolean = false;
     missed: boolean = false;
+    moveCounter: number = 0;
+    switchCounter: number = 0;
 
     isReady() {
         return this.moveName !== undefined;
     }
 
     hash() {
-        return createHash("sha256")
-            .update(
-                `${this.user}|${this.target}|${this.moveName}|${this.damage}|${this.effectiveness}|${this.isCritical}|${this.targetFainted}`
-            )
-            .digest("hex");
-    }
-
-    serialize(): { [k: string]: any } {
-        return {
-            user: this.user,
-            target: this.target,
-            moveName: this.moveName,
-            damage: this.damage,
-            effectiveness: this.effectiveness,
-            isCritical: this.isCritical,
-        };
+        let salt = "";
+        for (const addition of [
+            this.user,
+            this.target,
+            this.userSide,
+            this.targetSide,
+            this.moveName,
+            this.damage,
+            this.effectiveness,
+            this.isCritical,
+            this.targetFainted,
+            this.missed,
+            this.moveCounter,
+            this.switchCounter,
+        ]) {
+            salt += `|${addition}`;
+        }
+        return createHash("sha256").update(salt).digest("hex");
     }
 }
 
-export const historyVectorSize = 177;
+export const historyVectorSize = 211;
 export class BattlesHandler {
+    playerIndex: number;
     battles: clientBattle[];
     turn: number;
     turns: AnyObject;
     damage: AnyObject;
+    entityVectors: AnyObject;
     damageInfos: {
         [k: string]: {
             context: moveInfo;
@@ -502,11 +508,21 @@ export class BattlesHandler {
         };
     };
 
-    constructor(battles: clientBattle[]) {
+    constructor(playerIndex: number, battles: clientBattle[]) {
+        this.playerIndex = playerIndex;
         this.battles = battles;
         this.turn = 0;
         this.turns = {};
         this.damage = {};
+        this.entityVectors = {};
+        this.damageInfos = {};
+    }
+
+    reset() {
+        this.turn = 0;
+        this.turns = {};
+        this.damage = {};
+        this.entityVectors = {};
         this.damageInfos = {};
     }
 
@@ -543,6 +559,11 @@ export class BattlesHandler {
         return this.battles[0];
     }
 
+    getRequest(): AnyObject {
+        const battle = this.getMyBattle() ?? {};
+        return battle.request as AnyObject;
+    }
+
     getOppBattle() {
         return this.battles[1];
     }
@@ -554,60 +575,137 @@ export class BattlesHandler {
     getAggregatedTurnLines() {
         const turn = Object.keys(this.turns).length - 1;
         const actionLines = this.getTurnLines(turn);
-        let currentMoveInfo: moveInfo = new moveInfo();
+        let currentMoveInfo: {
+            context: moveInfo;
+            vector: Int8Array;
+            hasVector: boolean;
+        } = {
+            context: new moveInfo(),
+            vector: new Int8Array(historyVectorSize),
+            hasVector: false,
+        };
+
+        let moveCounter = 0;
+        let switchCounter = 0;
+
         for (const [lineIndex, line] of actionLines.entries()) {
             if (!line.startsWith("|-")) {
-                if (currentMoveInfo.isReady()) {
-                    this.damageInfos[currentMoveInfo.hash()] = {
-                        context: currentMoveInfo,
+                if (currentMoveInfo.context.isReady()) {
+                    this.damageInfos[currentMoveInfo.context.hash()] =
+                        currentMoveInfo;
+                    currentMoveInfo = {
+                        context: new moveInfo(),
                         vector: new Int8Array(historyVectorSize),
                         hasVector: false,
                     };
-                    currentMoveInfo = new moveInfo();
                 }
             }
-
             if (line.startsWith("|move")) {
                 const [_, __, user, moveName, target] = line.split("|");
-                currentMoveInfo.userSide = parseInt(user.slice(1, 2)) - 1;
-                currentMoveInfo.user = user.slice(0, 2) + user.slice(3);
-                currentMoveInfo.moveName = moveName;
-                const targetCorrect = target ?? user;
-                currentMoveInfo.targetSide =
+                currentMoveInfo.context.userSide =
+                    parseInt(user.slice(1, 2)) - 1;
+                currentMoveInfo.context.user = user.slice(0, 2) + user.slice(3);
+                currentMoveInfo.context.moveName = moveName;
+                const targetCorrect = target === "" ? user : target ?? user;
+                currentMoveInfo.context.targetSide =
                     parseInt(targetCorrect.slice(1, 2)) - 1;
-                currentMoveInfo.target =
+                currentMoveInfo.context.target =
                     targetCorrect.slice(0, 2) + targetCorrect.slice(3);
+
+                let offset = 0;
+                const history = this.entityVectors[turn][lineIndex + 1];
+                for (const datum of history) {
+                    currentMoveInfo.vector.set(datum, offset);
+                    offset += datum.length;
+                }
+
+                currentMoveInfo.context.moveCounter = moveCounter;
+                moveCounter = moveCounter + 1;
+            } else if (line.startsWith("|switch")) {
+                currentMoveInfo.context.moveCounter = switchCounter;
+                switchCounter = switchCounter + 1;
             } else if (
                 line.startsWith("|-damage") ||
                 line.startsWith("|-heal")
             ) {
-                currentMoveInfo.damage += this.damage[turn][lineIndex + 1];
+                currentMoveInfo.context.damage +=
+                    this.damage[turn][lineIndex + 1];
             } else if (line.startsWith("|-crit")) {
-                currentMoveInfo.isCritical = true;
+                currentMoveInfo.context.isCritical = true;
             } else if (line.startsWith("|-supereffective")) {
-                currentMoveInfo.effectiveness = 3;
+                currentMoveInfo.context.effectiveness = 3;
             } else if (line.startsWith("|-resisted")) {
-                currentMoveInfo.effectiveness = 2;
+                currentMoveInfo.context.effectiveness = 2;
             } else if (line.startsWith("|-immune")) {
-                currentMoveInfo.effectiveness = 0;
+                currentMoveInfo.context.effectiveness = 0;
             } else if (line.startsWith("|-fail")) {
-                currentMoveInfo.effectiveness = 4;
+                currentMoveInfo.context.effectiveness = 4;
             } else if (line.startsWith("|faint")) {
-                currentMoveInfo.targetFainted = true;
+                currentMoveInfo.context.targetFainted = true;
             } else if (line.startsWith("|-miss")) {
-                currentMoveInfo.missed = true;
+                currentMoveInfo.context.missed = true;
             }
+        }
+        if (currentMoveInfo.context.isReady()) {
+            this.damageInfos[currentMoveInfo.context.hash()] = currentMoveInfo;
         }
         return this.damageInfos;
     }
 
-    appendTurnLine(line: string): void {
+    appendTurnLine(
+        playerIndex: number,
+        workerIndex: number,
+        line: string
+    ): void {
         if (this.turns[this.turn] === undefined) {
             this.turns[this.turn] = [];
             this.damage[this.turn] = {};
+            this.entityVectors[this.turn] = {};
         }
         this.turns[this.turn].push(line);
         const battle = this.getMyBattle();
+        if (line.startsWith("|move")) {
+            let [_, __, user, moveName, target] = line.split("|");
+            const userSide = parseInt(user.slice(1, 2)) - 1;
+            user = user.slice(0, 2) + user.slice(3);
+            moveName = moveName;
+            const targetCorrect = target === "" ? user : target ?? user;
+            const targetSide = parseInt(targetCorrect.slice(1, 2)) - 1;
+            target = targetCorrect.slice(0, 2) + targetCorrect.slice(3);
+            const isMe = this.playerIndex === userSide ? 1 : 0;
+            const userProps = this.getPokemon(userSide, user);
+            const targetProps = this.getPokemon(targetSide, target);
+            const userVector =
+                userSide === this.playerIndex
+                    ? getPublicPokemon(
+                          this.getMyBattle(),
+                          userProps,
+                          true,
+                          isMe
+                      )
+                    : getPrivatePokemon(this.getMyBattle(), userProps);
+            const targetVector =
+                targetSide === this.playerIndex
+                    ? getPublicPokemon(
+                          this.getMyBattle(),
+                          targetProps,
+                          true,
+                          isMe
+                      )
+                    : getPrivatePokemon(this.getMyBattle(), targetProps);
+            const stateHandler = new Int8State({
+                handler: this,
+                playerIndex: playerIndex,
+                workerIndex: workerIndex ?? 0,
+                done: 0,
+                reward: 0,
+            });
+            this.entityVectors[this.turn][this.turns[this.turn].length] = [
+                stateHandler.getContextVector(),
+                userVector,
+                targetVector,
+            ];
+        }
         if (line.startsWith("|-damage") || line.startsWith("|-heal")) {
             let prevHp: number;
             const [_, __, user, healthRatio] = line.split("|");
@@ -668,7 +766,7 @@ export class BattlesHandler {
         return stateBuffer;
     }
 
-    getRandomAction(playerIndex: number, workerIndex?: number): string {
+    getRandomActionString(playerIndex: number, workerIndex?: number): string {
         const stateHandler = new Int8State({
             handler: this,
             playerIndex: playerIndex,
@@ -680,7 +778,7 @@ export class BattlesHandler {
         return getRandomAction(legalMask);
     }
 
-    getMaxdmgAction(playerIndex: number, workerIndex?: number): string {
+    getMaxdmgActionString(playerIndex: number, workerIndex?: number): string {
         const stateHandler = new Int8State({
             handler: this,
             playerIndex: playerIndex,
@@ -693,9 +791,22 @@ export class BattlesHandler {
         return player.getAction();
     }
 
-    getHeuristicAction(playerIndex: number, workerIndex?: number): number {
+    getHeuristicActionIndex(playerIndex: number, workerIndex?: number): number {
         const simpleHeuristic = new SimpleHeuristicPlayer(this, playerIndex);
         return simpleHeuristic.getActionIndex();
+    }
+
+    getHeuristicActionString(
+        playerIndex: number,
+        workerIndex?: number
+    ): string {
+        const simpleHeuristic = new SimpleHeuristicPlayer(this, playerIndex);
+        const actionIndex = simpleHeuristic.getActionIndex();
+        if (actionIndex < 4) {
+            return `move ${actionIndex + 1}`;
+        } else {
+            return `switch ${actionIndex + 1 - 4}`;
+        }
     }
 }
 

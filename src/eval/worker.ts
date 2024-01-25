@@ -83,7 +83,7 @@ class PokemonShowdownBot {
         this.ws.on("open", () => console.log("Connected to server"));
         this.ws.on("message", this.onMessage.bind(this));
         this.clientBattle = new clientBattle(generations);
-        this.handler = new BattlesHandler([this.clientBattle]);
+        this.handler = new BattlesHandler(0, [this.clientBattle]);
         this.playerIndex = undefined;
         this.playerIndexIsSet = false;
         this.clientSocket = clientSocket;
@@ -98,11 +98,16 @@ class PokemonShowdownBot {
         if (message.startsWith("|challstr|")) {
             const parts = message.split("|");
             const challstr = parts[2] + "|" + parts[3];
-            const assertion = await this.getAssertion(this.username, challstr);
 
-            if (assertion) {
-                this.login(this.username, 128, assertion);
+            if (this.url.includes(localHost)) {
                 this.sendMessage("", `/search ${formatId}`);
+            } else {
+                const assertion = await this.getAssertion(challstr);
+
+                if (assertion) {
+                    this.login(this.username, assertion);
+                    this.sendMessage("", `/search ${formatId}`);
+                }
             }
         } else if (message.startsWith(">")) {
             const turn = this.clientBattle.turn ?? 0;
@@ -116,19 +121,30 @@ class PokemonShowdownBot {
                 }
                 // if (isAction(line)) {
                 if (this.started) {
-                    this.handler.appendTurnLine(line);
+                    this.handler.appendTurnLine(this.playerIndex ?? 0, 0, line);
                 }
                 try {
                     this.clientBattle.add(line);
                 } catch (err) {}
                 if (line.startsWith("|start")) {
                     this.started = true;
+                    this.sendMessage(this.battleId ?? "", "/timer on");
                 }
-                if (line.startsWith("|win")) {
+                if (line.startsWith("|win") || line.startsWith("|tie\n")) {
                     const state = this.handler.getState({
                         done: 1,
                         playerIndex: this.playerIndex ?? 0,
                     });
+                    this.clientSocket.write(state);
+                    const actionChar = await this.msgQueue.dequeue();
+                    const action = actionCharToString(actionChar);
+                    this.handler.reset();
+                    for (const side of this.clientBattle.sides) {
+                        side.reset();
+                    }
+                    this.clientBattle.reset();
+
+                    this.sendMessage("", `/noreply /leave ${this.battleId}`);
                     this.sendMessage("", `/search ${formatId}`);
                 }
             }
@@ -143,6 +159,7 @@ class PokemonShowdownBot {
                                 ).side.id.slice(1)
                             ) - 1;
                         this.playerIndexIsSet = true;
+                        this.handler.playerIndex = this.playerIndex;
                     }
                 } catch (err) {}
             }
@@ -164,38 +181,56 @@ class PokemonShowdownBot {
             }
         }
     }
-    private async sendMessage(room: string, ...messageList: string[]) {
+    private sendMessage(room: string, ...messageList: string[]) {
         const messageToSend = room + "|" + messageList.join("|");
         this.ws.send(messageToSend);
         console.log(`Sent: ${messageToSend}`);
     }
 
-    private async getAssertion(
-        username: string,
-        challstr: string
-    ): Promise<string | null> {
-        try {
-            const params = new URLSearchParams({
-                act: "getassertion",
-                userid: username,
-                challstr: challstr,
-            });
+    private async getAssertion(challstr: string): Promise<string | null> {
+        if (this.password !== undefined) {
+            try {
+                const params = {
+                    name: this.username,
+                    pass: this.password,
+                    challstr: challstr,
+                };
 
-            const response = await fetch(
-                "https://play.pokemonshowdown.com/action.php?" +
-                    params.toString()
-            );
-            const assertion: string = await response.text();
-
-            if (assertion.slice(0, 2) === ";;") {
-                console.error("Error:", assertion);
+                const response = await fetch(
+                    "https://play.pokemonshowdown.com/api/login",
+                    { method: "POST", body: JSON.stringify(params) }
+                );
+                const assertion: string = await response.text();
+                const json = JSON.parse(assertion.slice(1));
+                return json.assertion;
+            } catch (error) {
+                console.error("Error getting assertion:", error);
                 return null;
             }
+        } else {
+            try {
+                const params = {
+                    act: "getassertion",
+                    userid: this.username,
+                    challstr: challstr,
+                };
 
-            return assertion;
-        } catch (error) {
-            console.error("Error getting assertion:", error);
-            return null;
+                const response = await fetch(
+                    "https://play.pokemonshowdown.com/api/login",
+                    { method: "POST", body: JSON.stringify(params) }
+                );
+                const assertion: string = await response.text();
+
+                if (assertion.slice(0, 2) === ";;") {
+                    console.error("Error:", assertion);
+                    return null;
+                }
+
+                return assertion;
+            } catch (error) {
+                console.error("Error getting assertion:", error);
+                return null;
+            }
         }
     }
 
@@ -203,8 +238,8 @@ class PokemonShowdownBot {
         this.msgQueue.enqueue(actionChar);
     }
 
-    private login(username: string, avatar: any, assertion: string): void {
-        this.ws.send("|/trn " + username + `,${avatar},` + assertion);
+    private login(username: string, assertion: string): void {
+        this.ws.send("|/trn " + username + ",0," + assertion);
     }
 }
 
@@ -212,7 +247,7 @@ let numConnections = 0;
 const workers: PokemonShowdownBot[] = [];
 
 function createWorker(socket: net.Socket) {
-    const worker = new PokemonShowdownBot(socket, "spktrm", "Xtrasm00th");
+    const worker = new PokemonShowdownBot(socket, "jtwin", "trex123");
     workers.push(worker);
 }
 

@@ -2,10 +2,6 @@ start-online:
 	tsc
 	node dist/server/online.js 2> debug/server-online.err.log
 
-start-offline: 
-	tsc
-	node dist/server/offline.js 2> debug/server-offline.err.log
-
 start-debug: 
 	tsc
 	node dist/server/online.js debug 2> debug/server-online.err.log

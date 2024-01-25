@@ -10,9 +10,9 @@ import collections
 from copy import deepcopy
 from dataclasses import asdict
 from typing import Any, Mapping
-from pokesim.data import NUM_HISTORY
+from pokesim.data import MODEL_INPUT_KEYS, NUM_HISTORY
 
-from pokesim.nn.modelv2 import Model
+from pokesim.nn.model import Model
 from pokesim.structs import Batch, ModelOutput, State
 
 from pokesim.impala.config import ImpalaConfig
@@ -239,20 +239,7 @@ class Learner:
             "legal": batch.legal,
         }
 
-        forward_batch = {
-            key: self._to_torch(state[key])
-            for key in [
-                "turn",
-                "active_moveset",
-                "teams",
-                "side_conditions",
-                "volatile_status",
-                "boosts",
-                "field",
-                "history",
-                "legal",
-            ]
-        }
+        forward_batch = {key: self._to_torch(state[key]) for key in MODEL_INPUT_KEYS}
 
         learner_outputs = ModelOutput(*self.params(**forward_batch))
 

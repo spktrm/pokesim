@@ -29,7 +29,7 @@ class RNaDConfig:
     learner_device = "cuda"
 
     # The batch size to use when learning/improving parameters.
-    batch_size: int = 8
+    batch_size: int = 4
     # The number of steps to accumulate gradients for.
     accum_steps: int = 1
     # The learning rate for `params`.
@@ -46,7 +46,7 @@ class RNaDConfig:
     entropy_schedule_repeats: List[int] = (1,)
     entropy_schedule_size: List[int] = (10000,)
     # The weight of the reward regularisation term in RNaD.
-    eta_reward_transform: float = 0.05
+    eta_reward_transform: float = 0.5
     nerd: NerdConfig = NerdConfig()
     c_vtrace: float = 0.95
     rho: float = 0.99  # np.inf

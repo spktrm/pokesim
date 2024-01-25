@@ -1,6 +1,7 @@
 import os
 import torch
 import torch.nn as nn
+import numpy as np
 
 from tabulate import tabulate
 
@@ -35,7 +36,12 @@ def get_example(T: int, B: int, H: int = NUM_HISTORY, device: str = "cpu"):
         torch.zeros(T, B, H, 2, 7, dtype=torch.long, device=device),
         torch.zeros(T, B, H, 5, 3, dtype=torch.long, device=device),
         mask,
-        torch.ones(T, B, H, 4, 4, dtype=torch.long, device=device),
+        torch.zeros(T, B, H, 20, 2, 15, dtype=torch.long, device=device),
+        torch.zeros(T, B, H, 20, 2, 10, 2, dtype=torch.long, device=device),
+        torch.zeros(T, B, H, 20, 2, 7, dtype=torch.long, device=device),
+        torch.zeros(T, B, H, 20, 5, 3, dtype=torch.long, device=device),
+        torch.zeros(T, B, H, 20, 2, 18, dtype=torch.long, device=device),
+        torch.zeros(T, B, H, 20, 7, dtype=torch.long, device=device),
     )
 
 
@@ -167,6 +173,33 @@ def _discretize(policy: torch.Tensor, n_disc: float = 16) -> torch.Tensor:
 
 
 def finetune(policy: torch.Tensor, mask: torch.Tensor):
-    policy = _threshold(policy, mask)
+    # policy = _threshold(policy, mask)
     # policy = _discretize(policy)
     return policy
+
+
+def print_rounded_numbers(numbers, n: int):
+    # Round the numbers to n decimal places and convert them to strings
+    rounded_numbers = [f"{num:.{n}f}" for num in numbers]
+
+    # Find the length of the longest number (as a string)
+    last_num = f"{-1:.{n}f}"
+    max_length = max(len(num) for num in rounded_numbers + [last_num])
+
+    # Create a format string for even spacing
+    format_string = "{:>" + str(max_length) + "}"
+
+    # Print the numbers on a single line with even spacing
+    print(" ".join(format_string.format(num) for num in rounded_numbers))
+
+
+def handle_verbose(
+    n: int, pi: np.ndarray, logit: np.ndarray, action: int, value: np.ndarray
+):
+    print("policy:\t", end="")
+    print_rounded_numbers(pi.tolist(), 2)
+    print("logits:\t", end="")
+    print_rounded_numbers(logit.tolist(), 2)
+    print(f"value:\t{value.item():.3f}")
+    print(f"action:\t{action}")
+    print()

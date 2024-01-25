@@ -1,6 +1,6 @@
 import torch
 
-from pokesim.nn.modelv2 import Model
+from pokesim.nn.model import Model
 from pokesim.rnad.actor import run_environment
 from pokesim.utils import get_most_recent_file
 
@@ -11,14 +11,14 @@ class FillerQueue:
 
 
 def main(worker_index):
-    # fpath = get_most_recent_file("ckpts")
-    # print(fpath)
-
-    # ckpt = torch.load(fpath, map_location="cpu")
-    # state_dict = ckpt["params"]
-
     model = Model()
-    # model.load_state_dict(state_dict, strict=False)
+
+    fpath = get_most_recent_file("ckpts")
+    if fpath is not None:
+        print(fpath)
+        ckpt = torch.load(fpath, map_location="cpu")
+        state_dict = ckpt["params"]
+        model.load_state_dict(state_dict, strict=False)
 
     filler_queue = FillerQueue()
     run_environment(

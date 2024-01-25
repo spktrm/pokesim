@@ -12,25 +12,7 @@ from pokesim.env import EnvironmentNoStackSingleStep
 from pokesim.structs import ActorStep, EnvStep, ModelOutput, TimeStep
 
 from pokesim.structs import Trajectory
-from pokesim.utils import finetune
-
-
-def handle_verbose(
-    n: int, pi: np.ndarray, logit: np.ndarray, action: np.ndarray, value: np.ndarray
-):
-    nice_probs = [f"{p:.2f}" for p in pi]
-    action_type = " ".join(nice_probs)
-
-    nice_logit = [f"{p:.2f}" for p in logit]
-    logits = " ".join(nice_logit)
-
-    v = f"{value.item():.3f}"
-
-    text = "\n".join([str(n), action_type, logits, f"{action}", v])
-    print(text + "\n")
-
-
-_MODEL_INPUT_KEYS = MODEL_INPUT_KEYS.copy()
+from pokesim.utils import finetune, handle_verbose
 
 
 def _actor_step(
@@ -39,7 +21,7 @@ def _actor_step(
     obs: Dict[str, torch.Tensor],
     verbose: bool = False,
 ) -> ActorStep:
-    model_input = {key: torch.from_numpy(obs[key]) for key in _MODEL_INPUT_KEYS}
+    model_input = {key: torch.from_numpy(obs[key]) for key in MODEL_INPUT_KEYS}
     model_input["legal"] = model_input["legal"].reshape(1, 1, -1)
 
     with torch.no_grad():
@@ -156,7 +138,7 @@ async def _run_environment_async(
                     )
                 )
                 num_steps += 1
-            if is_terminal >= 2:
+            if is_terminal >= threshold:
                 _reset(worker_index, learn_queue, eval_queue, num_battles, timesteps)
                 timesteps = []
                 await _drain(player_index, env)
@@ -173,7 +155,7 @@ def run_environment(
     eval_queue: mp.Queue,
     condition: mp.Condition,
     verbose: bool = False,
-    threshold: int = 1,
+    threshold: int = 2,
 ):
     return asyncio.run(
         _run_environment_async(

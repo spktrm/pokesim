@@ -1,16 +1,9 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
-from torch.nn.utils.rnn import pack_padded_sequence
-
-from typing import Tuple
 
 from pokesim.data import (
     NUM_ABILITIES,
     NUM_BOOSTS,
-    NUM_HISTORY,
-    NUM_HP_BUCKETS,
     NUM_ITEMS,
     NUM_MOVES,
     NUM_PSEUDOWEATHER,
@@ -22,66 +15,87 @@ from pokesim.data import (
     NUM_WEATHER,
 )
 
+from typing import Tuple
+
 from pokesim.structs import ModelOutput
 from pokesim.utils import _legal_log_policy, _legal_policy
 
 from pokesim.nn.helpers import _layer_init
 from pokesim.nn.modules import (
     GatingType,
+    MultiHeadAttention,
     PointerLogits,
-    Resnet,
-    ToVector,
     VectorMerge,
-    VectorQuantizer,
     MLP,
-    _USE_LAYER_NORM,
 )
 
+# from pokemb.mod import ComponentEmbedding
 
-class Model(nn.Module):
-    def __init__(self, entity_size: int = 128, vector_size: int = 256):
+
+PADDING_TOKEN = -1
+UNKNOWN_TOKEN = -2
+SWITCH_TOKEN = -3
+
+
+class Encoder(nn.Module):
+    def __init__(
+        self,
+        entity_size: int,
+        stream_size: int,
+        use_layer_norm: bool,
+        affine_layer_norm: bool,
+    ):
         super().__init__()
 
-        self.entity_size = entity_size
-        self.vector_size = vector_size
+        self.species_onehot = nn.Embedding.from_pretrained(torch.eye(NUM_SPECIES + 2))
+        self.item_onehot = nn.Embedding.from_pretrained(torch.eye(NUM_ITEMS + 2))
+        self.ability_onehot = nn.Embedding.from_pretrained(torch.eye(NUM_ABILITIES + 2))
+        self.moves_onehot = nn.Embedding.from_pretrained(torch.eye(NUM_MOVES + 3))
+        self.hp_onehot = nn.Embedding.from_pretrained(torch.eye(65))
+        self.status_onehot = nn.Embedding.from_pretrained(torch.eye(NUM_STATUS + 1))
+        self.active_onehot = nn.Embedding.from_pretrained(torch.eye(2))
+        self.fainted_onehot = nn.Embedding.from_pretrained(torch.eye(2))
+        self.side_onehot = nn.Embedding.from_pretrained(torch.eye(2))
+        self.public_onehot = nn.Embedding.from_pretrained(torch.eye(2))
+        self.sleep_turns_onehot = nn.Embedding.from_pretrained(torch.eye(4))
+        self.toxic_turns_onehot = nn.Embedding.from_pretrained(torch.eye(6))
 
-        side_token = torch.zeros(18, dtype=torch.long).view(-1, 6)
-        side_token[-1] = 1
-        self.register_buffer("side_token", side_token)
+        self.entity_cls = _layer_init(nn.Parameter(torch.randn(1, 1, 4, entity_size)))
+        self.history_cls = _layer_init(nn.Parameter(torch.randn(1, 1, 4, entity_size)))
+        self.history_mlp = MLP([entity_size, entity_size])
+        self.entity_lin = _layer_init(
+            nn.Linear(
+                self.species_onehot.weight.shape[-1]
+                + self.item_onehot.weight.shape[-1]
+                + self.ability_onehot.weight.shape[-1]
+                + 2 * self.moves_onehot.weight.shape[-1]
+                + 1 * self.hp_onehot.weight.shape[-1]
+                + self.status_onehot.weight.shape[-1]
+                + self.active_onehot.weight.shape[-1]
+                + self.fainted_onehot.weight.shape[-1]
+                + self.side_onehot.weight.shape[-1]
+                + self.public_onehot.weight.shape[-1]
+                + self.sleep_turns_onehot.weight.shape[-1]
+                + self.toxic_turns_onehot.weight.shape[-1],
+                entity_size,
+            )
+        )
 
-        self.species_onehot = _layer_init(nn.Embedding(NUM_SPECIES + 1, entity_size))
-        self.item_onehot = _layer_init(nn.Embedding(NUM_ITEMS + 1, entity_size))
-        self.ability_onehot = _layer_init(nn.Embedding(NUM_ABILITIES + 1, entity_size))
-        self.moves_onehot = _layer_init(nn.Embedding(NUM_MOVES + 2, entity_size))
-        self.hp_onehot = _layer_init(nn.Embedding(NUM_HP_BUCKETS + 1, entity_size))
-        self.status_onehot = _layer_init(nn.Embedding(NUM_STATUS + 1, entity_size))
-        self.active_onehot = _layer_init(nn.Embedding(2, entity_size))
-        self.fainted_onehot = _layer_init(nn.Embedding(2, entity_size))
-        self.side_onehot = _layer_init(nn.Embedding(2, entity_size))
-        self.public_onehot = _layer_init(nn.Embedding(2, entity_size))
+        self.is_critical_onehot = nn.Embedding.from_pretrained(torch.eye(2))
+        self.effectiveness_onehot = nn.Embedding.from_pretrained(torch.eye(5))
+        self.missed_onehot = nn.Embedding.from_pretrained(torch.eye(2))
+        self.target_fainted_onehot = nn.Embedding.from_pretrained(torch.eye(2))
+        self.damage_value_onehot = nn.Embedding.from_pretrained(torch.eye(64))
+        self.action_counter_onehot = nn.Embedding.from_pretrained(torch.eye(4))
 
-        self.unit_quantizer = VectorQuantizer(128, entity_size // 4)
-
-        self.units_mlp = MLP([entity_size, entity_size], use_layer_norm=_USE_LAYER_NORM)
-        self.moves_mlp = MLP([entity_size, entity_size], use_layer_norm=_USE_LAYER_NORM)
-
-        self.species_dec = MLP([entity_size, NUM_SPECIES + 1])
-        self.item_dec = MLP([entity_size, NUM_ITEMS + 1])
-        self.ability_dec = MLP([entity_size, NUM_ABILITIES + 1])
-        self.moveset_dec = MLP([entity_size, NUM_MOVES + 2])
-        self.hp_dec = MLP([entity_size, NUM_HP_BUCKETS + 1])
-        self.status_dec = MLP([entity_size, NUM_STATUS + 1])
-        self.active_dec = MLP([entity_size, 2])
-        self.fainted_dec = MLP([entity_size, 2])
-        self.side_dec = MLP([entity_size, 2])
-        self.public_dec = MLP([entity_size, 2])
+        self.boosts_onehot = nn.Embedding.from_pretrained(torch.eye(13))
 
         self.spikes_onehot = nn.Embedding.from_pretrained(torch.eye(4)[..., 1:])
         self.tspikes_onehot = nn.Embedding.from_pretrained(torch.eye(3)[..., 1:])
         self.volatile_status_onehot = nn.Embedding.from_pretrained(
             torch.eye(NUM_VOLATILE_STATUS + 1)[..., 1:]
         )
-        self.boosts_onehot = nn.Embedding.from_pretrained(torch.eye(13))
+
         self.pseudoweathers_onehot = nn.Embedding.from_pretrained(
             torch.eye(NUM_PSEUDOWEATHER + 1)[..., 1:]
         )
@@ -91,291 +105,646 @@ class Model(nn.Module):
         self.terrain_onehot = nn.Embedding.from_pretrained(
             torch.eye(NUM_TERRAIN + 1)[..., 1:]
         )
-
-        # self.entity_transformer = Transformer(
-        #     transformer_num_layers=1,
-        #     transformer_num_heads=2,
-        #     transformer_key_size=entity_size // 2,
-        #     transformer_value_size=entity_size // 2,
-        #     transformer_model_size=entity_size,
-        #     resblocks_num_before=1,
-        #     resblocks_num_after=1,
-        #     resblocks_hidden_size=entity_size // 2,
-        # )
-        self.to_vector = ToVector(entity_size, use_layer_norm=_USE_LAYER_NORM)
-
-        self.turn_embedding = _layer_init(nn.Embedding(64, vector_size))
-
-        boosts_size = NUM_BOOSTS + 12 * NUM_BOOSTS
-        self.boosts_embedding = MLP(
-            [boosts_size, vector_size], use_layer_norm=_USE_LAYER_NORM
-        )
-
-        self.volatile_status_embedding = MLP(
-            [NUM_VOLATILE_STATUS, vector_size], use_layer_norm=_USE_LAYER_NORM
-        )
-
-        side_condition_size = NUM_SIDE_CONDITIONS + 2 + 3
-        self.side_condition_embedding = MLP(
-            [side_condition_size, vector_size], use_layer_norm=_USE_LAYER_NORM
-        )
-
         field_size = NUM_PSEUDOWEATHER + NUM_WEATHER + NUM_TERRAIN
-        self.field_embedding = MLP(
-            [field_size, vector_size], use_layer_norm=_USE_LAYER_NORM
+
+        context_size = (
+            2 * (12 * NUM_BOOSTS + NUM_VOLATILE_STATUS + NUM_SIDE_CONDITIONS + 2 + 3)
+            + field_size
         )
 
-        self.action_rnn = nn.GRU(
-            input_size=entity_size,
-            hidden_size=vector_size,
-            num_layers=1,
-            batch_first=True,
+        stats_size = (
+            self.is_critical_onehot.weight.shape[-1]
+            + self.effectiveness_onehot.weight.shape[-1]
+            + self.missed_onehot.weight.shape[-1]
+            + self.target_fainted_onehot.weight.shape[-1]
+            + self.damage_value_onehot.weight.shape[-1]
+            + 1
+            + 2 * self.action_counter_onehot.weight.shape[-1]
+            + self.moves_onehot.weight.shape[-1]
         )
 
-        self.side_merge = VectorMerge(
-            {
-                "side": 2 * entity_size,
-                "side_conditions": vector_size,
-                "volatile_status": vector_size,
-                "boosts": vector_size,
-            },
-            vector_size,
+        user_target_size = 2 * (
+            self.species_onehot.weight.shape[-1]
+            + self.item_onehot.weight.shape[-1]
+            + self.ability_onehot.weight.shape[-1]
+            + 1 * self.moves_onehot.weight.shape[-1]
+            + 1 * self.hp_onehot.weight.shape[-1]
+            + self.status_onehot.weight.shape[-1]
+        )
+
+        self.history_user_target_lin = _layer_init(
+            nn.Linear(user_target_size, entity_size)
+        )
+        self.history_context_lin = _layer_init(nn.Linear(context_size, entity_size))
+        self.history_stats_lin = _layer_init(nn.Linear(stats_size, entity_size))
+
+        self.pre_attn_entity_ln1 = nn.LayerNorm(
+            entity_size, elementwise_affine=affine_layer_norm
+        )
+        self.pre_attn_entity_ln2 = nn.LayerNorm(
+            entity_size, elementwise_affine=affine_layer_norm
+        )
+        self.pre_attn_history_ln = nn.LayerNorm(
+            entity_size, elementwise_affine=affine_layer_norm
+        )
+
+        self.entity_self_attn = MultiHeadAttention(
+            num_heads=2,
+            key_size=entity_size // 2,
+            value_size=entity_size // 2,
+            model_size=entity_size,
+        )
+        self.entity_mlp = MLP([entity_size, entity_size])
+
+        self.entity_history_attn = MultiHeadAttention(
+            num_heads=2,
+            key_size=entity_size // 2,
+            value_size=entity_size // 2,
+            model_size=entity_size,
+        )
+        self.history_mlp = MLP([entity_size, entity_size])
+
+        self.entity_merge = VectorMerge(
+            input_sizes={"entity": entity_size, "history": entity_size},
+            output_size=entity_size,
             gating_type=GatingType.NONE,
-            use_layer_norm=_USE_LAYER_NORM,
+            use_layer_norm=use_layer_norm,
         )
 
-        self.torso_merge = VectorMerge(
-            {
-                "myside": vector_size,
-                "oppside": vector_size,
-                "field": vector_size,
-                "action": vector_size,
-                "private": 2 * entity_size,
-                "turn": vector_size,
+        self.history_merge = VectorMerge(
+            input_sizes={
+                "user_target": entity_size,
+                "context": entity_size,
+                "stats": entity_size,
             },
-            vector_size,
+            output_size=entity_size,
             gating_type=GatingType.NONE,
-            use_layer_norm=_USE_LAYER_NORM,
+            use_layer_norm=use_layer_norm,
+            affine_layer_norm=affine_layer_norm,
         )
 
-        self.action_stage_embedding = _layer_init(nn.Embedding(3, vector_size))
+        self.context_lin = _layer_init(nn.Linear(context_size, stream_size))
 
-        self.state_rnn = nn.GRU(
-            input_size=vector_size,
-            hidden_size=vector_size,
-            num_layers=1,
-            batch_first=True,
-        )
+    def forward_entities(self, entities: torch.Tensor) -> torch.Tensor:
+        entitiesp1 = entities + 1
+        entitiesp2 = entities + 2
+        entitiesp3 = entities + 3
 
-        self.action_type_mlp = MLP(
-            [vector_size, vector_size, 2], use_layer_norm=_USE_LAYER_NORM
-        )
+        species_token = entitiesp2[..., 0]
+        item_token = entitiesp2[..., 1]
+        ability_token = entitiesp2[..., 2]
+        hp = entities[..., 3].clamp(0, 1024)
+        hp_bucket = torch.floor(hp * 64 / 1024).to(torch.long)
+        active_token = entities[..., 4]
+        fainted_token = entities[..., 5]
+        status_token = entitiesp1[..., 6]
+        last_move_token = entitiesp3[..., 7]
+        public_token = entities[..., 8]
+        side_token = entities[..., 9]
+        sleep_turns_token = entities[..., 10].clamp(min=0, max=3)
+        toxic_turns_token = entities[..., 11].clamp(min=0, max=5)
+        move_pp_left = entities[..., 12:16]
+        move_pp_max = entities[..., 16:20]
+        move_tokens = entitiesp3[..., 20:]
 
-        self.move_query_mlp = MLP(
-            [vector_size, vector_size], use_layer_norm=_USE_LAYER_NORM
-        )
-        self.move_pointer = PointerLogits(
-            vector_size,
-            entity_size,
-            key_size=entity_size,
-            num_layers_keys=1,
-            num_layers_query=1,
-            use_layer_norm=_USE_LAYER_NORM,
-        )
-
-        self.switch_query_mlp = MLP(
-            [vector_size, vector_size], use_layer_norm=_USE_LAYER_NORM
-        )
-        self.switch_pointer = PointerLogits(
-            vector_size,
-            entity_size,
-            key_size=entity_size,
-            num_layers_keys=1,
-            num_layers_query=1,
-            use_layer_norm=_USE_LAYER_NORM,
-        )
-
-        self.value_resnet = Resnet(vector_size, use_layer_norm=_USE_LAYER_NORM)
-        self.value_mlp = MLP([vector_size, 1], use_layer_norm=_USE_LAYER_NORM)
-
-    def embed_action_history(
-        self, entity_embeddings: torch.Tensor, action_history: torch.Tensor
-    ):
-        T, B, H, *_ = entity_embeddings.shape
-
-        action_hist_mask = action_history[..., 0] >= 0
-        action_hist_len = action_hist_mask.sum(-1).flatten().clamp(min=1)
-        action_side = action_history[..., 0].clamp(min=0)
-        action_user = action_history[..., 1].clamp(min=0)
-        action_move = action_history[..., 2] + 2
-
-        indices = F.one_hot(action_user + (action_side == 1) * 6, 18)
-        action_user_embeddings = indices.float() @ entity_embeddings.flatten(-3, -2)
-
-        action_embeddings = self.moves_onehot(action_move)
-        action_embeddings = action_embeddings * torch.sigmoid(action_user_embeddings)
-        action_embeddings = (
-            action_embeddings * action_hist_mask.unsqueeze(-1)
-        ).flatten(0, -3)
-
-        packed_input = pack_padded_sequence(
-            action_embeddings,
-            action_hist_len.cpu(),
-            batch_first=True,
-            enforce_sorted=False,
-        )
-        _, ht = self.action_rnn(packed_input)
-        return ht[-1].view(T, B, H, -1)
-
-    def encode_history(
-        self, state_embeddings: torch.Tensor, history_mask: torch.Tensor
-    ) -> torch.Tensor:
-        T, B, H, *_ = state_embeddings.shape
-        history_mask_onehot = F.one_hot(history_mask.sum(-1) - 1, H).float()
-        output, _ = self.state_rnn(state_embeddings.flatten(0, 1))
-        output = output.view(T, B, H, -1)
-        final_state = history_mask_onehot.unsqueeze(-2) @ output
-        final_state = final_state.view(T, B, -1)
-        return output, final_state
-
-    def get_current_entity_embeddings(
-        self,
-        history_mask: torch.Tensor,
-        entity_embeddings: torch.Tensor,
-        # active_token: torch.Tensor,
-        # ) -> Tuple[torch.Tensor, torch.Tensor]:
-    ) -> torch.Tensor:
-        T, B, H = history_mask.shape
-
-        my_switch_embeddings = entity_embeddings[:, :, :, 0].transpose(2, -1)
-        history_mask_onehot = (
-            F.one_hot(history_mask.sum(-1) - 1, H)[..., None, None]
-            .transpose(2, -2)
-            .detach()
-            .float()
-        )
-
-        current_ts_embeddings = my_switch_embeddings @ history_mask_onehot
-        current_ts_embeddings = current_ts_embeddings.transpose(-3, -1)
-
-        # current_active_token = (
-        #     active_token[:, :, :, 0].transpose(2, -1).float() @ history_mask_onehot
-        # ).transpose(-2, -1)
-
-        current_ts_embeddings = current_ts_embeddings.view(T, B, 6, -1)
-        # current_active_embedding = current_active_token @ current_ts_embeddings
-        # current_active_embedding = current_active_embedding.view(T, B, 1, -1)
-
-        return current_ts_embeddings  # , current_active_embedding
-
-    def get_action_mask_context(self, action_mask: torch.Tensor) -> torch.Tensor:
-        action_type_select = torch.any(action_mask[..., :2], dim=-1)
-        move_select = torch.any(action_mask[..., 2:6], dim=-1)
-        switch_select = torch.any(action_mask[..., 6:], dim=-1)
-        stage_token = action_type_select * 0 + move_select * 1 + switch_select * 2
-        return self.action_stage_embedding(stage_token)
-
-    def embed_teams(self, teams: torch.Tensor) -> torch.Tensor:
-        T, B, H, *_ = teams.shape
-        teamsp1 = teams + 1
-        teamsp2 = teams + 2
-
-        species_token = teamsp1[..., 0]
         species_onehot = self.species_onehot(species_token)
-
-        item_token = teamsp1[..., 1]
         item_onehot = self.item_onehot(item_token)
-
-        ability_token = teamsp1[..., 2]
         ability_onehot = self.ability_onehot(ability_token)
-        # hp_value = teams[..., 3, None].float() / 1024
-        hp_bucket = torch.sqrt(teams[..., 3]).to(torch.long)
         hp_onehot = self.hp_onehot(hp_bucket)
-
-        active_token = teams[..., 4]
         active_onehot = self.active_onehot(active_token)
-
-        fainted_token = teams[..., 5]
         fainted_onehot = self.fainted_onehot(fainted_token)
-
-        status_token = teamsp1[..., 6]
         status_onehot = self.status_onehot(status_token)
-
-        move_tokens = teamsp2[..., -4:]
-        moveset_onehot = self.moves_onehot(move_tokens).sum(-2)
-        # public_onehot = self.public_onehot(
-        #     self.public_token[(None,) * 3].expand(T, B, H, 3, 6)
-        # )
-
-        side_token = self.side_token[(None,) * 3].expand(T, B, H, 3, 6)
+        last_move_onehot = self.moves_onehot(last_move_token)
         side_onehot = self.side_onehot(side_token)
+        public_onehot = self.public_onehot(public_token)
+        sleep_turns_onehot = self.sleep_turns_onehot(sleep_turns_token)
+        toxic_turns_onehot = self.toxic_turns_onehot(toxic_turns_token)
+        moveset_onehot = (self.moves_onehot(move_tokens) / 4).sum(-2)
 
-        encodings = (
-            species_onehot
-            + item_onehot
-            + ability_onehot
-            + hp_onehot
-            # + hp_value
-            + active_onehot
-            + fainted_onehot
-            + status_onehot
-            + moveset_onehot
-            # + public_onehot
-            + side_onehot
+        onehot = torch.cat(
+            (
+                species_onehot,
+                item_onehot,
+                ability_onehot,
+                last_move_onehot,
+                hp_onehot,
+                # prev_hp_onehot,
+                active_onehot,
+                fainted_onehot,
+                status_onehot,
+                side_onehot,
+                public_onehot,
+                sleep_turns_onehot,
+                toxic_turns_onehot,
+                moveset_onehot,
+            ),
+            dim=-1,
         )
-        encodings = self.units_mlp(encodings)
-        encodings, loss = self.unit_quantizer(encodings)
+        embeddings = self.entity_lin(onehot).flatten(2, 3)
+        embeddings = torch.cat(
+            (self.entity_cls.expand(*embeddings.shape[:2], -1, -1), embeddings), dim=-2
+        )
 
-        return encodings, loss
+        return embeddings
 
-    def embed_side_conditions(
-        self, side_conditions: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward_history_entities(self, entities: torch.Tensor) -> torch.Tensor:
+        entitiesp1 = entities + 1
+        entitiesp2 = entities + 2
+        entitiesp3 = entities + 3
+
+        species_token = entitiesp2[..., 0]
+        item_token = entitiesp2[..., 1]
+        ability_token = entitiesp2[..., 2]
+        hp = entities[..., 3].clamp(0, 1024)
+        hp_bucket = torch.floor(hp * 64 / 1024).to(torch.long)
+        # active_token = entities[..., 4]
+        # fainted_token = entities[..., 5]
+        status_token = entitiesp1[..., 6]
+        last_move_token = entitiesp3[..., 7]
+        # public_token = entities[..., 8]
+        # side_token = entities[..., 9]
+        # move_pp_left = entitiesp3[..., 9:13]
+        # move_pp_max = entitiesp3[..., 13:17]
+        # move_tokens = entitiesp3[..., 17:]
+
+        species_onehot = self.species_onehot(species_token)
+        item_onehot = self.item_onehot(item_token)
+        ability_onehot = self.ability_onehot(ability_token)
+        hp_onehot = self.hp_onehot(hp_bucket)
+        # active_onehot = self.active_onehot(active_token)
+        # fainted_onehot = self.fainted_onehot(fainted_token)
+        status_onehot = self.status_onehot(status_token)
+        # side_onehot = self.side_onehot(side_token)
+        # public_onehot = self.public_onehot(public_token)
+        last_move_onehot = self.moves_onehot(last_move_token)
+        # moveset_onehot = (self.moves_onehot(move_tokens) / 4).sum(-2)
+
+        onehot = torch.cat(
+            (
+                species_onehot,
+                item_onehot,
+                ability_onehot,
+                last_move_onehot,
+                hp_onehot,
+                # active_onehot,
+                # fainted_onehot,
+                status_onehot,
+                # side_onehot,
+                # public_onehot,
+            ),
+            dim=-1,
+        )
+        return self.history_user_target_lin(onehot.flatten(-2))
+
+    def forward_self_attn(
+        self, entities: torch.Tensor, mask: torch.Tensor
+    ) -> torch.Tensor:
+        entities = self.pre_attn_entity_ln1(entities)
+        self_attn = self.entity_self_attn(
+            entities, entities, entities, mask[..., None, None, :]
+        )
+        return self.entity_mlp(self_attn)
+
+    def forward_history_attn(
+        self, entities: torch.Tensor, history: torch.Tensor, mask: torch.Tensor
+    ) -> torch.Tensor:
+        entities = self.pre_attn_entity_ln2(entities)
+        history = self.pre_attn_history_ln(history)
+        self_attn = self.entity_history_attn(entities, history, history, mask)
+        return self.history_mlp(self_attn)
+
+    def forward_history_stats(self, stats: torch.Tensor) -> torch.Tensor:
+        statsp3 = stats + 3
+
+        is_critical_token = stats[..., 0].clamp(min=0)
+        effectiveness_token = stats[..., 1].clamp(min=0)
+        missed_token = stats[..., 2].clamp(min=0)
+        target_fainted_token = stats[..., 3].clamp(min=0)
+        damage_value_scalar = (stats[..., 4].unsqueeze(-1) / 2047) - 1
+        damage_value_token = (stats[..., 4].clamp(min=0) / 63).floor().to(torch.long)
+        move_counter = stats[..., 5].clamp(min=0, max=3)
+        switch_counter = stats[..., 6].clamp(min=0, max=3)
+        move_token = statsp3[..., 7]
+
+        is_critical_onehot = self.is_critical_onehot(is_critical_token)
+        effectivesness_onehot = self.effectiveness_onehot(effectiveness_token)
+        missed_onehot = self.missed_onehot(missed_token)
+        target_fainted_onehot = self.target_fainted_onehot(target_fainted_token)
+        damage_value_onehot = self.damage_value_onehot(damage_value_token)
+        move_counter_onehot = self.action_counter_onehot(move_counter)
+        switch_counter_onehot = self.action_counter_onehot(switch_counter)
+        move_token_onehot = self.moves_onehot(move_token)
+
+        onehot = torch.cat(
+            (
+                is_critical_onehot,
+                effectivesness_onehot,
+                missed_onehot,
+                target_fainted_onehot,
+                damage_value_scalar,
+                damage_value_onehot,
+                move_counter_onehot,
+                switch_counter_onehot,
+                move_token_onehot,
+            ),
+            dim=-1,
+        )
+
+        return self.history_stats_lin(onehot)
+
+    def encode_side_conditions(self, side_conditions: torch.Tensor) -> torch.Tensor:
+        spikes_token = side_conditions[..., 9].clamp(
+            min=0, max=self.spikes_onehot.weight.shape[-1] - 1
+        )
+        tspikes_token = side_conditions[..., 13].clamp(
+            min=0, max=self.tspikes_onehot.weight.shape[-1] - 1
+        )
         other = side_conditions > 0
-        spikes = self.spikes_onehot(side_conditions[..., 9])
-        tspikes = self.tspikes_onehot(side_conditions[..., 13])
-        encoding = torch.cat((other, spikes, tspikes), -1)
-        return torch.chunk(self.side_condition_embedding(encoding), 2, -2)
+        spikes = self.spikes_onehot(spikes_token)
+        tspikes = self.tspikes_onehot(tspikes_token)
+        return torch.cat((other, spikes, tspikes), -1)
 
-    def embed_volatile_status(
-        self, volatile_status: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def encode_volatile_status(self, volatile_status: torch.Tensor) -> torch.Tensor:
         volatile_status_id = volatile_status[..., 0]
         volatile_status_level = volatile_status[..., 1]
-        encoding = self.volatile_status_onehot(volatile_status_id + 1).sum(-2)
-        return torch.chunk(self.volatile_status_embedding(encoding), 2, -2)
+        return self.volatile_status_onehot(volatile_status_id + 1).sum(-2)
 
-    def embed_boosts(self, boosts: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        boosts_onehot = self.boosts_onehot(boosts + 6)
-        boosts_onehot = torch.cat((boosts_onehot[..., :6], boosts_onehot[..., 7:]), -1)
-        boosts_scaled = torch.sign(boosts) * torch.sqrt(abs(boosts))
-        encoding = torch.cat((boosts_onehot.flatten(-2), boosts_scaled), -1)
-        return torch.chunk(self.boosts_embedding(encoding), 2, -2)
+    def encode_boosts(self, boosts: torch.Tensor) -> torch.Tensor:
+        boost_token = (boosts + 6).clamp(
+            min=0, max=self.boosts_onehot.weight.shape[-1] - 1
+        )
+        boosts_onehot = self.boosts_onehot(boost_token)
+        return torch.cat((boosts_onehot[..., :6], boosts_onehot[..., 7:]), -1)
 
-    def softmax_passthrough(self, tensor: torch.Tensor, buckets: int = 16):
-        og_shape = tensor.shape
-        flat_tensor = tensor.reshape(-1, buckets)
-        gsm = F.gumbel_softmax(flat_tensor)
-        return gsm.view(*og_shape)
-
-    def embed_field(self, field: torch.Tensor) -> torch.Tensor:
+    def encode_field(self, field: torch.Tensor) -> torch.Tensor:
         field_id = field[..., 0]
+        field_id_p1 = field_id + 1
+
         field_min_durr = field[..., 1]
         field_max_durr = field[..., 2]
 
-        pseudoweathers = field_id[..., :3]
-        pseudoweathers_onehot = self.pseudoweathers_onehot(pseudoweathers + 1).sum(-2)
-
-        weather = field_id[..., 3]
-        weather_onehot = self.weathers_onehot(weather + 1)
-
-        terrain = field_id[..., 4]
-        terrain_onehot = self.terrain_onehot(terrain + 1)
-
-        encoding = torch.cat(
-            (pseudoweathers_onehot, weather_onehot, terrain_onehot), -1
+        pseudoweathers = field_id_p1[..., :3].clamp(
+            min=0, max=self.pseudoweathers_onehot.weight.shape[-1] - 1
         )
-        return self.field_embedding(encoding)
+        weather = field_id_p1[..., 3].clamp(
+            min=0, max=self.weathers_onehot.weight.shape[-1] - 1
+        )
+        terrain = field_id_p1[..., 4].clamp(
+            min=0, max=self.terrain_onehot.weight.shape[-1] - 1
+        )
+
+        pseudoweathers_onehot = self.pseudoweathers_onehot(pseudoweathers).sum(-2)
+        weather_onehot = self.weathers_onehot(weather)
+        terrain_onehot = self.terrain_onehot(terrain)
+
+        return torch.cat((pseudoweathers_onehot, weather_onehot, terrain_onehot), -1)
+
+    def encode_context(
+        self,
+        side_conditions: torch.Tensor,
+        volatile_status: torch.Tensor,
+        boosts: torch.Tensor,
+        field: torch.Tensor,
+    ) -> torch.Tensor:
+        side_conditions_encoding = self.encode_side_conditions(side_conditions)
+        volatile_status_encoding = self.encode_volatile_status(volatile_status)
+        boosts_encoding = self.encode_boosts(boosts)
+        field_encoding = self.encode_field(field)
+        context_encoding = torch.cat(
+            (
+                side_conditions_encoding.flatten(-2),
+                volatile_status_encoding.flatten(-2),
+                boosts_encoding.flatten(-3),
+                field_encoding,
+            ),
+            dim=-1,
+        )
+        return context_encoding
+
+    def forward_history(
+        self,
+        history_entity_embeddings: torch.Tensor,
+        history_context_embedding: torch.Tensor,
+        history_stats_embedding: torch.Tensor,
+    ) -> torch.Tensor:
+        history_embeddings = self.history_merge(
+            {
+                "user_target": history_entity_embeddings,
+                "context": history_context_embedding,
+                "stats": history_stats_embedding,
+            },
+        )
+
+        history_embeddings = torch.cat(
+            (
+                self.history_cls.expand(*history_embeddings.shape[:2], -1, -1),
+                history_embeddings,
+            ),
+            dim=-2,
+        )
+        return self.history_mlp(history_embeddings)
+
+    def get_history_mask(
+        self, history_stats: torch.Tensor, entity_mask: torch.Tensor
+    ) -> torch.Tensor:
+        history_mask = history_stats[:, :, -1, ..., -1] != -1
+        history_mask = history_mask.view(*history_mask.shape, 1, 1)
+        history_mask = torch.cat(
+            (torch.ones_like(history_mask[:, :, :4]), history_mask), dim=2
+        ).squeeze(-1).permute((0, 1, 3, 2)) * entity_mask.unsqueeze(-1)
+        return history_mask.unsqueeze(2)
+
+    def forward(
+        self,
+        teams: torch.Tensor,
+        side_conditions: torch.Tensor,
+        volatile_status: torch.Tensor,
+        boosts: torch.Tensor,
+        field: torch.Tensor,
+        history_side_conditions: torch.Tensor,
+        history_volatile_status: torch.Tensor,
+        history_boosts: torch.Tensor,
+        history_field: torch.Tensor,
+        history_entities: torch.Tensor,
+        history_stats: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        # mask = teams[..., -1, :, :, 0] != PADDING_TOKEN
+
+        entity_embeddings = self.forward_entities(teams[:, :, -1])
+        entity_mask = torch.ones_like(entity_embeddings[..., 0]).bool()
+
+        active_token = teams[..., -1, :, :, 4]
+        entity_embeddings = self.forward_self_attn(entity_embeddings, entity_mask)
+
+        history_context_encoding = self.encode_context(
+            history_side_conditions[:, :, -1],
+            history_volatile_status[:, :, -1],
+            history_boosts[:, :, -1],
+            history_field[:, :, -1],
+        )
+        history_context_embedding = self.history_context_lin(history_context_encoding)
+        history_entity_embeddings = self.forward_history_entities(
+            history_entities[:, :, -1]
+        )
+        history_stats_embedding = self.forward_history_stats(history_stats[:, :, -1])
+
+        history_embeddings = self.forward_history(
+            history_entity_embeddings,
+            history_context_embedding,
+            history_stats_embedding,
+        )
+
+        history_mask = self.get_history_mask(history_stats, entity_mask)
+
+        history_embeddings = self.forward_history_attn(
+            entity_embeddings,
+            history_embeddings,
+            history_mask,
+        )
+
+        entity_embeddings = self.entity_merge(
+            {"entity": entity_embeddings, "history": history_embeddings}
+        )
+
+        active_weight = active_token[..., 0, :].unsqueeze(-2).float()
+        active_embedding = active_weight @ entity_embeddings[..., 4:10, :]
+
+        entities_embedding = entity_embeddings[..., :4, :].flatten(2)
+        entity_embeddings = entity_embeddings[..., 4:10, :]
+
+        context_encoding = self.encode_context(
+            side_conditions[:, :, -1],
+            volatile_status[:, :, -1],
+            boosts[:, :, -1],
+            field[:, :, -1],
+        )
+        context_embedding = self.context_lin(context_encoding)
+
+        return (
+            active_weight,
+            active_embedding,
+            entity_embeddings,
+            entities_embedding,
+            context_embedding,
+        )
+
+
+class Torso(nn.Module):
+    def __init__(
+        self,
+        stream_size: int,
+        use_layer_norm: bool,
+        affine_layer_norm: bool,
+    ):
+        super().__init__()
+
+        self.torso_merge = VectorMerge(
+            input_sizes={"entities": stream_size, "context": stream_size},
+            output_size=stream_size,
+            gating_type=GatingType.NONE,
+            use_layer_norm=use_layer_norm,
+            affine_layer_norm=affine_layer_norm,
+        )
+        # self.torso_resnet = Resnet(
+        #     input_size=stream_size,
+        #     num_resblocks=2,
+        #     use_layer_norm=use_layer_norm,
+        #     affine_layer_norm=affine_layer_norm,
+        # )
+
+    def forward(
+        self, entities_embedding: torch.Tensor, context_embedding: torch.Tensor
+    ) -> torch.Tensor:
+        state_embedding = self.torso_merge(
+            {"entities": entities_embedding, "context": context_embedding}
+        )
+        # state_embedding = self.torso_resnet(state_embedding)
+        return state_embedding
+
+
+class PolicyHead(nn.Module):
+    def __init__(
+        self,
+        entity_size: int,
+        stream_size: int,
+        use_layer_norm: bool,
+        affine_layer_norm: bool,
+    ):
+        super().__init__()
+
+        switch_tokens = SWITCH_TOKEN * torch.ones(6, dtype=torch.long)
+        self.register_buffer("switch_tokens", switch_tokens)
+
+        self.moves_onehot = nn.Embedding.from_pretrained(torch.eye(NUM_MOVES + 3))
+        self.legal_onehot = nn.Embedding.from_pretrained(torch.eye(2))
+
+        self.legal_embedding = nn.Embedding.from_pretrained(torch.eye(2))
+
+        self.actions_lin = _layer_init(
+            nn.Linear(
+                self.moves_onehot.weight.shape[-1]
+                + self.legal_embedding.weight.shape[-1],
+                entity_size,
+            )
+        )
+
+        self.action_merge = VectorMerge(
+            {"action": entity_size, "user": entity_size},
+            output_size=entity_size,
+            gating_type=GatingType.NONE,
+            use_layer_norm=use_layer_norm,
+            affine_layer_norm=affine_layer_norm,
+        )
+
+        self.action_self_attn = MultiHeadAttention(
+            num_heads=2,
+            key_size=entity_size // 2,
+            value_size=entity_size // 2,
+            model_size=entity_size,
+        )
+
+        self.action_logits = PointerLogits(
+            stream_size,
+            entity_size,
+            num_layers_query=1,
+            num_layers_keys=3,
+            key_size=entity_size // 4,
+            use_layer_norm=use_layer_norm,
+            affine_layer_norm=affine_layer_norm,
+        )
+
+    def get_action_tokens(
+        self, active_weight: torch.Tensor, teams: torch.Tensor
+    ) -> torch.Tensor:
+        return (
+            (active_weight @ teams.flatten(3, 4)[:, :, -1, :6].float())[..., -12:]
+            .squeeze(-2)
+            .long()
+        )
+
+    def embed_actions(
+        self, active_movesets: torch.Tensor, legal: torch.Tensor
+    ) -> torch.Tensor:
+        moveset_pp_left = active_movesets[..., :4]
+        moveset_pp_max = active_movesets[..., 4:8]
+        moveset_tokens = active_movesets[..., 8:]
+
+        expanded_switch_tokens = self.switch_tokens.view(1, 1, -1).expand(
+            *active_movesets.shape[:2], 6
+        )
+        action_tokens = torch.cat((moveset_tokens, expanded_switch_tokens), dim=-1)
+        action_tokens = action_tokens - SWITCH_TOKEN
+
+        actions_onehot = torch.cat(
+            (
+                self.moves_onehot(action_tokens),
+                self.legal_onehot(legal.to(torch.long)),
+            ),
+            dim=-1,
+        )
+
+        return self.actions_lin(actions_onehot)
+
+    def forward(
+        self,
+        active_weight: torch.Tensor,
+        teams: torch.Tensor,
+        legal: torch.Tensor,
+        active_embedding: torch.Tensor,
+        entity_embeddings: torch.Tensor,
+        state_embedding: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor,]:
+        action_tokens = self.get_action_tokens(active_weight, teams)
+        action_embeddings = self.embed_actions(action_tokens, legal)
+
+        user_embeddings = torch.cat(
+            (active_embedding.expand(-1, -1, 4, -1), entity_embeddings), dim=-2
+        )
+
+        # action_query = self.action_query_resnet(action_query)
+        action_embeddings = self.action_merge(
+            {"action": action_embeddings, "user": user_embeddings}
+        )
+        # action_embeddings = self.action_keys_resnet(action_embeddings)
+        action_embeddings = self.action_self_attn(
+            action_embeddings, action_embeddings, action_embeddings
+        )
+
+        # logits = self.action_logits(action_embeddings).flatten(2)
+        logits = self.action_logits(
+            state_embedding.unsqueeze(-2), action_embeddings
+        ).flatten(2)
+
+        policy = _legal_policy(logits, legal)
+        log_policy = _legal_log_policy(logits, legal)
+
+        return policy, log_policy, logits
+
+
+class ValueHead(nn.Module):
+    def __init__(
+        self,
+        stream_size: int,
+        use_layer_norm: bool,
+        affine_layer_norm: bool,
+    ):
+        super().__init__()
+
+        self.value_mlp = MLP(
+            [stream_size, stream_size, 1],
+            use_layer_norm=use_layer_norm,
+            affine_layer_norm=affine_layer_norm,
+        )
+
+    def forward(self, state_embedding: torch.Tensor) -> torch.Tensor:
+        value_hidden = state_embedding
+        # value_hidden = self.value_resnet(state_embedding)
+        value = self.value_mlp(value_hidden)
+        return value
+
+
+class Model(nn.Module):
+    def __init__(
+        self,
+        entity_size: int = 32,
+        stream_size: int = 128,
+        scale: int = 8,
+        use_layer_norm: bool = True,
+        affine_layer_norm: bool = False,
+    ):
+        super().__init__()
+
+        entity_size *= scale
+        stream_size *= scale
+
+        self.entity_size = entity_size
+        self.stream_size = stream_size
+
+        self.encoder = Encoder(
+            entity_size=entity_size,
+            stream_size=stream_size,
+            use_layer_norm=use_layer_norm,
+            affine_layer_norm=affine_layer_norm,
+        )
+
+        self.torso = Torso(
+            stream_size=stream_size,
+            use_layer_norm=use_layer_norm,
+            affine_layer_norm=affine_layer_norm,
+        )
+
+        self.policy_head = PolicyHead(
+            entity_size=entity_size,
+            stream_size=stream_size,
+            use_layer_norm=use_layer_norm,
+            affine_layer_norm=affine_layer_norm,
+        )
+
+        self.value_head = ValueHead(
+            stream_size=stream_size,
+            use_layer_norm=use_layer_norm,
+            affine_layer_norm=affine_layer_norm,
+        )
 
     def forward(
         self,
@@ -387,118 +756,52 @@ class Model(nn.Module):
         boosts: torch.Tensor,
         field: torch.Tensor,
         legal: torch.Tensor,
-        history: torch.Tensor,
-        history_mask: torch.Tensor,
+        history_side_conditions: torch.Tensor,
+        history_volatile_status: torch.Tensor,
+        history_boosts: torch.Tensor,
+        history_field: torch.Tensor,
+        history_entities: torch.Tensor,
+        history_stats: torch.Tensor,
     ):
-        entity_embeddings, recon_loss = self.embed_teams(teams)
-        recon_loss = (recon_loss * history_mask).sum(-1) / history_mask.sum(-1)
-        recon_loss = recon_loss / NUM_HISTORY
-
-        # entity_embeddings_attn = self.entity_transformer(
-        #     entity_embeddings.flatten(-3, -2),
-        #     torch.ones_like(
-        #         entity_embeddings.flatten(-3, -2)[..., 0].squeeze(-1), dtype=torch.bool
-        #     ),
-        # )
-        # entity_embeddings = entity_embeddings_attn.view_as(entity_embeddings)
-
-        active_token = teams[..., 4]
         (
-            my_private_side_embedding,
-            my_public_side_embedding,
-            opp_side_embedding,
-        ) = self.to_vector(entity_embeddings, active_token)
-
-        private_information = my_private_side_embedding - my_public_side_embedding
-
-        (
-            my_side_conditions_embedding,
-            opp_side_conditions_embedding,
-        ) = self.embed_side_conditions(side_conditions)
-        (
-            my_volatile_status_embedding,
-            opp_volatile_status_embedding,
-        ) = self.embed_volatile_status(volatile_status)
-        my_boosts_embedding, opp_boosts_embedding = self.embed_boosts(boosts)
-
-        my_side_embedding = self.side_merge(
-            {
-                "side": my_private_side_embedding.squeeze(-2),
-                "side_conditions": my_side_conditions_embedding.squeeze(-2),
-                "volatile_status": my_volatile_status_embedding.squeeze(-2),
-                "boosts": my_boosts_embedding.squeeze(-2),
-            }
-        )
-        opp_side_embedding = self.side_merge(
-            {
-                "side": opp_side_embedding.squeeze(-2),
-                "side_conditions": opp_side_conditions_embedding.squeeze(-2),
-                "volatile_status": opp_volatile_status_embedding.squeeze(-2),
-                "boosts": opp_boosts_embedding.squeeze(-2),
-            }
+            active_weight,
+            active_embedding,
+            entity_embeddings,
+            entities_embedding,
+            context_embedding,
+        ) = self.encoder.forward(
+            teams=teams,
+            side_conditions=side_conditions,
+            volatile_status=volatile_status,
+            boosts=boosts,
+            field=field,
+            history_side_conditions=history_side_conditions,
+            history_volatile_status=history_volatile_status,
+            history_boosts=history_boosts,
+            history_field=history_field,
+            history_entities=history_entities,
+            history_stats=history_stats,
         )
 
-        field_embedding = self.embed_field(field)
-
-        prev_entity_embeddings = torch.cat(
-            (entity_embeddings[:, :, :1], entity_embeddings[:, :, :-1]), dim=2
-        )
-        action_hist_embedding = self.embed_action_history(
-            prev_entity_embeddings, history
-        )
-        turn_embedding = self.turn_embedding(
-            turn.clamp(min=0, max=self.turn_embedding.weight.shape[0] - 1)
+        state_embedding = self.torso.forward(
+            entities_embedding=entities_embedding,
+            context_embedding=context_embedding,
         )
 
-        step_embeddings = self.torso_merge(
-            {
-                "myside": my_side_embedding,
-                "oppside": opp_side_embedding,
-                "field": field_embedding,
-                "action": action_hist_embedding,
-                "private": private_information.squeeze(-2),
-                "turn": turn_embedding,
-            }
+        policy, log_policy, logits = self.policy_head.forward(
+            active_weight=active_weight,
+            teams=teams,
+            legal=legal,
+            active_embedding=active_embedding,
+            entity_embeddings=entity_embeddings,
+            state_embedding=state_embedding,
         )
 
-        step_embeddings, state_embedding = self.encode_history(
-            step_embeddings, history_mask
-        )
-
-        state_embedding_w_context = state_embedding + self.get_action_mask_context(
-            legal
-        )
-        # state_embedding_w_context = self.softmax_passthrough(state_embedding_w_context)
-
-        active_token = teams[..., 4]
-        switch_embeddings = self.get_current_entity_embeddings(
-            history_mask, entity_embeddings  # , active_token
-        )
-        # switch_embeddings = self.softmax_passthrough(switch_embeddings)
-
-        move_embeddings = self.moves_onehot(active_moveset)
-        move_embeddings = self.moves_mlp(move_embeddings)
-        # move_embeddings = self.softmax_passthrough(move_embeddings)
-
-        action_type_logits = self.action_type_mlp(state_embedding_w_context)
-
-        move_query = self.move_query_mlp(state_embedding_w_context).unsqueeze(-2)
-        move_logits = self.move_pointer(move_query, move_embeddings).flatten(2)
-
-        switch_query = self.switch_query_mlp(state_embedding_w_context).unsqueeze(-2)
-        switch_logits = self.switch_pointer(switch_query, switch_embeddings).flatten(2)
-
-        logits = torch.cat((action_type_logits, move_logits, switch_logits), dim=-1)
-
-        policy = _legal_policy(logits, legal)
-        log_policy = _legal_log_policy(logits, legal)
-
-        value = self.value_mlp(self.value_resnet(state_embedding_w_context))
+        value = self.value_head.forward(state_embedding=state_embedding)
 
         return ModelOutput(
-            logits=logits,
             policy=policy,
             log_policy=log_policy,
+            logits=logits,
             value=value,
-            recon_loss=recon_loss,
         )

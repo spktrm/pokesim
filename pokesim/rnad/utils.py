@@ -249,7 +249,7 @@ def _has_played(valid: np.ndarray, player_id: np.ndarray, player: int) -> np.nda
 # out of the box because a trajectory could look like '121211221122'.
 
 
-# @partial(jax.jit, static_argnames=["eta", "lambda_", "c", "rho", "gamma"])
+@partial(jax.jit, static_argnames=["eta", "lambda_", "c", "rho", "gamma"])
 def v_trace(
     v: np.ndarray,
     valid: np.ndarray,

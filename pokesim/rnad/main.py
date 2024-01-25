@@ -1,3 +1,4 @@
+from multiprocessing.context import ForkContext
 import os
 
 
@@ -109,15 +110,14 @@ def learn_loop(
         progress.update(1)
 
 
-def main(ctx, debug):
-    # init = torch.load("ckpts/038847.pt", map_location="cpu")
+def main(ctx: ForkContext, debug: bool = False):
     # fpath = get_most_recent_file("ckpts")
     # print(fpath)
     # init = torch.load(fpath, map_location="cpu")
     # init = init["params"]
 
     init = None
-    learner = Learner(init=init, debug=debug, trace_nets=not debug)
+    learner = Learner(init=init, debug=debug, trace_nets=False)  # not debug)
 
     # learner = Learner.from_fpath(fpath, trace_nets=False)
 
@@ -196,4 +196,4 @@ def main(ctx, debug):
 
 if __name__ == "__main__":
     ctx = mp.get_context("fork")
-    main(ctx, True)
+    main(ctx, False)

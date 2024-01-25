@@ -53,6 +53,8 @@ function isEvalPlayer(workerIndex: number, playerIndex: number): boolean {
                 return true;
             case maxdmgWorkerIndex:
                 return true;
+            case heuristicWorkerIndex:
+                return true;
             default:
                 return false;
         }
@@ -70,11 +72,11 @@ function getEvalAction(
         case defaultWorkerIndex:
             return "default";
         case randomWorkerIndex:
-            return handler.getRandomAction(playerIndex, workerIndex);
+            return handler.getRandomActionString(playerIndex, workerIndex);
         case maxdmgWorkerIndex:
-            return handler.getMaxdmgAction(playerIndex, workerIndex);
-        // case heuristicWorkerIndex:
-        //     return handler.getHeuristicAction(playerIndex, workerIndex);
+            return handler.getMaxdmgActionString(playerIndex, workerIndex);
+        case heuristicWorkerIndex:
+            return handler.getHeuristicActionString(playerIndex, workerIndex);
         default:
             return "default";
     }
@@ -87,7 +89,7 @@ async function runPlayer(
     p2battle: clientBattle
 ) {
     // const handler = new BattlesHandler([p1battle, p2battle]);
-    const handler = new BattlesHandler([p1battle]);
+    const handler = new BattlesHandler(playerIndex, [p1battle]);
     const isEval = isEvalPlayer(workerIndex, playerIndex);
 
     const log = [];
@@ -117,7 +119,7 @@ async function runPlayer(
             if (line.startsWith("|error")) {
                 console.error(line);
             }
-            handler.appendTurnLine(line);
+            handler.appendTurnLine(playerIndex, workerIndex, line);
             p1battle.add(line);
             if (line.startsWith("|win")) {
                 winner = line.split("|")[2];

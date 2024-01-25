@@ -112,6 +112,19 @@ class MLP(nn.Module):
         return x
 
 
+def softmax(x: torch.Tensor, dim: int = -1) -> torch.Tensor:
+    return x.softmax(dim=dim)
+
+
+def softmax_one(x: torch.Tensor, dim: int = -1) -> torch.Tensor:
+    # subtract the max for stability
+    x = x - x.max(dim=dim, keepdim=True).values
+    # compute exponentials
+    exp_x = torch.exp(x)
+    # compute softmax values and add on in the denominator
+    return exp_x / (1 + exp_x.sum(dim=dim, keepdim=True))
+
+
 class MultiHeadAttention(nn.Module):
     def __init__(
         self,
@@ -187,8 +200,8 @@ class MultiHeadAttention(nn.Module):
                     f"Mask dimensionality {mask.ndim} must match logits dimensionality "
                     f"{attn_logits.ndim}."
                 )
-            # attn_logits = torch.where(mask, attn_logits, -1e30)
-        attn_weights = attn_logits.softmax(-1)
+            attn_logits = torch.where(mask, attn_logits, -1e30)
+        attn_weights = softmax(attn_logits, -1)
 
         attn = torch.einsum("...htT,...Thd->...thd", attn_weights, value_heads)
         attn = torch.reshape(attn, (*leading_dims, sequence_length, -1))
@@ -276,11 +289,11 @@ class Transformer(nn.Module):
                 x1 = self._layernorms[layer_index](x1)
             x1 = F.relu(x1)
             x1 = layer(query=x1, key=x1, value=x1, mask=logits_mask)
-            # x1 = torch.where(mask[..., None], x1, 0)
+            x1 = torch.where(mask[..., None], x1, 0)
             x = x + x1
         for resblock in self.resblocks_after:
             x = resblock(x)
-        # x = torch.where(mask[..., None], x, 0)
+        x = torch.where(mask[..., None], x, 0)
         return x
 
 

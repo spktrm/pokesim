@@ -36,17 +36,13 @@ def handle_verbose(
     print(text + "\n")
 
 
-_MODEL_INPUT_KEYS = MODEL_INPUT_KEYS.copy()
-_MODEL_INPUT_KEYS.remove("history_mask")
-
-
 def _actor_step(
     worker_index: int,
     model: nn.Module,
     obs: Dict[str, torch.Tensor],
     verbose: bool = False,
 ) -> ActorStep:
-    model_input = {key: torch.from_numpy(obs[key]) for key in _MODEL_INPUT_KEYS}
+    model_input = {key: torch.from_numpy(obs[key]) for key in MODEL_INPUT_KEYS}
     model_input["legal"] = model_input["legal"].reshape(1, 1, -1)
 
     with torch.no_grad():

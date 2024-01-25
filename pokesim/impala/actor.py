@@ -31,7 +31,6 @@ def handle_verbose(
 
 
 _MODEL_INPUT_KEYS = MODEL_INPUT_KEYS.copy()
-_MODEL_INPUT_KEYS.remove("history_mask")
 
 
 def _actor_step(
