@@ -14,6 +14,7 @@ _sym_db = _symbol_database.Default()
 from state.v1 import game_pb2 as state_dot_v1_dot_game__pb2
 from state.v1 import pokemon_pb2 as state_dot_v1_dot_pokemon__pb2
 from state.v1 import context_pb2 as state_dot_v1_dot_context__pb2
+from state.v1 import history_pb2 as state_dot_v1_dot_history__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(
@@ -22,9 +23,9 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x14state/v1/state.proto\x12\x08state.v1\x1a\x13state/v1/game.proto\x1a\x16state/v1/pokemon.proto\x1a\x16state/v1/context.proto\"\xad\x01\n\tLegalMask\x12\r\n\x05move1\x18\x01 \x01(\x08\x12\r\n\x05move2\x18\x02 \x01(\x08\x12\r\n\x05move3\x18\x03 \x01(\x08\x12\r\n\x05move4\x18\x04 \x01(\x08\x12\x0f\n\x07switch1\x18\x05 \x01(\x08\x12\x0f\n\x07switch2\x18\x06 \x01(\x08\x12\x0f\n\x07switch3\x18\x07 \x01(\x08\x12\x0f\n\x07switch4\x18\x08 \x01(\x08\x12\x0f\n\x07switch5\x18\t \x01(\x08\x12\x0f\n\x07switch6\x18\n \x01(\x08\"\xe4\x01\n\x05State\x12\x1c\n\x04game\x18\x01 \x01(\x0b\x32\x0e.state.v1.Game\x12$\n\x0cprivate_team\x18\x02 \x01(\x0b\x32\x0e.state.v1.Team\x12$\n\x0cpublic_team1\x18\x03 \x01(\x0b\x32\x0e.state.v1.Team\x12$\n\x0cpublic_team2\x18\x04 \x01(\x0b\x32\x0e.state.v1.Team\x12\"\n\x07\x63ontext\x18\x05 \x01(\x0b\x32\x11.state.v1.Context\x12\'\n\nlegal_mask\x18\x06 \x01(\x0b\x32\x13.state.v1.LegalMaskb\x06proto3'
+  serialized_pb=b'\n\x14state/v1/state.proto\x12\x08state.v1\x1a\x13state/v1/game.proto\x1a\x16state/v1/pokemon.proto\x1a\x16state/v1/context.proto\x1a\x16state/v1/history.proto\"\xad\x01\n\tLegalMask\x12\r\n\x05move1\x18\x01 \x01(\x08\x12\r\n\x05move2\x18\x02 \x01(\x08\x12\r\n\x05move3\x18\x03 \x01(\x08\x12\r\n\x05move4\x18\x04 \x01(\x08\x12\x0f\n\x07switch1\x18\x05 \x01(\x08\x12\x0f\n\x07switch2\x18\x06 \x01(\x08\x12\x0f\n\x07switch3\x18\x07 \x01(\x08\x12\x0f\n\x07switch4\x18\x08 \x01(\x08\x12\x0f\n\x07switch5\x18\t \x01(\x08\x12\x0f\n\x07switch6\x18\n \x01(\x08\"\x96\x02\n\x05State\x12\x0c\n\x04size\x18\x01 \x01(\x05\x12\x1c\n\x04game\x18\x02 \x01(\x0b\x32\x0e.state.v1.Game\x12$\n\x0cprivate_team\x18\x03 \x01(\x0b\x32\x0e.state.v1.Team\x12$\n\x0cpublic_team1\x18\x04 \x01(\x0b\x32\x0e.state.v1.Team\x12$\n\x0cpublic_team2\x18\x05 \x01(\x0b\x32\x0e.state.v1.Team\x12\"\n\x07\x63ontext\x18\x06 \x01(\x0b\x32\x11.state.v1.Context\x12\"\n\x07history\x18\x07 \x01(\x0b\x32\x11.state.v1.History\x12\'\n\nlegal_mask\x18\x08 \x01(\x0b\x32\x13.state.v1.LegalMaskb\x06proto3'
   ,
-  dependencies=[state_dot_v1_dot_game__pb2.DESCRIPTOR,state_dot_v1_dot_pokemon__pb2.DESCRIPTOR,state_dot_v1_dot_context__pb2.DESCRIPTOR,])
+  dependencies=[state_dot_v1_dot_game__pb2.DESCRIPTOR,state_dot_v1_dot_pokemon__pb2.DESCRIPTOR,state_dot_v1_dot_context__pb2.DESCRIPTOR,state_dot_v1_dot_history__pb2.DESCRIPTOR,])
 
 
 
@@ -119,8 +120,8 @@ _LEGALMASK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=104,
-  serialized_end=277,
+  serialized_start=128,
+  serialized_end=301,
 )
 
 
@@ -133,43 +134,57 @@ _STATE = _descriptor.Descriptor(
   create_key=_descriptor._internal_create_key,
   fields=[
     _descriptor.FieldDescriptor(
-      name='game', full_name='state.v1.State.game', index=0,
-      number=1, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
+      name='size', full_name='state.v1.State.size', index=0,
+      number=1, type=5, cpp_type=1, label=1,
+      has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='private_team', full_name='state.v1.State.private_team', index=1,
+      name='game', full_name='state.v1.State.game', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='public_team1', full_name='state.v1.State.public_team1', index=2,
+      name='private_team', full_name='state.v1.State.private_team', index=2,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='public_team2', full_name='state.v1.State.public_team2', index=3,
+      name='public_team1', full_name='state.v1.State.public_team1', index=3,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='context', full_name='state.v1.State.context', index=4,
+      name='public_team2', full_name='state.v1.State.public_team2', index=4,
       number=5, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='legal_mask', full_name='state.v1.State.legal_mask', index=5,
+      name='context', full_name='state.v1.State.context', index=5,
       number=6, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='history', full_name='state.v1.State.history', index=6,
+      number=7, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='legal_mask', full_name='state.v1.State.legal_mask', index=7,
+      number=8, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -186,8 +201,8 @@ _STATE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=280,
-  serialized_end=508,
+  serialized_start=304,
+  serialized_end=582,
 )
 
 _STATE.fields_by_name['game'].message_type = state_dot_v1_dot_game__pb2._GAME
@@ -195,6 +210,7 @@ _STATE.fields_by_name['private_team'].message_type = state_dot_v1_dot_pokemon__p
 _STATE.fields_by_name['public_team1'].message_type = state_dot_v1_dot_pokemon__pb2._TEAM
 _STATE.fields_by_name['public_team2'].message_type = state_dot_v1_dot_pokemon__pb2._TEAM
 _STATE.fields_by_name['context'].message_type = state_dot_v1_dot_context__pb2._CONTEXT
+_STATE.fields_by_name['history'].message_type = state_dot_v1_dot_history__pb2._HISTORY
 _STATE.fields_by_name['legal_mask'].message_type = _LEGALMASK
 DESCRIPTOR.message_types_by_name['LegalMask'] = _LEGALMASK
 DESCRIPTOR.message_types_by_name['State'] = _STATE

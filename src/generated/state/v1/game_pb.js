@@ -66,12 +66,12 @@ proto.state.v1.Game.prototype.toObject = function(opt_includeInstance) {
  */
 proto.state.v1.Game.toObject = function(includeInstance, msg) {
   var f, obj = {
-    firstName: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    lastName: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    email: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    phoneNumber: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    isBlocked: jspb.Message.getBooleanFieldWithDefault(msg, 8, false),
-    isFavorite: jspb.Message.getBooleanFieldWithDefault(msg, 9, false)
+    workerIndex: jspb.Message.getFieldWithDefault(msg, 1, 0),
+    playerIndex: jspb.Message.getBooleanFieldWithDefault(msg, 2, false),
+    done: jspb.Message.getBooleanFieldWithDefault(msg, 3, false),
+    reward: jspb.Message.getFieldWithDefault(msg, 4, 0),
+    turn: jspb.Message.getFieldWithDefault(msg, 8, 0),
+    heuristicAction: jspb.Message.getFieldWithDefault(msg, 9, 0)
   };
 
   if (includeInstance) {
@@ -109,28 +109,28 @@ proto.state.v1.Game.deserializeBinaryFromReader = function(msg, reader) {
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
-      msg.setFirstName(value);
+      var value = /** @type {number} */ (reader.readInt32());
+      msg.setWorkerIndex(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
-      msg.setLastName(value);
+      var value = /** @type {boolean} */ (reader.readBool());
+      msg.setPlayerIndex(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
-      msg.setEmail(value);
+      var value = /** @type {boolean} */ (reader.readBool());
+      msg.setDone(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
-      msg.setPhoneNumber(value);
+      var value = /** @type {number} */ (reader.readInt32());
+      msg.setReward(value);
       break;
     case 8:
-      var value = /** @type {boolean} */ (reader.readBool());
-      msg.setIsBlocked(value);
+      var value = /** @type {number} */ (reader.readInt32());
+      msg.setTurn(value);
       break;
     case 9:
-      var value = /** @type {boolean} */ (reader.readBool());
-      msg.setIsFavorite(value);
+      var value = /** @type {number} */ (reader.readInt32());
+      msg.setHeuristicAction(value);
       break;
     default:
       reader.skipField();
@@ -161,44 +161,44 @@ proto.state.v1.Game.prototype.serializeBinary = function() {
  */
 proto.state.v1.Game.serializeBinaryToWriter = function(message, writer) {
   var f = undefined;
-  f = message.getFirstName();
-  if (f.length > 0) {
-    writer.writeString(
+  f = message.getWorkerIndex();
+  if (f !== 0) {
+    writer.writeInt32(
       1,
       f
     );
   }
-  f = message.getLastName();
-  if (f.length > 0) {
-    writer.writeString(
+  f = message.getPlayerIndex();
+  if (f) {
+    writer.writeBool(
       2,
       f
     );
   }
-  f = message.getEmail();
-  if (f.length > 0) {
-    writer.writeString(
+  f = message.getDone();
+  if (f) {
+    writer.writeBool(
       3,
       f
     );
   }
-  f = message.getPhoneNumber();
-  if (f.length > 0) {
-    writer.writeString(
+  f = message.getReward();
+  if (f !== 0) {
+    writer.writeInt32(
       4,
       f
     );
   }
-  f = message.getIsBlocked();
-  if (f) {
-    writer.writeBool(
+  f = message.getTurn();
+  if (f !== 0) {
+    writer.writeInt32(
       8,
       f
     );
   }
-  f = message.getIsFavorite();
-  if (f) {
-    writer.writeBool(
+  f = message.getHeuristicAction();
+  if (f !== 0) {
+    writer.writeInt32(
       9,
       f
     );
@@ -207,83 +207,29 @@ proto.state.v1.Game.serializeBinaryToWriter = function(message, writer) {
 
 
 /**
- * optional string first_name = 1;
- * @return {string}
+ * optional int32 worker_index = 1;
+ * @return {number}
  */
-proto.state.v1.Game.prototype.getFirstName = function() {
-  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 1, ""));
+proto.state.v1.Game.prototype.getWorkerIndex = function() {
+  return /** @type {number} */ (jspb.Message.getFieldWithDefault(this, 1, 0));
 };
 
 
 /**
- * @param {string} value
+ * @param {number} value
  * @return {!proto.state.v1.Game} returns this
  */
-proto.state.v1.Game.prototype.setFirstName = function(value) {
-  return jspb.Message.setProto3StringField(this, 1, value);
+proto.state.v1.Game.prototype.setWorkerIndex = function(value) {
+  return jspb.Message.setProto3IntField(this, 1, value);
 };
 
 
 /**
- * optional string last_name = 2;
- * @return {string}
- */
-proto.state.v1.Game.prototype.getLastName = function() {
-  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 2, ""));
-};
-
-
-/**
- * @param {string} value
- * @return {!proto.state.v1.Game} returns this
- */
-proto.state.v1.Game.prototype.setLastName = function(value) {
-  return jspb.Message.setProto3StringField(this, 2, value);
-};
-
-
-/**
- * optional string email = 3;
- * @return {string}
- */
-proto.state.v1.Game.prototype.getEmail = function() {
-  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 3, ""));
-};
-
-
-/**
- * @param {string} value
- * @return {!proto.state.v1.Game} returns this
- */
-proto.state.v1.Game.prototype.setEmail = function(value) {
-  return jspb.Message.setProto3StringField(this, 3, value);
-};
-
-
-/**
- * optional string phone_number = 4;
- * @return {string}
- */
-proto.state.v1.Game.prototype.getPhoneNumber = function() {
-  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 4, ""));
-};
-
-
-/**
- * @param {string} value
- * @return {!proto.state.v1.Game} returns this
- */
-proto.state.v1.Game.prototype.setPhoneNumber = function(value) {
-  return jspb.Message.setProto3StringField(this, 4, value);
-};
-
-
-/**
- * optional bool is_blocked = 8;
+ * optional bool player_index = 2;
  * @return {boolean}
  */
-proto.state.v1.Game.prototype.getIsBlocked = function() {
-  return /** @type {boolean} */ (jspb.Message.getBooleanFieldWithDefault(this, 8, false));
+proto.state.v1.Game.prototype.getPlayerIndex = function() {
+  return /** @type {boolean} */ (jspb.Message.getBooleanFieldWithDefault(this, 2, false));
 };
 
 
@@ -291,17 +237,17 @@ proto.state.v1.Game.prototype.getIsBlocked = function() {
  * @param {boolean} value
  * @return {!proto.state.v1.Game} returns this
  */
-proto.state.v1.Game.prototype.setIsBlocked = function(value) {
-  return jspb.Message.setProto3BooleanField(this, 8, value);
+proto.state.v1.Game.prototype.setPlayerIndex = function(value) {
+  return jspb.Message.setProto3BooleanField(this, 2, value);
 };
 
 
 /**
- * optional bool is_favorite = 9;
+ * optional bool done = 3;
  * @return {boolean}
  */
-proto.state.v1.Game.prototype.getIsFavorite = function() {
-  return /** @type {boolean} */ (jspb.Message.getBooleanFieldWithDefault(this, 9, false));
+proto.state.v1.Game.prototype.getDone = function() {
+  return /** @type {boolean} */ (jspb.Message.getBooleanFieldWithDefault(this, 3, false));
 };
 
 
@@ -309,8 +255,62 @@ proto.state.v1.Game.prototype.getIsFavorite = function() {
  * @param {boolean} value
  * @return {!proto.state.v1.Game} returns this
  */
-proto.state.v1.Game.prototype.setIsFavorite = function(value) {
-  return jspb.Message.setProto3BooleanField(this, 9, value);
+proto.state.v1.Game.prototype.setDone = function(value) {
+  return jspb.Message.setProto3BooleanField(this, 3, value);
+};
+
+
+/**
+ * optional int32 reward = 4;
+ * @return {number}
+ */
+proto.state.v1.Game.prototype.getReward = function() {
+  return /** @type {number} */ (jspb.Message.getFieldWithDefault(this, 4, 0));
+};
+
+
+/**
+ * @param {number} value
+ * @return {!proto.state.v1.Game} returns this
+ */
+proto.state.v1.Game.prototype.setReward = function(value) {
+  return jspb.Message.setProto3IntField(this, 4, value);
+};
+
+
+/**
+ * optional int32 turn = 8;
+ * @return {number}
+ */
+proto.state.v1.Game.prototype.getTurn = function() {
+  return /** @type {number} */ (jspb.Message.getFieldWithDefault(this, 8, 0));
+};
+
+
+/**
+ * @param {number} value
+ * @return {!proto.state.v1.Game} returns this
+ */
+proto.state.v1.Game.prototype.setTurn = function(value) {
+  return jspb.Message.setProto3IntField(this, 8, value);
+};
+
+
+/**
+ * optional int32 heuristic_action = 9;
+ * @return {number}
+ */
+proto.state.v1.Game.prototype.getHeuristicAction = function() {
+  return /** @type {number} */ (jspb.Message.getFieldWithDefault(this, 9, 0));
+};
+
+
+/**
+ * @param {number} value
+ * @return {!proto.state.v1.Game} returns this
+ */
+proto.state.v1.Game.prototype.setHeuristicAction = function(value) {
+  return jspb.Message.setProto3IntField(this, 9, value);
 };
 
 

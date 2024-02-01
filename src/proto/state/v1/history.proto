@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package state.v1;
+
+import "state/v1/pokemon.proto";
+import "state/v1/context.proto";
+
+
+message Stats {
+    int32 order = 1;
+    bool is_critical = 2;
+    float damage = 3;
+    int32 effectiveness = 4;
+    bool missed = 5;
+    int32 move = 6;
+    bool target_fainted = 7;
+    int32 move_counter = 9;
+    int32 switch_counter = 10;
+}
+
+message HistoryItem {
+    Pokemon user = 1;
+    Pokemon target = 2;
+    Context context = 3;
+    Stats stats = 4;
+}
+
+message History {
+    repeated HistoryItem history_items = 1;
+}

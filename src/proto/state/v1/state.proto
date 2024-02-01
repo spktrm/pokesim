@@ -5,6 +5,7 @@ package state.v1;
 import "state/v1/game.proto";
 import "state/v1/pokemon.proto";
 import "state/v1/context.proto";
+import "state/v1/history.proto";
 
 
 message LegalMask {
@@ -22,10 +23,12 @@ message LegalMask {
 
 
 message State {
-    Game game = 1;
-    Team private_team = 2;
-    Team public_team1 = 3;
-    Team public_team2 = 4;
-    Context context = 5;
-    LegalMask legal_mask = 6;
+    int32 size = 1;
+    Game game = 2;
+    Team private_team = 3;
+    Team public_team1 = 4;
+    Team public_team2 = 5;
+    Context context = 6;
+    History history = 7;
+    LegalMask legal_mask = 8;
 }

@@ -4,23 +4,23 @@
 import * as jspb from "google-protobuf";
 
 export class Game extends jspb.Message {
-  getFirstName(): string;
-  setFirstName(value: string): void;
+  getWorkerIndex(): number;
+  setWorkerIndex(value: number): void;
 
-  getLastName(): string;
-  setLastName(value: string): void;
+  getPlayerIndex(): boolean;
+  setPlayerIndex(value: boolean): void;
 
-  getEmail(): string;
-  setEmail(value: string): void;
+  getDone(): boolean;
+  setDone(value: boolean): void;
 
-  getPhoneNumber(): string;
-  setPhoneNumber(value: string): void;
+  getReward(): number;
+  setReward(value: number): void;
 
-  getIsBlocked(): boolean;
-  setIsBlocked(value: boolean): void;
+  getTurn(): number;
+  setTurn(value: number): void;
 
-  getIsFavorite(): boolean;
-  setIsFavorite(value: boolean): void;
+  getHeuristicAction(): number;
+  setHeuristicAction(value: number): void;
 
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): Game.AsObject;
@@ -34,12 +34,12 @@ export class Game extends jspb.Message {
 
 export namespace Game {
   export type AsObject = {
-    firstName: string,
-    lastName: string,
-    email: string,
-    phoneNumber: string,
-    isBlocked: boolean,
-    isFavorite: boolean,
+    workerIndex: number,
+    playerIndex: boolean,
+    done: boolean,
+    reward: number,
+    turn: number,
+    heuristicAction: number,
   }
 }
 

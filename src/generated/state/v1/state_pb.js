@@ -18,6 +18,8 @@ var state_v1_pokemon_pb = require('../../state/v1/pokemon_pb.js');
 goog.object.extend(proto, state_v1_pokemon_pb);
 var state_v1_context_pb = require('../../state/v1/context_pb.js');
 goog.object.extend(proto, state_v1_context_pb);
+var state_v1_history_pb = require('../../state/v1/history_pb.js');
+goog.object.extend(proto, state_v1_history_pb);
 goog.exportSymbol('proto.state.v1.LegalMask', null, global);
 goog.exportSymbol('proto.state.v1.State', null, global);
 /**
@@ -494,11 +496,13 @@ proto.state.v1.State.prototype.toObject = function(opt_includeInstance) {
  */
 proto.state.v1.State.toObject = function(includeInstance, msg) {
   var f, obj = {
+    size: jspb.Message.getFieldWithDefault(msg, 1, 0),
     game: (f = msg.getGame()) && state_v1_game_pb.Game.toObject(includeInstance, f),
     privateTeam: (f = msg.getPrivateTeam()) && state_v1_pokemon_pb.Team.toObject(includeInstance, f),
     publicTeam1: (f = msg.getPublicTeam1()) && state_v1_pokemon_pb.Team.toObject(includeInstance, f),
     publicTeam2: (f = msg.getPublicTeam2()) && state_v1_pokemon_pb.Team.toObject(includeInstance, f),
     context: (f = msg.getContext()) && state_v1_context_pb.Context.toObject(includeInstance, f),
+    history: (f = msg.getHistory()) && state_v1_history_pb.History.toObject(includeInstance, f),
     legalMask: (f = msg.getLegalMask()) && proto.state.v1.LegalMask.toObject(includeInstance, f)
   };
 
@@ -537,31 +541,40 @@ proto.state.v1.State.deserializeBinaryFromReader = function(msg, reader) {
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
+      var value = /** @type {number} */ (reader.readInt32());
+      msg.setSize(value);
+      break;
+    case 2:
       var value = new state_v1_game_pb.Game;
       reader.readMessage(value,state_v1_game_pb.Game.deserializeBinaryFromReader);
       msg.setGame(value);
       break;
-    case 2:
+    case 3:
       var value = new state_v1_pokemon_pb.Team;
       reader.readMessage(value,state_v1_pokemon_pb.Team.deserializeBinaryFromReader);
       msg.setPrivateTeam(value);
       break;
-    case 3:
+    case 4:
       var value = new state_v1_pokemon_pb.Team;
       reader.readMessage(value,state_v1_pokemon_pb.Team.deserializeBinaryFromReader);
       msg.setPublicTeam1(value);
       break;
-    case 4:
+    case 5:
       var value = new state_v1_pokemon_pb.Team;
       reader.readMessage(value,state_v1_pokemon_pb.Team.deserializeBinaryFromReader);
       msg.setPublicTeam2(value);
       break;
-    case 5:
+    case 6:
       var value = new state_v1_context_pb.Context;
       reader.readMessage(value,state_v1_context_pb.Context.deserializeBinaryFromReader);
       msg.setContext(value);
       break;
-    case 6:
+    case 7:
+      var value = new state_v1_history_pb.History;
+      reader.readMessage(value,state_v1_history_pb.History.deserializeBinaryFromReader);
+      msg.setHistory(value);
+      break;
+    case 8:
       var value = new proto.state.v1.LegalMask;
       reader.readMessage(value,proto.state.v1.LegalMask.deserializeBinaryFromReader);
       msg.setLegalMask(value);
@@ -595,10 +608,17 @@ proto.state.v1.State.prototype.serializeBinary = function() {
  */
 proto.state.v1.State.serializeBinaryToWriter = function(message, writer) {
   var f = undefined;
+  f = message.getSize();
+  if (f !== 0) {
+    writer.writeInt32(
+      1,
+      f
+    );
+  }
   f = message.getGame();
   if (f != null) {
     writer.writeMessage(
-      1,
+      2,
       f,
       state_v1_game_pb.Game.serializeBinaryToWriter
     );
@@ -606,7 +626,7 @@ proto.state.v1.State.serializeBinaryToWriter = function(message, writer) {
   f = message.getPrivateTeam();
   if (f != null) {
     writer.writeMessage(
-      2,
+      3,
       f,
       state_v1_pokemon_pb.Team.serializeBinaryToWriter
     );
@@ -614,7 +634,7 @@ proto.state.v1.State.serializeBinaryToWriter = function(message, writer) {
   f = message.getPublicTeam1();
   if (f != null) {
     writer.writeMessage(
-      3,
+      4,
       f,
       state_v1_pokemon_pb.Team.serializeBinaryToWriter
     );
@@ -622,7 +642,7 @@ proto.state.v1.State.serializeBinaryToWriter = function(message, writer) {
   f = message.getPublicTeam2();
   if (f != null) {
     writer.writeMessage(
-      4,
+      5,
       f,
       state_v1_pokemon_pb.Team.serializeBinaryToWriter
     );
@@ -630,15 +650,23 @@ proto.state.v1.State.serializeBinaryToWriter = function(message, writer) {
   f = message.getContext();
   if (f != null) {
     writer.writeMessage(
-      5,
+      6,
       f,
       state_v1_context_pb.Context.serializeBinaryToWriter
+    );
+  }
+  f = message.getHistory();
+  if (f != null) {
+    writer.writeMessage(
+      7,
+      f,
+      state_v1_history_pb.History.serializeBinaryToWriter
     );
   }
   f = message.getLegalMask();
   if (f != null) {
     writer.writeMessage(
-      6,
+      8,
       f,
       proto.state.v1.LegalMask.serializeBinaryToWriter
     );
@@ -647,12 +675,30 @@ proto.state.v1.State.serializeBinaryToWriter = function(message, writer) {
 
 
 /**
- * optional Game game = 1;
+ * optional int32 size = 1;
+ * @return {number}
+ */
+proto.state.v1.State.prototype.getSize = function() {
+  return /** @type {number} */ (jspb.Message.getFieldWithDefault(this, 1, 0));
+};
+
+
+/**
+ * @param {number} value
+ * @return {!proto.state.v1.State} returns this
+ */
+proto.state.v1.State.prototype.setSize = function(value) {
+  return jspb.Message.setProto3IntField(this, 1, value);
+};
+
+
+/**
+ * optional Game game = 2;
  * @return {?proto.state.v1.Game}
  */
 proto.state.v1.State.prototype.getGame = function() {
   return /** @type{?proto.state.v1.Game} */ (
-    jspb.Message.getWrapperField(this, state_v1_game_pb.Game, 1));
+    jspb.Message.getWrapperField(this, state_v1_game_pb.Game, 2));
 };
 
 
@@ -661,7 +707,7 @@ proto.state.v1.State.prototype.getGame = function() {
  * @return {!proto.state.v1.State} returns this
 */
 proto.state.v1.State.prototype.setGame = function(value) {
-  return jspb.Message.setWrapperField(this, 1, value);
+  return jspb.Message.setWrapperField(this, 2, value);
 };
 
 
@@ -679,17 +725,17 @@ proto.state.v1.State.prototype.clearGame = function() {
  * @return {boolean}
  */
 proto.state.v1.State.prototype.hasGame = function() {
-  return jspb.Message.getField(this, 1) != null;
+  return jspb.Message.getField(this, 2) != null;
 };
 
 
 /**
- * optional Team private_team = 2;
+ * optional Team private_team = 3;
  * @return {?proto.state.v1.Team}
  */
 proto.state.v1.State.prototype.getPrivateTeam = function() {
   return /** @type{?proto.state.v1.Team} */ (
-    jspb.Message.getWrapperField(this, state_v1_pokemon_pb.Team, 2));
+    jspb.Message.getWrapperField(this, state_v1_pokemon_pb.Team, 3));
 };
 
 
@@ -698,7 +744,7 @@ proto.state.v1.State.prototype.getPrivateTeam = function() {
  * @return {!proto.state.v1.State} returns this
 */
 proto.state.v1.State.prototype.setPrivateTeam = function(value) {
-  return jspb.Message.setWrapperField(this, 2, value);
+  return jspb.Message.setWrapperField(this, 3, value);
 };
 
 
@@ -716,17 +762,17 @@ proto.state.v1.State.prototype.clearPrivateTeam = function() {
  * @return {boolean}
  */
 proto.state.v1.State.prototype.hasPrivateTeam = function() {
-  return jspb.Message.getField(this, 2) != null;
+  return jspb.Message.getField(this, 3) != null;
 };
 
 
 /**
- * optional Team public_team1 = 3;
+ * optional Team public_team1 = 4;
  * @return {?proto.state.v1.Team}
  */
 proto.state.v1.State.prototype.getPublicTeam1 = function() {
   return /** @type{?proto.state.v1.Team} */ (
-    jspb.Message.getWrapperField(this, state_v1_pokemon_pb.Team, 3));
+    jspb.Message.getWrapperField(this, state_v1_pokemon_pb.Team, 4));
 };
 
 
@@ -735,7 +781,7 @@ proto.state.v1.State.prototype.getPublicTeam1 = function() {
  * @return {!proto.state.v1.State} returns this
 */
 proto.state.v1.State.prototype.setPublicTeam1 = function(value) {
-  return jspb.Message.setWrapperField(this, 3, value);
+  return jspb.Message.setWrapperField(this, 4, value);
 };
 
 
@@ -753,17 +799,17 @@ proto.state.v1.State.prototype.clearPublicTeam1 = function() {
  * @return {boolean}
  */
 proto.state.v1.State.prototype.hasPublicTeam1 = function() {
-  return jspb.Message.getField(this, 3) != null;
+  return jspb.Message.getField(this, 4) != null;
 };
 
 
 /**
- * optional Team public_team2 = 4;
+ * optional Team public_team2 = 5;
  * @return {?proto.state.v1.Team}
  */
 proto.state.v1.State.prototype.getPublicTeam2 = function() {
   return /** @type{?proto.state.v1.Team} */ (
-    jspb.Message.getWrapperField(this, state_v1_pokemon_pb.Team, 4));
+    jspb.Message.getWrapperField(this, state_v1_pokemon_pb.Team, 5));
 };
 
 
@@ -772,7 +818,7 @@ proto.state.v1.State.prototype.getPublicTeam2 = function() {
  * @return {!proto.state.v1.State} returns this
 */
 proto.state.v1.State.prototype.setPublicTeam2 = function(value) {
-  return jspb.Message.setWrapperField(this, 4, value);
+  return jspb.Message.setWrapperField(this, 5, value);
 };
 
 
@@ -790,17 +836,17 @@ proto.state.v1.State.prototype.clearPublicTeam2 = function() {
  * @return {boolean}
  */
 proto.state.v1.State.prototype.hasPublicTeam2 = function() {
-  return jspb.Message.getField(this, 4) != null;
+  return jspb.Message.getField(this, 5) != null;
 };
 
 
 /**
- * optional Context context = 5;
+ * optional Context context = 6;
  * @return {?proto.state.v1.Context}
  */
 proto.state.v1.State.prototype.getContext = function() {
   return /** @type{?proto.state.v1.Context} */ (
-    jspb.Message.getWrapperField(this, state_v1_context_pb.Context, 5));
+    jspb.Message.getWrapperField(this, state_v1_context_pb.Context, 6));
 };
 
 
@@ -809,7 +855,7 @@ proto.state.v1.State.prototype.getContext = function() {
  * @return {!proto.state.v1.State} returns this
 */
 proto.state.v1.State.prototype.setContext = function(value) {
-  return jspb.Message.setWrapperField(this, 5, value);
+  return jspb.Message.setWrapperField(this, 6, value);
 };
 
 
@@ -827,17 +873,54 @@ proto.state.v1.State.prototype.clearContext = function() {
  * @return {boolean}
  */
 proto.state.v1.State.prototype.hasContext = function() {
-  return jspb.Message.getField(this, 5) != null;
+  return jspb.Message.getField(this, 6) != null;
 };
 
 
 /**
- * optional LegalMask legal_mask = 6;
+ * optional History history = 7;
+ * @return {?proto.state.v1.History}
+ */
+proto.state.v1.State.prototype.getHistory = function() {
+  return /** @type{?proto.state.v1.History} */ (
+    jspb.Message.getWrapperField(this, state_v1_history_pb.History, 7));
+};
+
+
+/**
+ * @param {?proto.state.v1.History|undefined} value
+ * @return {!proto.state.v1.State} returns this
+*/
+proto.state.v1.State.prototype.setHistory = function(value) {
+  return jspb.Message.setWrapperField(this, 7, value);
+};
+
+
+/**
+ * Clears the message field making it undefined.
+ * @return {!proto.state.v1.State} returns this
+ */
+proto.state.v1.State.prototype.clearHistory = function() {
+  return this.setHistory(undefined);
+};
+
+
+/**
+ * Returns whether this field is set.
+ * @return {boolean}
+ */
+proto.state.v1.State.prototype.hasHistory = function() {
+  return jspb.Message.getField(this, 7) != null;
+};
+
+
+/**
+ * optional LegalMask legal_mask = 8;
  * @return {?proto.state.v1.LegalMask}
  */
 proto.state.v1.State.prototype.getLegalMask = function() {
   return /** @type{?proto.state.v1.LegalMask} */ (
-    jspb.Message.getWrapperField(this, proto.state.v1.LegalMask, 6));
+    jspb.Message.getWrapperField(this, proto.state.v1.LegalMask, 8));
 };
 
 
@@ -846,7 +929,7 @@ proto.state.v1.State.prototype.getLegalMask = function() {
  * @return {!proto.state.v1.State} returns this
 */
 proto.state.v1.State.prototype.setLegalMask = function(value) {
-  return jspb.Message.setWrapperField(this, 6, value);
+  return jspb.Message.setWrapperField(this, 8, value);
 };
 
 
@@ -864,7 +947,7 @@ proto.state.v1.State.prototype.clearLegalMask = function() {
  * @return {boolean}
  */
 proto.state.v1.State.prototype.hasLegalMask = function() {
-  return jspb.Message.getField(this, 6) != null;
+  return jspb.Message.getField(this, 8) != null;
 };
 
 

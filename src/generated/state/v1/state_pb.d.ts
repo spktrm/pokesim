@@ -5,6 +5,7 @@ import * as jspb from "google-protobuf";
 import * as state_v1_game_pb from "../../state/v1/game_pb";
 import * as state_v1_pokemon_pb from "../../state/v1/pokemon_pb";
 import * as state_v1_context_pb from "../../state/v1/context_pb";
+import * as state_v1_history_pb from "../../state/v1/history_pb";
 
 export class LegalMask extends jspb.Message {
   getMove1(): boolean;
@@ -63,6 +64,9 @@ export namespace LegalMask {
 }
 
 export class State extends jspb.Message {
+  getSize(): number;
+  setSize(value: number): void;
+
   hasGame(): boolean;
   clearGame(): void;
   getGame(): state_v1_game_pb.Game | undefined;
@@ -88,6 +92,11 @@ export class State extends jspb.Message {
   getContext(): state_v1_context_pb.Context | undefined;
   setContext(value?: state_v1_context_pb.Context): void;
 
+  hasHistory(): boolean;
+  clearHistory(): void;
+  getHistory(): state_v1_history_pb.History | undefined;
+  setHistory(value?: state_v1_history_pb.History): void;
+
   hasLegalMask(): boolean;
   clearLegalMask(): void;
   getLegalMask(): LegalMask | undefined;
@@ -105,11 +114,13 @@ export class State extends jspb.Message {
 
 export namespace State {
   export type AsObject = {
+    size: number,
     game?: state_v1_game_pb.Game.AsObject,
     privateTeam?: state_v1_pokemon_pb.Team.AsObject,
     publicTeam1?: state_v1_pokemon_pb.Team.AsObject,
     publicTeam2?: state_v1_pokemon_pb.Team.AsObject,
     context?: state_v1_context_pb.Context.AsObject,
+    history?: state_v1_history_pb.History.AsObject,
     legalMask?: LegalMask.AsObject,
   }
 }
