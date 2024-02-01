@@ -6,7 +6,7 @@ from typing import Dict
 def write_enum(buf: str, datum: str, values: Dict[str, int]) -> str:
     buf += "enum " + datum.capitalize() + " {\n"
     for key, token in values.items():
-        buf += f"\t_{key.upper()} = {token+1};\n"
+        buf += f"\t_{datum.upper()}_{key.upper()} = {token};\n"
     buf += "}\n\n"
     return buf
 

@@ -4,10 +4,28 @@ package state.v1;
 
 import "state/v1/game.proto";
 import "state/v1/pokemon.proto";
+import "state/v1/context.proto";
+
+
+message LegalMask {
+    bool move1 = 1;
+    bool move2 = 2;
+    bool move3 = 3;
+    bool move4 = 4;
+    bool switch1 = 5;
+    bool switch2 = 6;
+    bool switch3 = 7;
+    bool switch4 = 8;
+    bool switch5 = 9;
+    bool switch6 = 10;
+}
+
 
 message State {
     Game game = 1;
     Team private_team = 2;
     Team public_team1 = 3;
     Team public_team2 = 4;
+    Context context = 5;
+    LegalMask legal_mask = 6;
 }

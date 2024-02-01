@@ -7,7 +7,7 @@ import "state/v1/enum.proto";
 
 message Pokemon {
     Species species = 1;
-    Item item = 2;
+    Items item = 2;
     Abilities ability = 3;
     float hp = 4;
     bool active = 5;

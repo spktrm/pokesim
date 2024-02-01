@@ -130,7 +130,9 @@ type GenData = {
 function mapId<T extends { id: string; [key: string]: any }>(
     arr: T[]
 ): string[] {
-    return new Set(arr.map((item) => item.id));
+    const hashmap: Set<string> = new Set();
+    arr.map((item) => hashmap.add(item.id));
+    return Array.from(hashmap);
 }
 
 function formatData(data: GenData) {
