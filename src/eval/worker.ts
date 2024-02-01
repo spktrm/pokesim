@@ -128,7 +128,10 @@ class PokemonShowdownBot {
                 } catch (err) {}
                 if (line.startsWith("|start")) {
                     this.started = true;
-                    this.sendMessage(this.battleId ?? "", "/timer on");
+
+                    if (this.url.includes(online)) {
+                        this.sendMessage(this.battleId ?? "", "/timer on");
+                    }
                 }
                 if (line.startsWith("|win") || line.startsWith("|tie\n")) {
                     const state = this.handler.getState({

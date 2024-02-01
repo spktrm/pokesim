@@ -128,9 +128,9 @@ type GenData = {
 };
 
 function mapId<T extends { id: string; [key: string]: any }>(
-    arr: T[],
+    arr: T[]
 ): string[] {
-    return arr.map((item) => item.id);
+    return new Set(arr.map((item) => item.id));
 }
 
 function formatData(data: GenData) {

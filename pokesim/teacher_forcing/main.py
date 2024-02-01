@@ -126,7 +126,7 @@ def main(debug):
         while True:
             time.sleep(1)
 
-            if (time.time() - prev_time) >= 15 * 60:
+            if (time.time() - prev_time) >= 5 * 60:
                 learner.save(
                     f"ckpts/{learner.learner_steps:06}.pt",
                 )

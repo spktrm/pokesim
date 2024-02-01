@@ -1,5 +1,9 @@
-start-online: 
+build:
 	tsc
+	sh scripts/generate.sh
+
+start-online: 
+	${MAKE} build
 	node dist/server/online.js 2> debug/server-online.err.log
 
 start-debug: 

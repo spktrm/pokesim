@@ -453,6 +453,7 @@ class MaxdmgPlayer {
 }
 
 class moveInfo {
+    order: number = 0;
     user: string = "";
     target: string = "";
     userSide: number = 0;
@@ -473,6 +474,7 @@ class moveInfo {
     hash() {
         let salt = "";
         for (const addition of [
+            this.order,
             this.user,
             this.target,
             this.userSide,
@@ -492,7 +494,7 @@ class moveInfo {
     }
 }
 
-export const historyVectorSize = 211;
+export const historyVectorSize = 213;
 export class BattlesHandler {
     playerIndex: number;
     battles: clientBattle[];
@@ -559,6 +561,10 @@ export class BattlesHandler {
         return this.battles[0];
     }
 
+    getBattleTurn() {
+        return Math.min(127, this.getMyBattle().turn - 1);
+    }
+
     getRequest(): AnyObject {
         const battle = this.getMyBattle() ?? {};
         return battle.request as AnyObject;
@@ -589,7 +595,7 @@ export class BattlesHandler {
         let switchCounter = 0;
 
         for (const [lineIndex, line] of actionLines.entries()) {
-            if (!line.startsWith("|-")) {
+            if (line === "|") {
                 if (currentMoveInfo.context.isReady()) {
                     this.damageInfos[currentMoveInfo.context.hash()] =
                         currentMoveInfo;
@@ -601,6 +607,15 @@ export class BattlesHandler {
                 }
             }
             if (line.startsWith("|move")) {
+                if (currentMoveInfo.context.isReady()) {
+                    this.damageInfos[currentMoveInfo.context.hash()] =
+                        currentMoveInfo;
+                    currentMoveInfo = {
+                        context: new moveInfo(),
+                        vector: new Int8Array(historyVectorSize),
+                        hasVector: false,
+                    };
+                }
                 const [_, __, user, moveName, target] = line.split("|");
                 currentMoveInfo.context.userSide =
                     parseInt(user.slice(1, 2)) - 1;
@@ -620,9 +635,48 @@ export class BattlesHandler {
                 }
 
                 currentMoveInfo.context.moveCounter = moveCounter;
+                currentMoveInfo.context.switchCounter = switchCounter;
+                currentMoveInfo.context.order = turn;
+
                 moveCounter = moveCounter + 1;
             } else if (line.startsWith("|switch")) {
-                currentMoveInfo.context.moveCounter = switchCounter;
+                if (currentMoveInfo.context.isReady()) {
+                    this.damageInfos[currentMoveInfo.context.hash()] =
+                        currentMoveInfo;
+                    currentMoveInfo = {
+                        context: new moveInfo(),
+                        vector: new Int8Array(historyVectorSize),
+                        hasVector: false,
+                    };
+                }
+                const [_, __, target, ...___] = line.split("|");
+
+                const targetSideIndex = parseInt(target.slice(1, 2)) - 1;
+                currentMoveInfo.context.targetSide = targetSideIndex;
+
+                currentMoveInfo.context.moveName = "switch-in";
+                currentMoveInfo.context.target =
+                    target.slice(0, 2) + target.slice(3);
+
+                currentMoveInfo.context.userSide =
+                    currentMoveInfo.context.targetSide;
+
+                const user =
+                    this.getMyBattle().sides[targetSideIndex].active[0]
+                        ?.originalIdent ?? currentMoveInfo.context.target;
+                currentMoveInfo.context.user = user;
+
+                let offset = 0;
+                const history = this.entityVectors[turn][lineIndex + 1];
+                for (const datum of history) {
+                    currentMoveInfo.vector.set(datum, offset);
+                    offset += datum.length;
+                }
+
+                currentMoveInfo.context.moveCounter = moveCounter;
+                currentMoveInfo.context.switchCounter = switchCounter;
+                currentMoveInfo.context.order = turn;
+
                 switchCounter = switchCounter + 1;
             } else if (
                 line.startsWith("|-damage") ||
@@ -665,10 +719,9 @@ export class BattlesHandler {
         this.turns[this.turn].push(line);
         const battle = this.getMyBattle();
         if (line.startsWith("|move")) {
-            let [_, __, user, moveName, target] = line.split("|");
+            let [_, __, user, ___, target] = line.split("|");
             const userSide = parseInt(user.slice(1, 2)) - 1;
             user = user.slice(0, 2) + user.slice(3);
-            moveName = moveName;
             const targetCorrect = target === "" ? user : target ?? user;
             const targetSide = parseInt(targetCorrect.slice(1, 2)) - 1;
             target = targetCorrect.slice(0, 2) + targetCorrect.slice(3);
@@ -705,8 +758,47 @@ export class BattlesHandler {
                 userVector,
                 targetVector,
             ];
-        }
-        if (line.startsWith("|-damage") || line.startsWith("|-heal")) {
+        } else if (line.startsWith("|switch")) {
+            let [_, __, target, ...___] = line.split("|");
+            const targetSide = parseInt(target.slice(1, 2)) - 1;
+            const user =
+                this.getMyBattle().sides[targetSide].active[0]?.originalIdent ??
+                target;
+            const userSide = targetSide;
+            const isMe = this.playerIndex === userSide ? 1 : 0;
+            const userProps = this.getPokemon(userSide, user);
+            const targetProps = this.getPokemon(targetSide, target);
+            const userVector =
+                userSide === this.playerIndex
+                    ? getPublicPokemon(
+                          this.getMyBattle(),
+                          userProps,
+                          true,
+                          isMe
+                      )
+                    : getPrivatePokemon(this.getMyBattle(), userProps);
+            const targetVector =
+                targetSide === this.playerIndex
+                    ? getPublicPokemon(
+                          this.getMyBattle(),
+                          targetProps,
+                          false,
+                          isMe
+                      )
+                    : getPrivatePokemon(this.getMyBattle(), targetProps);
+            const stateHandler = new Int8State({
+                handler: this,
+                playerIndex: playerIndex,
+                workerIndex: workerIndex ?? 0,
+                done: 0,
+                reward: 0,
+            });
+            this.entityVectors[this.turn][this.turns[this.turn].length] = [
+                stateHandler.getContextVector(),
+                userVector,
+                targetVector,
+            ];
+        } else if (line.startsWith("|-damage") || line.startsWith("|-heal")) {
             let prevHp: number;
             const [_, __, user, healthRatio] = line.split("|");
             const originalIdent = user.slice(0, 2) + user.slice(3);

@@ -100,7 +100,8 @@ export function getPublicPokemon(
         }
     }
     const lastMoveToken =
-        pokemon.lastMove === "" && !!pokemon.newlySwitched
+        (pokemon.lastMove === "" && !!pokemon.newlySwitched) ||
+        pokemon.lastMove === "switch-in"
             ? switchToken
             : getMappingValueWrapper(pokemon, moveMapping, pokemon.lastMove);
 
@@ -170,7 +171,8 @@ export function getPrivatePokemon(
     }
 
     const lastMoveToken =
-        pokemon.lastMove === "" && !!pokemon.newlySwitched
+        (pokemon.lastMove === "" && !!pokemon.newlySwitched) ||
+        pokemon.lastMove === "switch-in"
             ? switchToken
             : getMappingValueWrapper(pokemon, moveMapping, pokemon.lastMove);
     const formatedPokemonName = formatKey(pokemon.name);
@@ -536,17 +538,18 @@ export class Int8State {
     updatetHistoryVectors(contextVector: Int8Array): void {
         // let offset = 0;
 
-        for (const [key, moveStore] of [
-            ...Object.entries(this.handler.damageInfos),
-        ].reverse()) {
+        for (const [key, moveStore] of Object.entries(
+            this.handler.damageInfos
+        )) {
             if (moveStore.hasVector) {
-                return;
+                continue;
             }
             const {
                 // user,
                 // target,
                 // userSide,
                 // targetSide,
+                order,
                 isCritical,
                 damage,
                 effectiveness,
@@ -565,12 +568,13 @@ export class Int8State {
                     effectiveness,
                     missed ? 1 : 0,
                     targetFainted ? 1 : 0,
-                    Math.floor(
-                        (2047 * (1 + Math.max(-1, Math.min(1, damage)))) / 2
-                    ),
+                    Math.floor(2047 * (1 + Math.max(-1, Math.min(1, damage)))),
                     moveCounter,
                     switchCounter,
-                    moveMapping[formatKey(moveName) ?? ""],
+                    moveName === "switch-in"
+                        ? switchToken
+                        : moveMapping[formatKey(moveName) ?? ""],
+                    order,
                 ]).buffer
             );
             // const history: Array<Int8Array> = [
@@ -614,7 +618,7 @@ export class Int8State {
     }
 
     getState(): Int8Array {
-        const turn = Math.min(127, this.handler.getMyBattle().turn - 1 ?? 0);
+        const turn = this.handler.getBattleTurn();
         this.handler.getAggregatedTurnLines();
 
         const heuristicAction = this.done
@@ -629,7 +633,9 @@ export class Int8State {
 
         this.updatetHistoryVectors(contextVector);
 
-        const damageInfos = Object.values(this.handler.damageInfos).slice(-20);
+        const damageInfos = Object.values(this.handler.damageInfos)
+            .sort((a, b) => a.context.order - b.context.order)
+            .slice(-20);
         const historyVectors =
             damageInfos.length > 0
                 ? damageInfos.map(({ vector }) => vector)

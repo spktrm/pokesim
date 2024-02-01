@@ -5,7 +5,7 @@ import numpy as np
 
 from typing import Any, Dict
 
-STATE_SIZE = 5199
+STATE_SIZE = 5239
 
 
 with open(os.path.abspath("./config.yml"), "r") as f:
@@ -157,14 +157,13 @@ def get_positional_encoding_matrix(
 
 
 TURN_ENC_SIZE = 64
-TURN_MAX = 100
+TURN_MAX = 127
 
 NUM_PLAYERS = 2
 NUM_HISTORY = 8
 
 MODEL_INPUT_KEYS = {
     "turn",
-    "active_moveset",
     "teams",
     "side_conditions",
     "volatile_status",

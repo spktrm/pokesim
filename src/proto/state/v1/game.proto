@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package state.v1;
+
+
+message Game {
+    string first_name = 1;
+    string last_name = 2;
+    string email = 3;
+    string phone_number = 4;
+    bool is_blocked = 8;
+    bool is_favorite = 9;
+}

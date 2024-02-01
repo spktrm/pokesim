@@ -132,7 +132,7 @@ def _legal_log_policy(
 
 
 def _threshold(
-    policy: torch.Tensor, mask: torch.Tensor, threshold: float = 0.05
+    policy: torch.Tensor, mask: torch.Tensor, threshold: float = 0.02
 ) -> torch.Tensor:
     """Remove from the support the actions 'a' where policy(a) < threshold."""
     if threshold <= 0:
@@ -173,7 +173,7 @@ def _discretize(policy: torch.Tensor, n_disc: float = 16) -> torch.Tensor:
 
 
 def finetune(policy: torch.Tensor, mask: torch.Tensor):
-    # policy = _threshold(policy, mask)
+    policy = _threshold(policy, mask)
     # policy = _discretize(policy)
     return policy
 
@@ -196,10 +196,8 @@ def print_rounded_numbers(numbers, n: int):
 def handle_verbose(
     n: int, pi: np.ndarray, logit: np.ndarray, action: int, value: np.ndarray
 ):
-    print("policy:\t", end="")
+    logit = logit - logit.mean(-1, keepdims=True)
     print_rounded_numbers(pi.tolist(), 2)
-    print("logits:\t", end="")
     print_rounded_numbers(logit.tolist(), 2)
-    print(f"value:\t{value.item():.3f}")
-    print(f"action:\t{action}")
-    print()
+    print(value.item())
+    print(action)

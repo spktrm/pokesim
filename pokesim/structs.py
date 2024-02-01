@@ -195,8 +195,7 @@ class State(NamedTuple):
 
     def get_teams(self, leading_dims: Sequence[int]):
         teams = self.view_teams(leading_dims)
-        active_moveset = teams[..., 0, 0, -4:].astype(int)
-        return active_moveset, teams
+        return teams
 
     def get_side_conditions(self, leading_dims: Sequence[int]):
         return (
@@ -228,9 +227,9 @@ class State(NamedTuple):
 
     def _get_history(self, leading_dims: Sequence[int]):
         history = self.raw[..., HISTORY_OFFSET:].view(np.int8)
-        history = history.reshape(*leading_dims, -1, 211)
+        history = history.reshape(*leading_dims, -1, 213)
         history_right = history[..., 99:].view(np.int16)
-        return history[..., :99], history_right[..., :-8], history_right[..., -8:]
+        return history[..., :99], history_right[..., :-9], history_right[..., -9:]
 
     def get_history(self, leading_dims: Sequence[int]):
         history_context, history_entities, history_stats = self._get_history(
@@ -268,7 +267,7 @@ class State(NamedTuple):
             leading_dims = (1, 1) + (self.raw.shape[0],)
         turn_enc = self.get_turn(leading_dims)
         heuristic_action = self.get_heuristic_action(leading_dims)
-        active_moveset_enc, teams_enc = self.get_teams(leading_dims)
+        teams_enc = self.get_teams(leading_dims)
         side_conditions_enc = self.get_side_conditions(leading_dims)
         volatile_status_enc = self.get_volatile_status(leading_dims)
         boosts_enc = self.get_boosts(leading_dims)
@@ -278,7 +277,6 @@ class State(NamedTuple):
             "raw": self.raw,
             "turn": turn_enc,
             "heuristic_action": heuristic_action,
-            "active_moveset": active_moveset_enc,
             "teams": teams_enc,
             "side_conditions": side_conditions_enc,
             "volatile_status": volatile_status_enc,

@@ -25,6 +25,7 @@ from pokesim.nn.modules import (
     GatingType,
     MultiHeadAttention,
     PointerLogits,
+    Transformer,
     VectorMerge,
     MLP,
 )
@@ -62,31 +63,34 @@ class Encoder(nn.Module):
 
         self.entity_cls = _layer_init(nn.Parameter(torch.randn(1, 1, 4, entity_size)))
         self.history_cls = _layer_init(nn.Parameter(torch.randn(1, 1, 4, entity_size)))
-        self.history_mlp = MLP([entity_size, entity_size])
-        self.entity_lin = _layer_init(
-            nn.Linear(
-                self.species_onehot.weight.shape[-1]
-                + self.item_onehot.weight.shape[-1]
-                + self.ability_onehot.weight.shape[-1]
-                + 2 * self.moves_onehot.weight.shape[-1]
-                + 1 * self.hp_onehot.weight.shape[-1]
-                + self.status_onehot.weight.shape[-1]
-                + self.active_onehot.weight.shape[-1]
-                + self.fainted_onehot.weight.shape[-1]
-                + self.side_onehot.weight.shape[-1]
-                + self.public_onehot.weight.shape[-1]
-                + self.sleep_turns_onehot.weight.shape[-1]
-                + self.toxic_turns_onehot.weight.shape[-1],
-                entity_size,
-            )
+        self.entity_lin = nn.Sequential(
+            _layer_init(
+                nn.Linear(
+                    self.species_onehot.weight.shape[-1]
+                    + self.item_onehot.weight.shape[-1]
+                    + self.ability_onehot.weight.shape[-1]
+                    + 2 * self.moves_onehot.weight.shape[-1]
+                    + 1 * self.hp_onehot.weight.shape[-1]
+                    + self.status_onehot.weight.shape[-1]
+                    + self.active_onehot.weight.shape[-1]
+                    + self.fainted_onehot.weight.shape[-1]
+                    + self.side_onehot.weight.shape[-1]
+                    + self.public_onehot.weight.shape[-1]
+                    + self.sleep_turns_onehot.weight.shape[-1]
+                    + self.toxic_turns_onehot.weight.shape[-1],
+                    entity_size,
+                )
+            ),
+            MLP([entity_size, entity_size, entity_size]),
         )
 
-        self.is_critical_onehot = nn.Embedding.from_pretrained(torch.eye(2))
-        self.effectiveness_onehot = nn.Embedding.from_pretrained(torch.eye(5))
-        self.missed_onehot = nn.Embedding.from_pretrained(torch.eye(2))
-        self.target_fainted_onehot = nn.Embedding.from_pretrained(torch.eye(2))
-        self.damage_value_onehot = nn.Embedding.from_pretrained(torch.eye(64))
-        self.action_counter_onehot = nn.Embedding.from_pretrained(torch.eye(4))
+        # self.is_critical_onehot = nn.Embedding.from_pretrained(torch.eye(2))
+        # self.effectiveness_onehot = nn.Embedding.from_pretrained(torch.eye(5))
+        # self.missed_onehot = nn.Embedding.from_pretrained(torch.eye(2))
+        # self.target_fainted_onehot = nn.Embedding.from_pretrained(torch.eye(2))
+        # self.damage_value_onehot = nn.Embedding.from_pretrained(torch.eye(64))
+        # self.action_counter_onehot = nn.Embedding.from_pretrained(torch.eye(4))
+        # self.order_onehot = nn.Embedding.from_pretrained(torch.eye(20))
 
         self.boosts_onehot = nn.Embedding.from_pretrained(torch.eye(13))
 
@@ -111,79 +115,53 @@ class Encoder(nn.Module):
             2 * (12 * NUM_BOOSTS + NUM_VOLATILE_STATUS + NUM_SIDE_CONDITIONS + 2 + 3)
             + field_size
         )
+        # stats_size = (
+        #     self.is_critical_onehot.weight.shape[-1]
+        #     + self.effectiveness_onehot.weight.shape[-1]
+        #     + self.missed_onehot.weight.shape[-1]
+        #     + self.target_fainted_onehot.weight.shape[-1]
+        #     + self.damage_value_onehot.weight.shape[-1]
+        #     + 1
+        #     + 2 * self.action_counter_onehot.weight.shape[-1]
+        #     + self.moves_onehot.weight.shape[-1]
+        #     + self.order_onehot.weight.shape[-1]
+        # )
 
-        stats_size = (
-            self.is_critical_onehot.weight.shape[-1]
-            + self.effectiveness_onehot.weight.shape[-1]
-            + self.missed_onehot.weight.shape[-1]
-            + self.target_fainted_onehot.weight.shape[-1]
-            + self.damage_value_onehot.weight.shape[-1]
-            + 1
-            + 2 * self.action_counter_onehot.weight.shape[-1]
-            + self.moves_onehot.weight.shape[-1]
-        )
-
-        user_target_size = 2 * (
-            self.species_onehot.weight.shape[-1]
-            + self.item_onehot.weight.shape[-1]
-            + self.ability_onehot.weight.shape[-1]
-            + 1 * self.moves_onehot.weight.shape[-1]
-            + 1 * self.hp_onehot.weight.shape[-1]
-            + self.status_onehot.weight.shape[-1]
-        )
-
-        self.history_user_target_lin = _layer_init(
-            nn.Linear(user_target_size, entity_size)
-        )
-        self.history_context_lin = _layer_init(nn.Linear(context_size, entity_size))
-        self.history_stats_lin = _layer_init(nn.Linear(stats_size, entity_size))
-
-        self.pre_attn_entity_ln1 = nn.LayerNorm(
-            entity_size, elementwise_affine=affine_layer_norm
-        )
-        self.pre_attn_entity_ln2 = nn.LayerNorm(
-            entity_size, elementwise_affine=affine_layer_norm
-        )
-        self.pre_attn_history_ln = nn.LayerNorm(
-            entity_size, elementwise_affine=affine_layer_norm
-        )
-
-        self.entity_self_attn = MultiHeadAttention(
-            num_heads=2,
-            key_size=entity_size // 2,
-            value_size=entity_size // 2,
-            model_size=entity_size,
-        )
-        self.entity_mlp = MLP([entity_size, entity_size])
-
-        self.entity_history_attn = MultiHeadAttention(
-            num_heads=2,
-            key_size=entity_size // 2,
-            value_size=entity_size // 2,
-            model_size=entity_size,
-        )
-        self.history_mlp = MLP([entity_size, entity_size])
-
-        self.entity_merge = VectorMerge(
-            input_sizes={"entity": entity_size, "history": entity_size},
-            output_size=entity_size,
-            gating_type=GatingType.NONE,
-            use_layer_norm=use_layer_norm,
-        )
+        self.history_diff_lin = _layer_init(nn.Linear(3 * entity_size, entity_size))
+        self.history_prev_lin = _layer_init(nn.Linear(3 * entity_size, entity_size))
+        # self.history_context_lin = _layer_init(nn.Linear(context_size, entity_size))
+        # self.history_stats_lin = _layer_init(nn.Linear(stats_size, entity_size))
 
         self.history_merge = VectorMerge(
             input_sizes={
-                "user_target": entity_size,
-                "context": entity_size,
-                "stats": entity_size,
+                "prev": entity_size,
+                "diff": entity_size,
+                "context": stream_size,
+                # "stats": entity_size,
             },
             output_size=entity_size,
             gating_type=GatingType.NONE,
             use_layer_norm=use_layer_norm,
             affine_layer_norm=affine_layer_norm,
         )
+        self.history_mlp = MLP([entity_size, entity_size])
 
-        self.context_lin = _layer_init(nn.Linear(context_size, stream_size))
+        self.transformer = Transformer(
+            units_stream_size=entity_size,
+            transformer_num_layers=1,
+            transformer_num_heads=2,
+            transformer_key_size=entity_size // 2,
+            transformer_value_size=entity_size // 2,
+            resblocks_num_before=0,
+            resblocks_num_after=1,
+            use_layer_norm=use_layer_norm,
+            affine_layer_norm=affine_layer_norm,
+        )
+
+        self.context_lin = nn.Sequential(
+            _layer_init(nn.Linear(context_size, stream_size)),
+            MLP([stream_size, stream_size]),
+        )
 
     def forward_entities(self, entities: torch.Tensor) -> torch.Tensor:
         entitiesp1 = entities + 1
@@ -240,80 +218,66 @@ class Encoder(nn.Module):
             ),
             dim=-1,
         )
-        embeddings = self.entity_lin(onehot).flatten(2, 3)
+        raw_embeddings = self.entity_lin(onehot)
+        embeddings = raw_embeddings.flatten(-3, -2)
         embeddings = torch.cat(
-            (self.entity_cls.expand(*embeddings.shape[:2], -1, -1), embeddings), dim=-2
+            (self.entity_cls.expand(*embeddings.shape[:3], -1, -1), embeddings), dim=-2
         )
 
-        return embeddings
+        return embeddings, raw_embeddings
 
-    def forward_history_entities(self, entities: torch.Tensor) -> torch.Tensor:
-        entitiesp1 = entities + 1
-        entitiesp2 = entities + 2
-        entitiesp3 = entities + 3
+    # def forward_history_entities(self, entities: torch.Tensor) -> torch.Tensor:
+    #     entitiesp1 = entities + 1
+    #     entitiesp2 = entities + 2
+    #     entitiesp3 = entities + 3
 
-        species_token = entitiesp2[..., 0]
-        item_token = entitiesp2[..., 1]
-        ability_token = entitiesp2[..., 2]
-        hp = entities[..., 3].clamp(0, 1024)
-        hp_bucket = torch.floor(hp * 64 / 1024).to(torch.long)
-        # active_token = entities[..., 4]
-        # fainted_token = entities[..., 5]
-        status_token = entitiesp1[..., 6]
-        last_move_token = entitiesp3[..., 7]
-        # public_token = entities[..., 8]
-        # side_token = entities[..., 9]
-        # move_pp_left = entitiesp3[..., 9:13]
-        # move_pp_max = entitiesp3[..., 13:17]
-        # move_tokens = entitiesp3[..., 17:]
+    #     species_token = entitiesp2[..., 0]
+    #     item_token = entitiesp2[..., 1]
+    #     ability_token = entitiesp2[..., 2]
+    #     hp = entities[..., 3].clamp(0, 1024)
+    #     hp_bucket = torch.floor(hp * 64 / 1024).to(torch.long)
+    #     # active_token = entities[..., 4]
+    #     # fainted_token = entities[..., 5]
+    #     status_token = entitiesp1[..., 6]
+    #     last_move_token = entitiesp3[..., 7]
+    #     # public_token = entities[..., 8]
+    #     # side_token = entities[..., 9]
+    #     # move_pp_left = entitiesp3[..., 9:13]
+    #     # move_pp_max = entitiesp3[..., 13:17]
+    #     # move_tokens = entitiesp3[..., 17:]
 
-        species_onehot = self.species_onehot(species_token)
-        item_onehot = self.item_onehot(item_token)
-        ability_onehot = self.ability_onehot(ability_token)
-        hp_onehot = self.hp_onehot(hp_bucket)
-        # active_onehot = self.active_onehot(active_token)
-        # fainted_onehot = self.fainted_onehot(fainted_token)
-        status_onehot = self.status_onehot(status_token)
-        # side_onehot = self.side_onehot(side_token)
-        # public_onehot = self.public_onehot(public_token)
-        last_move_onehot = self.moves_onehot(last_move_token)
-        # moveset_onehot = (self.moves_onehot(move_tokens) / 4).sum(-2)
+    #     species_onehot = self.species_onehot(species_token)
+    #     item_onehot = self.item_onehot(item_token)
+    #     ability_onehot = self.ability_onehot(ability_token)
+    #     hp_onehot = self.hp_onehot(hp_bucket)
+    #     # active_onehot = self.active_onehot(active_token)
+    #     # fainted_onehot = self.fainted_onehot(fainted_token)
+    #     status_onehot = self.status_onehot(status_token)
+    #     # side_onehot = self.side_onehot(side_token)
+    #     # public_onehot = self.public_onehot(public_token)
+    #     last_move_onehot = self.moves_onehot(last_move_token)
+    #     # moveset_onehot = (self.moves_onehot(move_tokens) / 4).sum(-2)
 
-        onehot = torch.cat(
-            (
-                species_onehot,
-                item_onehot,
-                ability_onehot,
-                last_move_onehot,
-                hp_onehot,
-                # active_onehot,
-                # fainted_onehot,
-                status_onehot,
-                # side_onehot,
-                # public_onehot,
-            ),
-            dim=-1,
-        )
-        return self.history_user_target_lin(onehot.flatten(-2))
+    #     onehot = torch.cat(
+    #         (
+    #             species_onehot,
+    #             item_onehot,
+    #             ability_onehot,
+    #             last_move_onehot,
+    #             hp_onehot,
+    #             # active_onehot,
+    #             # fainted_onehot,
+    #             status_onehot,
+    #             # side_onehot,
+    #             # public_onehot,
+    #         ),
+    #         dim=-1,
+    #     )
+    #     return self.history_user_target_lin(onehot.flatten(-2))
 
-    def forward_self_attn(
-        self, entities: torch.Tensor, mask: torch.Tensor
-    ) -> torch.Tensor:
-        entities = self.pre_attn_entity_ln1(entities)
-        self_attn = self.entity_self_attn(
-            entities, entities, entities, mask[..., None, None, :]
-        )
-        return self.entity_mlp(self_attn)
 
-    def forward_history_attn(
-        self, entities: torch.Tensor, history: torch.Tensor, mask: torch.Tensor
-    ) -> torch.Tensor:
-        entities = self.pre_attn_entity_ln2(entities)
-        history = self.pre_attn_history_ln(history)
-        self_attn = self.entity_history_attn(entities, history, history, mask)
-        return self.history_mlp(self_attn)
 
-    def forward_history_stats(self, stats: torch.Tensor) -> torch.Tensor:
+        # def forward_history_stats(self, stats: torch.Tensor) -> torch.Tensor:
         statsp3 = stats + 3
 
         is_critical_token = stats[..., 0].clamp(min=0)
@@ -321,10 +285,13 @@ class Encoder(nn.Module):
         missed_token = stats[..., 2].clamp(min=0)
         target_fainted_token = stats[..., 3].clamp(min=0)
         damage_value_scalar = (stats[..., 4].unsqueeze(-1) / 2047) - 1
-        damage_value_token = (stats[..., 4].clamp(min=0) / 63).floor().to(torch.long)
+        damage_value_token = (
+            (stats[..., 4].clamp(min=0) * 63 / 4095).floor().to(torch.long)
+        )
         move_counter = stats[..., 5].clamp(min=0, max=3)
         switch_counter = stats[..., 6].clamp(min=0, max=3)
         move_token = statsp3[..., 7]
+        order = stats[..., 8].max(-1, keepdim=True).values - stats[..., 8]
 
         is_critical_onehot = self.is_critical_onehot(is_critical_token)
         effectivesness_onehot = self.effectiveness_onehot(effectiveness_token)
@@ -334,6 +301,9 @@ class Encoder(nn.Module):
         move_counter_onehot = self.action_counter_onehot(move_counter)
         switch_counter_onehot = self.action_counter_onehot(switch_counter)
         move_token_onehot = self.moves_onehot(move_token)
+        order_onehot = self.order_onehot(
+            order.clamp(min=0, max=self.order_onehot.weight.shape[-1] - 1)
+        )
 
         onehot = torch.cat(
             (
@@ -346,6 +316,7 @@ class Encoder(nn.Module):
                 move_counter_onehot,
                 switch_counter_onehot,
                 move_token_onehot,
+                order_onehot,
             ),
             dim=-1,
         )
@@ -423,15 +394,17 @@ class Encoder(nn.Module):
 
     def forward_history(
         self,
-        history_entity_embeddings: torch.Tensor,
+        history_prev_embeddings: torch.Tensor,
+        history_diff_embeddings: torch.Tensor,
         history_context_embedding: torch.Tensor,
-        history_stats_embedding: torch.Tensor,
+        # history_stats_embedding: torch.Tensor,
     ) -> torch.Tensor:
         history_embeddings = self.history_merge(
             {
-                "user_target": history_entity_embeddings,
+                "prev": history_prev_embeddings,
+                "diff": history_diff_embeddings,
                 "context": history_context_embedding,
-                "stats": history_stats_embedding,
+                # "stats": history_stats_embedding,
             },
         )
 
@@ -444,15 +417,9 @@ class Encoder(nn.Module):
         )
         return self.history_mlp(history_embeddings)
 
-    def get_history_mask(
-        self, history_stats: torch.Tensor, entity_mask: torch.Tensor
-    ) -> torch.Tensor:
-        history_mask = history_stats[:, :, -1, ..., -1] != -1
-        history_mask = history_mask.view(*history_mask.shape, 1, 1)
-        history_mask = torch.cat(
-            (torch.ones_like(history_mask[:, :, :4]), history_mask), dim=2
-        ).squeeze(-1).permute((0, 1, 3, 2)) * entity_mask.unsqueeze(-1)
-        return history_mask.unsqueeze(2)
+    def get_history_mask(self, history_diff: torch.Tensor) -> torch.Tensor:
+        history_mask = history_diff.sum(-1) != 0
+        return torch.cat((torch.ones_like(history_mask[..., :4]), history_mask), dim=-1)
 
     def forward(
         self,
@@ -470,40 +437,32 @@ class Encoder(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # mask = teams[..., -1, :, :, 0] != PADDING_TOKEN
 
-        entity_embeddings = self.forward_entities(teams[:, :, -1])
-        entity_mask = torch.ones_like(entity_embeddings[..., 0]).bool()
+        entity_embeddings, raw_embeddings = self.forward_entities(teams)
+        entity_mask = torch.ones_like(entity_embeddings[:, :, -1, ..., 0]).bool()
 
         active_token = teams[..., -1, :, :, 4]
-        entity_embeddings = self.forward_self_attn(entity_embeddings, entity_mask)
 
-        history_context_encoding = self.encode_context(
-            history_side_conditions[:, :, -1],
-            history_volatile_status[:, :, -1],
-            history_boosts[:, :, -1],
-            history_field[:, :, -1],
+        context_encodings = self.encode_context(
+            side_conditions, volatile_status, boosts, field
         )
-        history_context_embedding = self.history_context_lin(history_context_encoding)
-        history_entity_embeddings = self.forward_history_entities(
-            history_entities[:, :, -1]
-        )
-        history_stats_embedding = self.forward_history_stats(history_stats[:, :, -1])
+        context_embeddings = self.context_lin(context_encodings)
+        (
+            history_prev_embeddings,
+            history_diff_embeddings,
+        ) = self.forward_history_entities(history_entities)
+        # history_stats_embedding = self.forward_history_stats(history_stats[:, :, -1])
 
         history_embeddings = self.forward_history(
-            history_entity_embeddings,
-            history_context_embedding,
-            history_stats_embedding,
+            history_prev_embeddings,
+            history_diff_embeddings,
+            context_embeddings[:, :, :-1],
+            # history_stats_embedding,
         )
 
-        history_mask = self.get_history_mask(history_stats, entity_mask)
+        history_mask = self.get_history_mask(history_diff_embeddings)
 
-        history_embeddings = self.forward_history_attn(
-            entity_embeddings,
-            history_embeddings,
-            history_mask,
-        )
-
-        entity_embeddings = self.entity_merge(
-            {"entity": entity_embeddings, "history": history_embeddings}
+        entity_embeddings = self.transformer(
+            entity_embeddings[:, :, -1], history_embeddings, entity_mask, history_mask
         )
 
         active_weight = active_token[..., 0, :].unsqueeze(-2).float()
@@ -512,13 +471,14 @@ class Encoder(nn.Module):
         entities_embedding = entity_embeddings[..., :4, :].flatten(2)
         entity_embeddings = entity_embeddings[..., 4:10, :]
 
-        context_encoding = self.encode_context(
-            side_conditions[:, :, -1],
-            volatile_status[:, :, -1],
-            boosts[:, :, -1],
-            field[:, :, -1],
-        )
-        context_embedding = self.context_lin(context_encoding)
+        # context_encoding = self.encode_context(
+        #     side_conditions[:, :, -1],
+        #     volatile_status[:, :, -1],
+        #     boosts[:, :, -1],
+        #     field[:, :, -1],
+        # )
+        # context_embedding = self.context_lin(context_encoding)
+        context_embedding = context_embeddings[:, :, -1]
 
         return (
             active_weight,
@@ -749,7 +709,6 @@ class Model(nn.Module):
     def forward(
         self,
         turn: torch.Tensor,
-        active_moveset: torch.Tensor,
         teams: torch.Tensor,
         side_conditions: torch.Tensor,
         volatile_status: torch.Tensor,

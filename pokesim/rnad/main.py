@@ -1,6 +1,4 @@
-from multiprocessing.context import ForkContext
 import os
-
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
@@ -12,13 +10,13 @@ import threading
 import traceback
 
 import torch.multiprocessing as mp
+from multiprocessing.context import ForkContext
 
 from tqdm import tqdm
 from typing import Any, Dict, List
 
 from pokesim.data import EVAL_MAPPING, NUM_WORKERS
 from pokesim.structs import Batch, Trajectory
-from pokesim.utils import get_most_recent_file
 from pokesim.rnad.learner import Learner
 from pokesim.rnad.actor import run_environment
 
@@ -110,7 +108,7 @@ def learn_loop(
         progress.update(1)
 
 
-def main(ctx: ForkContext, debug: bool = False):
+def main(ctx: ForkContext = ForkContext(), debug: bool = False):
     # fpath = get_most_recent_file("ckpts")
     # print(fpath)
     # init = torch.load(fpath, map_location="cpu")
