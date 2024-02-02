@@ -1,6 +1,5 @@
 build:
 	tsc
-	sh scripts/generate.sh
 
 start-online: 
 	${MAKE} build
