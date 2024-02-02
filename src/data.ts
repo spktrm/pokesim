@@ -11,7 +11,7 @@ const formatDex = generations.dex.mod(formatId.slice(0, 4) as dex.GenID);
 const maxPP = Object.fromEntries(
     (formatDex.moves as any)
         .all()
-        .map((move: { id: any; pp: number }) => [move.id, (move.pp * 8) / 5])
+        .map((move: { id: any; pp: number }) => [move.id, (move.pp * 8) / 5]),
 );
 
 const typeMapping = Object.fromEntries(
@@ -24,7 +24,7 @@ const typeMapping = Object.fromEntries(
                 index,
                 damageTaken,
             },
-        ])
+        ]),
 );
 
 const data = fs.readFileSync("./src/data.json");
@@ -41,12 +41,12 @@ const {
 } = JSON.parse(data.toString());
 
 const statusMapping: { [k: string]: number } = {
-    slp: 0,
-    psn: 1,
-    brn: 2,
-    frz: 3,
-    par: 4,
-    tox: 5,
+    slp: 1,
+    psn: 2,
+    brn: 3,
+    frz: 4,
+    par: 5,
+    tox: 6,
 };
 
 const boostsMapping = {

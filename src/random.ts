@@ -1,3 +1,4 @@
+import { LegalMask } from "./generated/state/v1/state_pb";
 import { actionCharToString } from "./helpers";
 
 export function weightedRandomSample(
@@ -52,12 +53,20 @@ export function arange(start: number, stop: number, step?: number): number[] {
 
 export const numArange = arange(0, 10);
 
-export function getRandomAction(legalMask: Int8Array): string {
-    const [randIndex] = weightedRandomSample(
-        numArange,
-        new Array(...legalMask),
-        1,
-    );
+export function getRandomAction(legalMask: LegalMask): string {
+    const legalMaskArr = [
+        legalMask.getMove1() ? 1 : 0,
+        legalMask.getMove2() ? 1 : 0,
+        legalMask.getMove3() ? 1 : 0,
+        legalMask.getMove4() ? 1 : 0,
+        legalMask.getSwitch1() ? 1 : 0,
+        legalMask.getSwitch2() ? 1 : 0,
+        legalMask.getSwitch3() ? 1 : 0,
+        legalMask.getSwitch4() ? 1 : 0,
+        legalMask.getSwitch5() ? 1 : 0,
+        legalMask.getSwitch6() ? 1 : 0,
+    ];
+    const [randIndex] = weightedRandomSample(numArange, legalMaskArr, 1);
     return actionCharToString(`${randIndex}`);
 }
 

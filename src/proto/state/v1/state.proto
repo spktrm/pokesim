@@ -23,12 +23,11 @@ message LegalMask {
 
 
 message State {
-    int32 size = 1;
-    Game game = 2;
-    Team private_team = 3;
-    Team public_team1 = 4;
-    Team public_team2 = 5;
-    Context context = 6;
-    History history = 7;
-    LegalMask legal_mask = 8;
+    Game game = 1;
+    Team private_team = 2;
+    Team public_team1 = 3;
+    Team public_team2 = 4;
+    Context context = 5;
+    History history = 6;
+    LegalMask legal_mask = 7;
 }

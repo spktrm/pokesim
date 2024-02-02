@@ -10,15 +10,17 @@ PROTOC_GEN_TS_PATH="${ROOT_DIR}/node_modules/.bin/protoc-gen-ts"
 SRC_DIR="${ROOT_DIR}/src/proto"
 
 # Directory to write generated code (.d.ts files)
-PY_OUT_DIR="${ROOT_DIR}/pokesim/generated"
+PY_OUT_DIR="${ROOT_DIR}"
 JS_OUT_DIR="${ROOT_DIR}/src/generated"
 
 # Clean all existing generated files
-rm -r "${PY_OUT_DIR}"
-mkdir "${PY_OUT_DIR}"
+# rm -r "${PY_OUT_DIR}"
+# mkdir "${PY_OUT_DIR}"
 
 rm -r "${JS_OUT_DIR}"
 mkdir "${JS_OUT_DIR}"
+
+python src/proto/state/v1/write_enums.py
 
 # Generate all messages
 protoc \

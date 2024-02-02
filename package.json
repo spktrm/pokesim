@@ -18,6 +18,7 @@
         "@types/ws": "^8.5.8"
     },
     "scripts": {
-        "server": "node ./dist/server/online.js"
+        "server": "node ./dist/server/online.js",
+        "build": "tsc && cp -a src/generated dist/generated"
     }
 }

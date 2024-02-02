@@ -128,12 +128,14 @@ type GenData = {
 };
 
 function mapId<T extends { id: string; [key: string]: any }>(
-    arr: T[]
+    arr: T[],
 ): string[] {
     const hashmap: Set<string> = new Set();
     arr.map((item) => hashmap.add(item.id));
     return Array.from(hashmap);
 }
+
+const extraTokens = ["UNK_", "PAD_"];
 
 function formatData(data: GenData) {
     const moveIds = [
@@ -154,10 +156,14 @@ function formatData(data: GenData) {
         "return",
     ];
     return {
-        species: enumerate(mapId(data.species)),
-        moves: enumerate(moveIds),
-        abilities: enumerate(mapId(data.abilities)),
-        items: enumerate(mapId(data.items)),
+        species: enumerate([
+            "switch_in",
+            ...extraTokens,
+            ...mapId(data.species),
+        ]),
+        moves: enumerate(["switch_in", ...extraTokens, ...moveIds]),
+        abilities: enumerate([...extraTokens, ...mapId(data.abilities)]),
+        items: enumerate([...extraTokens, ...mapId(data.items)]),
     };
 }
 

@@ -1,5 +1,6 @@
 import asyncio
 import socket
+import struct
 import numpy as np
 
 from typing import Callable, Sequence, Tuple, Dict
@@ -16,8 +17,11 @@ def read(sock: socket.socket, state_size: int = STATE_SIZE) -> bytes:
     return data
 
 
-async def read_async(sock: asyncio.StreamReader, state_size: int = STATE_SIZE) -> bytes:
+async def read_async(sock: asyncio.StreamReader) -> bytes:
     data = b""
+    state_size_bytes = await sock.read(4)
+    state_size = struct.unpack(">I", state_size_bytes)
+
     while len(data) < state_size:
         remaining = state_size - len(data)
         data += await sock.read(remaining)

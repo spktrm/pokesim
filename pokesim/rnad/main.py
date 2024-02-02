@@ -194,4 +194,4 @@ def main(ctx: ForkContext = ForkContext(), debug: bool = False):
 
 if __name__ == "__main__":
     ctx = mp.get_context("fork")
-    main(ctx, False)
+    main(ctx, True)

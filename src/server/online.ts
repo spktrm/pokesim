@@ -65,30 +65,31 @@ function createWorker(
     workerIndex: number,
     clientSocket: net.Socket | typeof emptyWriteObject = emptyWriteObject,
 ) {
-    const worker = new Worker(path.resolve(__dirname, "../worker/online.js"), {
+    const workerPath = path.resolve(__dirname, "../worker/online.js");
+    const worker = new Worker(workerPath, {
         workerData: { workerIndex, config: { ...config }, debug },
     });
-    worker.on("message", (buffer: Buffer) => {
-        const workerIndex = buffer[0];
-        // const playerIndex = buffer[1];
-        const done = buffer[2];
+    worker.on(
+        "message",
+        (args: { workerIndex: number; done: number; buffer: Buffer }) => {
+            const { workerIndex, done, buffer } = args;
+            throughputs[workerIndex] += 1;
+            donesCache[workerIndex] += done;
 
-        throughputs[workerIndex] += 1;
-        donesCache[workerIndex] += done;
+            switch (donesCache[workerIndex]) {
+                case 2:
+                    const worker = workers[workerIndex];
+                    worker.postMessage("s");
+                    donesCache[workerIndex] = 0;
+                    break;
+            }
 
-        switch (donesCache[workerIndex]) {
-            case 2:
-                const worker = workers[workerIndex];
-                worker.postMessage("s");
-                donesCache[workerIndex] = 0;
-                break;
-        }
-
-        const write = clientSocket.write(buffer);
-        if (!write) {
-            console.error(`Worker ${workerIndex} queued in memory`);
-        }
-    });
+            const write = clientSocket.write(buffer);
+            if (!write) {
+                console.error(`Worker ${workerIndex} queued in memory`);
+            }
+        },
+    );
     worker.on("error", (error: Error) => {
         console.error(error);
     });
@@ -105,47 +106,47 @@ const minEvalIndex = Math.min(
     config.heuristic_worker_index,
 );
 
-if (!debug) {
-    setInterval(() => {
-        let log = "";
+// if (!debug) {
+//     setInterval(() => {
+//         let log = "";
 
-        let totalThroughputs = 0;
-        let totalSteps = 0;
+//         let totalThroughputs = 0;
+//         let totalSteps = 0;
 
-        for (let index = 0, len = throughputs.length; index < len; index++) {
-            const value = throughputs[index];
-            const throughput = value - prevThroughputs[index];
-            prevThroughputs[index] = value;
+//         for (let index = 0, len = throughputs.length; index < len; index++) {
+//             const value = throughputs[index];
+//             const throughput = value - prevThroughputs[index];
+//             prevThroughputs[index] = value;
 
-            log +=
-                "Worker " +
-                index.toString().padEnd(maxWorkerIndexLength) +
-                " Steps: " +
-                value.toString().padEnd(maxStepsLength) +
-                " Throughput/sec: " +
-                (throughput * serverUpdateFreq)
-                    .toFixed(0)
-                    .padEnd(maxThroughputLength) +
-                "\n";
+//             log +=
+//                 "Worker " +
+//                 index.toString().padEnd(maxWorkerIndexLength) +
+//                 " Steps: " +
+//                 value.toString().padEnd(maxStepsLength) +
+//                 " Throughput/sec: " +
+//                 (throughput * serverUpdateFreq)
+//                     .toFixed(0)
+//                     .padEnd(maxThroughputLength) +
+//                 "\n";
 
-            if (index < minEvalIndex) {
-                totalThroughputs += throughput;
-                totalSteps += value;
-            }
-        }
+//             if (index < minEvalIndex) {
+//                 totalThroughputs += throughput;
+//                 totalSteps += value;
+//             }
+//         }
 
-        log +=
-            "\nTotal - Steps: " +
-            totalSteps
-                .toString()
-                .padEnd(maxStepsLength + maxWorkerIndexLength + 8) +
-            " Throughput/Sec: " +
-            (totalThroughputs * serverUpdateFreq).toFixed(2);
+//         log +=
+//             "\nTotal - Steps: " +
+//             totalSteps
+//                 .toString()
+//                 .padEnd(maxStepsLength + maxWorkerIndexLength + 8) +
+//             " Throughput/Sec: " +
+//             (totalThroughputs * serverUpdateFreq).toFixed(2);
 
-        console.clear();
-        console.log(log);
-    }, updateFreq);
-}
+//         console.clear();
+//         console.log(log);
+//     }, updateFreq);
+// }
 
 let numConnections = 0;
 const socketStates = new Map<net.Socket, InternalState>();

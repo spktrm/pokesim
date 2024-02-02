@@ -5,826 +5,902 @@ import * as jspb from "google-protobuf";
 import * as state_v1_enum_pb from "../../state/v1/enum_pb";
 
 export class SideConditions extends jspb.Message {
-  getAuroraveil(): boolean;
-  setAuroraveil(value: boolean): void;
+    getAuroraveil(): number;
+    setAuroraveil(value: number): void;
 
-  getCraftyshield(): boolean;
-  setCraftyshield(value: boolean): void;
+    getCraftyshield(): number;
+    setCraftyshield(value: number): void;
 
-  getLightscreen(): boolean;
-  setLightscreen(value: boolean): void;
+    getLightscreen(): number;
+    setLightscreen(value: number): void;
 
-  getLuckychant(): boolean;
-  setLuckychant(value: boolean): void;
+    getLuckychant(): number;
+    setLuckychant(value: number): void;
 
-  getMatblock(): boolean;
-  setMatblock(value: boolean): void;
+    getMatblock(): number;
+    setMatblock(value: number): void;
 
-  getMist(): boolean;
-  setMist(value: boolean): void;
+    getMist(): number;
+    setMist(value: number): void;
 
-  getQuickguard(): boolean;
-  setQuickguard(value: boolean): void;
+    getQuickguard(): number;
+    setQuickguard(value: number): void;
 
-  getReflect(): boolean;
-  setReflect(value: boolean): void;
+    getReflect(): number;
+    setReflect(value: number): void;
 
-  getSafeguard(): boolean;
-  setSafeguard(value: boolean): void;
+    getSafeguard(): number;
+    setSafeguard(value: number): void;
 
-  getSpikes(): boolean;
-  setSpikes(value: boolean): void;
+    getSpikes(): number;
+    setSpikes(value: number): void;
 
-  getStealthrock(): boolean;
-  setStealthrock(value: boolean): void;
+    getStealthrock(): number;
+    setStealthrock(value: number): void;
 
-  getStickyweb(): boolean;
-  setStickyweb(value: boolean): void;
+    getStickyweb(): number;
+    setStickyweb(value: number): void;
 
-  getTailwind(): boolean;
-  setTailwind(value: boolean): void;
+    getTailwind(): number;
+    setTailwind(value: number): void;
 
-  getToxicspikes(): boolean;
-  setToxicspikes(value: boolean): void;
+    getToxicspikes(): number;
+    setToxicspikes(value: number): void;
 
-  getWideguard(): boolean;
-  setWideguard(value: boolean): void;
+    getWideguard(): number;
+    setWideguard(value: number): void;
 
-  serializeBinary(): Uint8Array;
-  toObject(includeInstance?: boolean): SideConditions.AsObject;
-  static toObject(includeInstance: boolean, msg: SideConditions): SideConditions.AsObject;
-  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
-  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
-  static serializeBinaryToWriter(message: SideConditions, writer: jspb.BinaryWriter): void;
-  static deserializeBinary(bytes: Uint8Array): SideConditions;
-  static deserializeBinaryFromReader(message: SideConditions, reader: jspb.BinaryReader): SideConditions;
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): SideConditions.AsObject;
+    static toObject(
+        includeInstance: boolean,
+        msg: SideConditions,
+    ): SideConditions.AsObject;
+    static extensions: { [key: number]: jspb.ExtensionFieldInfo<jspb.Message> };
+    static extensionsBinary: {
+        [key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>;
+    };
+    static serializeBinaryToWriter(
+        message: SideConditions,
+        writer: jspb.BinaryWriter,
+    ): void;
+    static deserializeBinary(bytes: Uint8Array): SideConditions;
+    static deserializeBinaryFromReader(
+        message: SideConditions,
+        reader: jspb.BinaryReader,
+    ): SideConditions;
 }
 
 export namespace SideConditions {
-  export type AsObject = {
-    auroraveil: boolean,
-    craftyshield: boolean,
-    lightscreen: boolean,
-    luckychant: boolean,
-    matblock: boolean,
-    mist: boolean,
-    quickguard: boolean,
-    reflect: boolean,
-    safeguard: boolean,
-    spikes: boolean,
-    stealthrock: boolean,
-    stickyweb: boolean,
-    tailwind: boolean,
-    toxicspikes: boolean,
-    wideguard: boolean,
-  }
+    export type AsObject = {
+        auroraveil: number;
+        craftyshield: number;
+        lightscreen: number;
+        luckychant: number;
+        matblock: number;
+        mist: number;
+        quickguard: number;
+        reflect: number;
+        safeguard: number;
+        spikes: number;
+        stealthrock: number;
+        stickyweb: number;
+        tailwind: number;
+        toxicspikes: number;
+        wideguard: number;
+    };
 }
 
 export class VolatileStatuses extends jspb.Message {
-  getAttract(): boolean;
-  setAttract(value: boolean): void;
+    getAttract(): number;
+    setAttract(value: number): void;
 
-  getBanefulbunker(): boolean;
-  setBanefulbunker(value: boolean): void;
+    getBanefulbunker(): number;
+    setBanefulbunker(value: number): void;
 
-  getBeakblast(): boolean;
-  setBeakblast(value: boolean): void;
+    getBeakblast(): number;
+    setBeakblast(value: number): void;
 
-  getBide(): boolean;
-  setBide(value: boolean): void;
+    getBide(): number;
+    setBide(value: number): void;
 
-  getBounce(): boolean;
-  setBounce(value: boolean): void;
+    getBounce(): number;
+    setBounce(value: number): void;
 
-  getBurningbulwark(): boolean;
-  setBurningbulwark(value: boolean): void;
+    getBurningbulwark(): number;
+    setBurningbulwark(value: number): void;
 
-  getCharge(): boolean;
-  setCharge(value: boolean): void;
+    getCharge(): number;
+    setCharge(value: number): void;
 
-  getChoicelock(): boolean;
-  setChoicelock(value: boolean): void;
+    getChoicelock(): number;
+    setChoicelock(value: number): void;
 
-  getCommanded(): boolean;
-  setCommanded(value: boolean): void;
+    getCommanded(): number;
+    setCommanded(value: number): void;
 
-  getCommanding(): boolean;
-  setCommanding(value: boolean): void;
+    getCommanding(): number;
+    setCommanding(value: number): void;
 
-  getConfusion(): boolean;
-  setConfusion(value: boolean): void;
+    getConfusion(): number;
+    setConfusion(value: number): void;
 
-  getCounter(): boolean;
-  setCounter(value: boolean): void;
+    getCounter(): number;
+    setCounter(value: number): void;
 
-  getCudchew(): boolean;
-  setCudchew(value: boolean): void;
+    getCudchew(): number;
+    setCudchew(value: number): void;
 
-  getCurse(): boolean;
-  setCurse(value: boolean): void;
+    getCurse(): number;
+    setCurse(value: number): void;
 
-  getDefensecurl(): boolean;
-  setDefensecurl(value: boolean): void;
+    getDefensecurl(): number;
+    setDefensecurl(value: number): void;
 
-  getDestinybond(): boolean;
-  setDestinybond(value: boolean): void;
+    getDestinybond(): number;
+    setDestinybond(value: number): void;
 
-  getDetect(): boolean;
-  setDetect(value: boolean): void;
+    getDetect(): number;
+    setDetect(value: number): void;
 
-  getDig(): boolean;
-  setDig(value: boolean): void;
+    getDig(): number;
+    setDig(value: number): void;
 
-  getDisable(): boolean;
-  setDisable(value: boolean): void;
+    getDisable(): number;
+    setDisable(value: number): void;
 
-  getDive(): boolean;
-  setDive(value: boolean): void;
+    getDive(): number;
+    setDive(value: number): void;
 
-  getDragoncheer(): boolean;
-  setDragoncheer(value: boolean): void;
+    getDragoncheer(): number;
+    setDragoncheer(value: number): void;
 
-  getDynamax(): boolean;
-  setDynamax(value: boolean): void;
+    getDynamax(): number;
+    setDynamax(value: number): void;
 
-  getElectrify(): boolean;
-  setElectrify(value: boolean): void;
+    getElectrify(): number;
+    setElectrify(value: number): void;
 
-  getEmbargo(): boolean;
-  setEmbargo(value: boolean): void;
+    getEmbargo(): number;
+    setEmbargo(value: number): void;
 
-  getEncore(): boolean;
-  setEncore(value: boolean): void;
+    getEncore(): number;
+    setEncore(value: number): void;
 
-  getEndure(): boolean;
-  setEndure(value: boolean): void;
+    getEndure(): number;
+    setEndure(value: number): void;
 
-  getFlashfire(): boolean;
-  setFlashfire(value: boolean): void;
+    getFlashfire(): number;
+    setFlashfire(value: number): void;
 
-  getFlinch(): boolean;
-  setFlinch(value: boolean): void;
+    getFlinch(): number;
+    setFlinch(value: number): void;
 
-  getFling(): boolean;
-  setFling(value: boolean): void;
+    getFling(): number;
+    setFling(value: number): void;
 
-  getFly(): boolean;
-  setFly(value: boolean): void;
+    getFly(): number;
+    setFly(value: number): void;
 
-  getFocusenergy(): boolean;
-  setFocusenergy(value: boolean): void;
+    getFocusenergy(): number;
+    setFocusenergy(value: number): void;
 
-  getFocuspunch(): boolean;
-  setFocuspunch(value: boolean): void;
+    getFocuspunch(): number;
+    setFocuspunch(value: number): void;
 
-  getFollowme(): boolean;
-  setFollowme(value: boolean): void;
+    getFollowme(): number;
+    setFollowme(value: number): void;
 
-  getForesight(): boolean;
-  setForesight(value: boolean): void;
+    getForesight(): number;
+    setForesight(value: number): void;
 
-  getFurycutter(): boolean;
-  setFurycutter(value: boolean): void;
+    getFurycutter(): number;
+    setFurycutter(value: number): void;
 
-  getGastroacid(): boolean;
-  setGastroacid(value: boolean): void;
+    getGastroacid(): number;
+    setGastroacid(value: number): void;
 
-  getGem(): boolean;
-  setGem(value: boolean): void;
+    getGem(): number;
+    setGem(value: number): void;
 
-  getGlaiverush(): boolean;
-  setGlaiverush(value: boolean): void;
+    getGlaiverush(): number;
+    setGlaiverush(value: number): void;
 
-  getGrudge(): boolean;
-  setGrudge(value: boolean): void;
+    getGrudge(): number;
+    setGrudge(value: number): void;
 
-  getHealblock(): boolean;
-  setHealblock(value: boolean): void;
+    getHealblock(): number;
+    setHealblock(value: number): void;
 
-  getHelpinghand(): boolean;
-  setHelpinghand(value: boolean): void;
+    getHelpinghand(): number;
+    setHelpinghand(value: number): void;
 
-  getIceball(): boolean;
-  setIceball(value: boolean): void;
+    getIceball(): number;
+    setIceball(value: number): void;
 
-  getImprison(): boolean;
-  setImprison(value: boolean): void;
+    getImprison(): number;
+    setImprison(value: number): void;
 
-  getIngrain(): boolean;
-  setIngrain(value: boolean): void;
+    getIngrain(): number;
+    setIngrain(value: number): void;
 
-  getKingsshield(): boolean;
-  setKingsshield(value: boolean): void;
+    getKingsshield(): number;
+    setKingsshield(value: number): void;
 
-  getLaserfocus(): boolean;
-  setLaserfocus(value: boolean): void;
+    getLaserfocus(): number;
+    setLaserfocus(value: number): void;
 
-  getLeechseed(): boolean;
-  setLeechseed(value: boolean): void;
+    getLeechseed(): number;
+    setLeechseed(value: number): void;
 
-  getLeppaberry(): boolean;
-  setLeppaberry(value: boolean): void;
+    getLeppaberry(): number;
+    setLeppaberry(value: number): void;
 
-  getLockedmove(): boolean;
-  setLockedmove(value: boolean): void;
+    getLockedmove(): number;
+    setLockedmove(value: number): void;
 
-  getLockon(): boolean;
-  setLockon(value: boolean): void;
+    getLockon(): number;
+    setLockon(value: number): void;
 
-  getMagiccoat(): boolean;
-  setMagiccoat(value: boolean): void;
+    getMagiccoat(): number;
+    setMagiccoat(value: number): void;
 
-  getMagnetrise(): boolean;
-  setMagnetrise(value: boolean): void;
+    getMagnetrise(): number;
+    setMagnetrise(value: number): void;
 
-  getMaxguard(): boolean;
-  setMaxguard(value: boolean): void;
+    getMaxguard(): number;
+    setMaxguard(value: number): void;
 
-  getMetronome(): boolean;
-  setMetronome(value: boolean): void;
+    getMetronome(): number;
+    setMetronome(value: number): void;
 
-  getMicleberry(): boolean;
-  setMicleberry(value: boolean): void;
+    getMicleberry(): number;
+    setMicleberry(value: number): void;
 
-  getMinimize(): boolean;
-  setMinimize(value: boolean): void;
+    getMinimize(): number;
+    setMinimize(value: number): void;
 
-  getMiracleeye(): boolean;
-  setMiracleeye(value: boolean): void;
+    getMiracleeye(): number;
+    setMiracleeye(value: number): void;
 
-  getMirrorcoat(): boolean;
-  setMirrorcoat(value: boolean): void;
+    getMirrorcoat(): number;
+    setMirrorcoat(value: number): void;
 
-  getMustrecharge(): boolean;
-  setMustrecharge(value: boolean): void;
+    getMustrecharge(): number;
+    setMustrecharge(value: number): void;
 
-  getNightmare(): boolean;
-  setNightmare(value: boolean): void;
+    getNightmare(): number;
+    setNightmare(value: number): void;
 
-  getNoretreat(): boolean;
-  setNoretreat(value: boolean): void;
+    getNoretreat(): number;
+    setNoretreat(value: number): void;
 
-  getObstruct(): boolean;
-  setObstruct(value: boolean): void;
+    getObstruct(): number;
+    setObstruct(value: number): void;
 
-  getOctolock(): boolean;
-  setOctolock(value: boolean): void;
+    getOctolock(): number;
+    setOctolock(value: number): void;
 
-  getPartiallytrapped(): boolean;
-  setPartiallytrapped(value: boolean): void;
+    getPartiallytrapped(): number;
+    setPartiallytrapped(value: number): void;
 
-  getPartialtrappinglock(): boolean;
-  setPartialtrappinglock(value: boolean): void;
+    getPartialtrappinglock(): number;
+    setPartialtrappinglock(value: number): void;
 
-  getPerishsong(): boolean;
-  setPerishsong(value: boolean): void;
+    getPerishsong(): number;
+    setPerishsong(value: number): void;
 
-  getPhantomforce(): boolean;
-  setPhantomforce(value: boolean): void;
+    getPhantomforce(): number;
+    setPhantomforce(value: number): void;
 
-  getPowder(): boolean;
-  setPowder(value: boolean): void;
+    getPowder(): number;
+    setPowder(value: number): void;
 
-  getPowershift(): boolean;
-  setPowershift(value: boolean): void;
+    getPowershift(): number;
+    setPowershift(value: number): void;
 
-  getPowertrick(): boolean;
-  setPowertrick(value: boolean): void;
+    getPowertrick(): number;
+    setPowertrick(value: number): void;
 
-  getProtect(): boolean;
-  setProtect(value: boolean): void;
+    getProtect(): number;
+    setProtect(value: number): void;
 
-  getProtosynthesis(): boolean;
-  setProtosynthesis(value: boolean): void;
+    getProtosynthesis(): number;
+    setProtosynthesis(value: number): void;
 
-  getQuarkdrive(): boolean;
-  setQuarkdrive(value: boolean): void;
+    getQuarkdrive(): number;
+    setQuarkdrive(value: number): void;
 
-  getRage(): boolean;
-  setRage(value: boolean): void;
+    getRage(): number;
+    setRage(value: number): void;
 
-  getRagepowder(): boolean;
-  setRagepowder(value: boolean): void;
+    getRagepowder(): number;
+    setRagepowder(value: number): void;
 
-  getRollout(): boolean;
-  setRollout(value: boolean): void;
+    getRollout(): number;
+    setRollout(value: number): void;
 
-  getRolloutstorage(): boolean;
-  setRolloutstorage(value: boolean): void;
+    getRolloutstorage(): number;
+    setRolloutstorage(value: number): void;
 
-  getRoost(): boolean;
-  setRoost(value: boolean): void;
+    getRoost(): number;
+    setRoost(value: number): void;
 
-  getSaltcure(): boolean;
-  setSaltcure(value: boolean): void;
+    getSaltcure(): number;
+    setSaltcure(value: number): void;
 
-  getShadowforce(): boolean;
-  setShadowforce(value: boolean): void;
+    getShadowforce(): number;
+    setShadowforce(value: number): void;
 
-  getShelltrap(): boolean;
-  setShelltrap(value: boolean): void;
+    getShelltrap(): number;
+    setShelltrap(value: number): void;
 
-  getSilktrap(): boolean;
-  setSilktrap(value: boolean): void;
+    getSilktrap(): number;
+    setSilktrap(value: number): void;
 
-  getSkydrop(): boolean;
-  setSkydrop(value: boolean): void;
+    getSkydrop(): number;
+    setSkydrop(value: number): void;
 
-  getSlowstart(): boolean;
-  setSlowstart(value: boolean): void;
+    getSlowstart(): number;
+    setSlowstart(value: number): void;
 
-  getSmackdown(): boolean;
-  setSmackdown(value: boolean): void;
+    getSmackdown(): number;
+    setSmackdown(value: number): void;
 
-  getSnatch(): boolean;
-  setSnatch(value: boolean): void;
+    getSnatch(): number;
+    setSnatch(value: number): void;
 
-  getSparklingaria(): boolean;
-  setSparklingaria(value: boolean): void;
+    getSparklingaria(): number;
+    setSparklingaria(value: number): void;
 
-  getSpikyshield(): boolean;
-  setSpikyshield(value: boolean): void;
+    getSpikyshield(): number;
+    setSpikyshield(value: number): void;
 
-  getSpotlight(): boolean;
-  setSpotlight(value: boolean): void;
+    getSpotlight(): number;
+    setSpotlight(value: number): void;
 
-  getStall(): boolean;
-  setStall(value: boolean): void;
+    getStall(): number;
+    setStall(value: number): void;
 
-  getStockpile(): boolean;
-  setStockpile(value: boolean): void;
+    getStockpile(): number;
+    setStockpile(value: number): void;
 
-  getSubstitute(): boolean;
-  setSubstitute(value: boolean): void;
+    getSubstitute(): number;
+    setSubstitute(value: number): void;
 
-  getSubstitutebroken(): boolean;
-  setSubstitutebroken(value: boolean): void;
+    getSubstitutebroken(): number;
+    setSubstitutebroken(value: number): void;
 
-  getSyrupbomb(): boolean;
-  setSyrupbomb(value: boolean): void;
+    getSyrupbomb(): number;
+    setSyrupbomb(value: number): void;
 
-  getTarshot(): boolean;
-  setTarshot(value: boolean): void;
+    getTarshot(): number;
+    setTarshot(value: number): void;
 
-  getTaunt(): boolean;
-  setTaunt(value: boolean): void;
+    getTaunt(): number;
+    setTaunt(value: number): void;
 
-  getTelekinesis(): boolean;
-  setTelekinesis(value: boolean): void;
+    getTelekinesis(): number;
+    setTelekinesis(value: number): void;
 
-  getThroatchop(): boolean;
-  setThroatchop(value: boolean): void;
+    getThroatchop(): number;
+    setThroatchop(value: number): void;
 
-  getTorment(): boolean;
-  setTorment(value: boolean): void;
+    getTorment(): number;
+    setTorment(value: number): void;
 
-  getTrapped(): boolean;
-  setTrapped(value: boolean): void;
+    getTrapped(): number;
+    setTrapped(value: number): void;
 
-  getTruant(): boolean;
-  setTruant(value: boolean): void;
+    getTruant(): number;
+    setTruant(value: number): void;
 
-  getTwoturnmove(): boolean;
-  setTwoturnmove(value: boolean): void;
+    getTwoturnmove(): number;
+    setTwoturnmove(value: number): void;
 
-  getUnburden(): boolean;
-  setUnburden(value: boolean): void;
+    getUnburden(): number;
+    setUnburden(value: number): void;
 
-  getUproar(): boolean;
-  setUproar(value: boolean): void;
+    getUproar(): number;
+    setUproar(value: number): void;
 
-  getYawn(): boolean;
-  setYawn(value: boolean): void;
+    getYawn(): number;
+    setYawn(value: number): void;
 
-  getZenmode(): boolean;
-  setZenmode(value: boolean): void;
+    getZenmode(): number;
+    setZenmode(value: number): void;
 
-  getAquaring(): boolean;
-  setAquaring(value: boolean): void;
+    getAquaring(): number;
+    setAquaring(value: number): void;
 
-  serializeBinary(): Uint8Array;
-  toObject(includeInstance?: boolean): VolatileStatuses.AsObject;
-  static toObject(includeInstance: boolean, msg: VolatileStatuses): VolatileStatuses.AsObject;
-  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
-  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
-  static serializeBinaryToWriter(message: VolatileStatuses, writer: jspb.BinaryWriter): void;
-  static deserializeBinary(bytes: Uint8Array): VolatileStatuses;
-  static deserializeBinaryFromReader(message: VolatileStatuses, reader: jspb.BinaryReader): VolatileStatuses;
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): VolatileStatuses.AsObject;
+    static toObject(
+        includeInstance: boolean,
+        msg: VolatileStatuses,
+    ): VolatileStatuses.AsObject;
+    static extensions: { [key: number]: jspb.ExtensionFieldInfo<jspb.Message> };
+    static extensionsBinary: {
+        [key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>;
+    };
+    static serializeBinaryToWriter(
+        message: VolatileStatuses,
+        writer: jspb.BinaryWriter,
+    ): void;
+    static deserializeBinary(bytes: Uint8Array): VolatileStatuses;
+    static deserializeBinaryFromReader(
+        message: VolatileStatuses,
+        reader: jspb.BinaryReader,
+    ): VolatileStatuses;
 }
 
 export namespace VolatileStatuses {
-  export type AsObject = {
-    attract: boolean,
-    banefulbunker: boolean,
-    beakblast: boolean,
-    bide: boolean,
-    bounce: boolean,
-    burningbulwark: boolean,
-    charge: boolean,
-    choicelock: boolean,
-    commanded: boolean,
-    commanding: boolean,
-    confusion: boolean,
-    counter: boolean,
-    cudchew: boolean,
-    curse: boolean,
-    defensecurl: boolean,
-    destinybond: boolean,
-    detect: boolean,
-    dig: boolean,
-    disable: boolean,
-    dive: boolean,
-    dragoncheer: boolean,
-    dynamax: boolean,
-    electrify: boolean,
-    embargo: boolean,
-    encore: boolean,
-    endure: boolean,
-    flashfire: boolean,
-    flinch: boolean,
-    fling: boolean,
-    fly: boolean,
-    focusenergy: boolean,
-    focuspunch: boolean,
-    followme: boolean,
-    foresight: boolean,
-    furycutter: boolean,
-    gastroacid: boolean,
-    gem: boolean,
-    glaiverush: boolean,
-    grudge: boolean,
-    healblock: boolean,
-    helpinghand: boolean,
-    iceball: boolean,
-    imprison: boolean,
-    ingrain: boolean,
-    kingsshield: boolean,
-    laserfocus: boolean,
-    leechseed: boolean,
-    leppaberry: boolean,
-    lockedmove: boolean,
-    lockon: boolean,
-    magiccoat: boolean,
-    magnetrise: boolean,
-    maxguard: boolean,
-    metronome: boolean,
-    micleberry: boolean,
-    minimize: boolean,
-    miracleeye: boolean,
-    mirrorcoat: boolean,
-    mustrecharge: boolean,
-    nightmare: boolean,
-    noretreat: boolean,
-    obstruct: boolean,
-    octolock: boolean,
-    partiallytrapped: boolean,
-    partialtrappinglock: boolean,
-    perishsong: boolean,
-    phantomforce: boolean,
-    powder: boolean,
-    powershift: boolean,
-    powertrick: boolean,
-    protect: boolean,
-    protosynthesis: boolean,
-    quarkdrive: boolean,
-    rage: boolean,
-    ragepowder: boolean,
-    rollout: boolean,
-    rolloutstorage: boolean,
-    roost: boolean,
-    saltcure: boolean,
-    shadowforce: boolean,
-    shelltrap: boolean,
-    silktrap: boolean,
-    skydrop: boolean,
-    slowstart: boolean,
-    smackdown: boolean,
-    snatch: boolean,
-    sparklingaria: boolean,
-    spikyshield: boolean,
-    spotlight: boolean,
-    stall: boolean,
-    stockpile: boolean,
-    substitute: boolean,
-    substitutebroken: boolean,
-    syrupbomb: boolean,
-    tarshot: boolean,
-    taunt: boolean,
-    telekinesis: boolean,
-    throatchop: boolean,
-    torment: boolean,
-    trapped: boolean,
-    truant: boolean,
-    twoturnmove: boolean,
-    unburden: boolean,
-    uproar: boolean,
-    yawn: boolean,
-    zenmode: boolean,
-    aquaring: boolean,
-  }
+    export type AsObject = {
+        attract: number;
+        banefulbunker: number;
+        beakblast: number;
+        bide: number;
+        bounce: number;
+        burningbulwark: number;
+        charge: number;
+        choicelock: number;
+        commanded: number;
+        commanding: number;
+        confusion: number;
+        counter: number;
+        cudchew: number;
+        curse: number;
+        defensecurl: number;
+        destinybond: number;
+        detect: number;
+        dig: number;
+        disable: number;
+        dive: number;
+        dragoncheer: number;
+        dynamax: number;
+        electrify: number;
+        embargo: number;
+        encore: number;
+        endure: number;
+        flashfire: number;
+        flinch: number;
+        fling: number;
+        fly: number;
+        focusenergy: number;
+        focuspunch: number;
+        followme: number;
+        foresight: number;
+        furycutter: number;
+        gastroacid: number;
+        gem: number;
+        glaiverush: number;
+        grudge: number;
+        healblock: number;
+        helpinghand: number;
+        iceball: number;
+        imprison: number;
+        ingrain: number;
+        kingsshield: number;
+        laserfocus: number;
+        leechseed: number;
+        leppaberry: number;
+        lockedmove: number;
+        lockon: number;
+        magiccoat: number;
+        magnetrise: number;
+        maxguard: number;
+        metronome: number;
+        micleberry: number;
+        minimize: number;
+        miracleeye: number;
+        mirrorcoat: number;
+        mustrecharge: number;
+        nightmare: number;
+        noretreat: number;
+        obstruct: number;
+        octolock: number;
+        partiallytrapped: number;
+        partialtrappinglock: number;
+        perishsong: number;
+        phantomforce: number;
+        powder: number;
+        powershift: number;
+        powertrick: number;
+        protect: number;
+        protosynthesis: number;
+        quarkdrive: number;
+        rage: number;
+        ragepowder: number;
+        rollout: number;
+        rolloutstorage: number;
+        roost: number;
+        saltcure: number;
+        shadowforce: number;
+        shelltrap: number;
+        silktrap: number;
+        skydrop: number;
+        slowstart: number;
+        smackdown: number;
+        snatch: number;
+        sparklingaria: number;
+        spikyshield: number;
+        spotlight: number;
+        stall: number;
+        stockpile: number;
+        substitute: number;
+        substitutebroken: number;
+        syrupbomb: number;
+        tarshot: number;
+        taunt: number;
+        telekinesis: number;
+        throatchop: number;
+        torment: number;
+        trapped: number;
+        truant: number;
+        twoturnmove: number;
+        unburden: number;
+        uproar: number;
+        yawn: number;
+        zenmode: number;
+        aquaring: number;
+    };
 }
 
 export class Boosts extends jspb.Message {
-  getAtk(): number;
-  setAtk(value: number): void;
+    getAtk(): number;
+    setAtk(value: number): void;
 
-  getDef(): number;
-  setDef(value: number): void;
+    getDef(): number;
+    setDef(value: number): void;
 
-  getSpa(): number;
-  setSpa(value: number): void;
+    getSpa(): number;
+    setSpa(value: number): void;
 
-  getSpd(): number;
-  setSpd(value: number): void;
+    getSpd(): number;
+    setSpd(value: number): void;
 
-  getSpe(): number;
-  setSpe(value: number): void;
+    getSpe(): number;
+    setSpe(value: number): void;
 
-  getAccuracy(): number;
-  setAccuracy(value: number): void;
+    getAccuracy(): number;
+    setAccuracy(value: number): void;
 
-  getEvasion(): number;
-  setEvasion(value: number): void;
+    getEvasion(): number;
+    setEvasion(value: number): void;
 
-  serializeBinary(): Uint8Array;
-  toObject(includeInstance?: boolean): Boosts.AsObject;
-  static toObject(includeInstance: boolean, msg: Boosts): Boosts.AsObject;
-  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
-  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
-  static serializeBinaryToWriter(message: Boosts, writer: jspb.BinaryWriter): void;
-  static deserializeBinary(bytes: Uint8Array): Boosts;
-  static deserializeBinaryFromReader(message: Boosts, reader: jspb.BinaryReader): Boosts;
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): Boosts.AsObject;
+    static toObject(includeInstance: boolean, msg: Boosts): Boosts.AsObject;
+    static extensions: { [key: number]: jspb.ExtensionFieldInfo<jspb.Message> };
+    static extensionsBinary: {
+        [key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>;
+    };
+    static serializeBinaryToWriter(
+        message: Boosts,
+        writer: jspb.BinaryWriter,
+    ): void;
+    static deserializeBinary(bytes: Uint8Array): Boosts;
+    static deserializeBinaryFromReader(
+        message: Boosts,
+        reader: jspb.BinaryReader,
+    ): Boosts;
 }
 
 export namespace Boosts {
-  export type AsObject = {
-    atk: number,
-    def: number,
-    spa: number,
-    spd: number,
-    spe: number,
-    accuracy: number,
-    evasion: number,
-  }
+    export type AsObject = {
+        atk: number;
+        def: number;
+        spa: number;
+        spd: number;
+        spe: number;
+        accuracy: number;
+        evasion: number;
+    };
 }
 
 export class Pseudoweathers extends jspb.Message {
-  getFairylock(): boolean;
-  setFairylock(value: boolean): void;
+    getFairylock(): boolean;
+    setFairylock(value: boolean): void;
 
-  getFairylockMinDur(): number;
-  setFairylockMinDur(value: number): void;
+    getGravity(): boolean;
+    setGravity(value: boolean): void;
 
-  getFairylockMaxDur(): number;
-  setFairylockMaxDur(value: number): void;
+    getIondeluge(): boolean;
+    setIondeluge(value: boolean): void;
 
-  getGravity(): boolean;
-  setGravity(value: boolean): void;
+    getMagicroom(): boolean;
+    setMagicroom(value: boolean): void;
 
-  getGravityMinDur(): number;
-  setGravityMinDur(value: number): void;
+    getMudsport(): boolean;
+    setMudsport(value: boolean): void;
 
-  getGravityMaxDur(): number;
-  setGravityMaxDur(value: number): void;
+    getTrickroom(): boolean;
+    setTrickroom(value: boolean): void;
 
-  getIondeluge(): boolean;
-  setIondeluge(value: boolean): void;
+    getWatersport(): boolean;
+    setWatersport(value: boolean): void;
 
-  getIondelugeMinDur(): number;
-  setIondelugeMinDur(value: number): void;
+    getWonderroom(): boolean;
+    setWonderroom(value: boolean): void;
 
-  getIondelugeMaxDur(): number;
-  setIondelugeMaxDur(value: number): void;
+    getFairylockMinDur(): number;
+    setFairylockMinDur(value: number): void;
 
-  getMagicroom(): boolean;
-  setMagicroom(value: boolean): void;
+    getGravityMinDur(): number;
+    setGravityMinDur(value: number): void;
 
-  getMagicroomMinDur(): number;
-  setMagicroomMinDur(value: number): void;
+    getIondelugeMinDur(): number;
+    setIondelugeMinDur(value: number): void;
 
-  getMagicroomMaxDur(): number;
-  setMagicroomMaxDur(value: number): void;
+    getMagicroomMinDur(): number;
+    setMagicroomMinDur(value: number): void;
 
-  getMudsport(): boolean;
-  setMudsport(value: boolean): void;
+    getMudsportMinDur(): number;
+    setMudsportMinDur(value: number): void;
 
-  getMudsportMinDur(): number;
-  setMudsportMinDur(value: number): void;
+    getTrickroomMinDur(): number;
+    setTrickroomMinDur(value: number): void;
 
-  getMudsportMaxDur(): number;
-  setMudsportMaxDur(value: number): void;
+    getWatersportMinDur(): number;
+    setWatersportMinDur(value: number): void;
 
-  getTrickroom(): boolean;
-  setTrickroom(value: boolean): void;
+    getWonderroomMinDur(): number;
+    setWonderroomMinDur(value: number): void;
 
-  getTrickroomMinDur(): number;
-  setTrickroomMinDur(value: number): void;
+    getFairylockMaxDur(): number;
+    setFairylockMaxDur(value: number): void;
 
-  getTrickroomMaxDur(): number;
-  setTrickroomMaxDur(value: number): void;
+    getGravityMaxDur(): number;
+    setGravityMaxDur(value: number): void;
 
-  getWatersport(): boolean;
-  setWatersport(value: boolean): void;
+    getIondelugeMaxDur(): number;
+    setIondelugeMaxDur(value: number): void;
 
-  getWatersportMinDur(): number;
-  setWatersportMinDur(value: number): void;
+    getMagicroomMaxDur(): number;
+    setMagicroomMaxDur(value: number): void;
 
-  getWatersportMaxDur(): number;
-  setWatersportMaxDur(value: number): void;
+    getMudsportMaxDur(): number;
+    setMudsportMaxDur(value: number): void;
 
-  getWonderroom(): boolean;
-  setWonderroom(value: boolean): void;
+    getTrickroomMaxDur(): number;
+    setTrickroomMaxDur(value: number): void;
 
-  getWonderroomMinDur(): number;
-  setWonderroomMinDur(value: number): void;
+    getWatersportMaxDur(): number;
+    setWatersportMaxDur(value: number): void;
 
-  getWonderroomMaxDur(): number;
-  setWonderroomMaxDur(value: number): void;
+    getWonderroomMaxDur(): number;
+    setWonderroomMaxDur(value: number): void;
 
-  serializeBinary(): Uint8Array;
-  toObject(includeInstance?: boolean): Pseudoweathers.AsObject;
-  static toObject(includeInstance: boolean, msg: Pseudoweathers): Pseudoweathers.AsObject;
-  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
-  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
-  static serializeBinaryToWriter(message: Pseudoweathers, writer: jspb.BinaryWriter): void;
-  static deserializeBinary(bytes: Uint8Array): Pseudoweathers;
-  static deserializeBinaryFromReader(message: Pseudoweathers, reader: jspb.BinaryReader): Pseudoweathers;
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): Pseudoweathers.AsObject;
+    static toObject(
+        includeInstance: boolean,
+        msg: Pseudoweathers,
+    ): Pseudoweathers.AsObject;
+    static extensions: { [key: number]: jspb.ExtensionFieldInfo<jspb.Message> };
+    static extensionsBinary: {
+        [key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>;
+    };
+    static serializeBinaryToWriter(
+        message: Pseudoweathers,
+        writer: jspb.BinaryWriter,
+    ): void;
+    static deserializeBinary(bytes: Uint8Array): Pseudoweathers;
+    static deserializeBinaryFromReader(
+        message: Pseudoweathers,
+        reader: jspb.BinaryReader,
+    ): Pseudoweathers;
 }
 
 export namespace Pseudoweathers {
-  export type AsObject = {
-    fairylock: boolean,
-    fairylockMinDur: number,
-    fairylockMaxDur: number,
-    gravity: boolean,
-    gravityMinDur: number,
-    gravityMaxDur: number,
-    iondeluge: boolean,
-    iondelugeMinDur: number,
-    iondelugeMaxDur: number,
-    magicroom: boolean,
-    magicroomMinDur: number,
-    magicroomMaxDur: number,
-    mudsport: boolean,
-    mudsportMinDur: number,
-    mudsportMaxDur: number,
-    trickroom: boolean,
-    trickroomMinDur: number,
-    trickroomMaxDur: number,
-    watersport: boolean,
-    watersportMinDur: number,
-    watersportMaxDur: number,
-    wonderroom: boolean,
-    wonderroomMinDur: number,
-    wonderroomMaxDur: number,
-  }
+    export type AsObject = {
+        fairylock: boolean;
+        gravity: boolean;
+        iondeluge: boolean;
+        magicroom: boolean;
+        mudsport: boolean;
+        trickroom: boolean;
+        watersport: boolean;
+        wonderroom: boolean;
+        fairylockMinDur: number;
+        gravityMinDur: number;
+        iondelugeMinDur: number;
+        magicroomMinDur: number;
+        mudsportMinDur: number;
+        trickroomMinDur: number;
+        watersportMinDur: number;
+        wonderroomMinDur: number;
+        fairylockMaxDur: number;
+        gravityMaxDur: number;
+        iondelugeMaxDur: number;
+        magicroomMaxDur: number;
+        mudsportMaxDur: number;
+        trickroomMaxDur: number;
+        watersportMaxDur: number;
+        wonderroomMaxDur: number;
+    };
 }
 
 export class Weather extends jspb.Message {
-  getWeather(): state_v1_enum_pb.WeathersMap[keyof state_v1_enum_pb.WeathersMap];
-  setWeather(value: state_v1_enum_pb.WeathersMap[keyof state_v1_enum_pb.WeathersMap]): void;
+    getWeather(): state_v1_enum_pb.WeathersMap[keyof state_v1_enum_pb.WeathersMap];
+    setWeather(
+        value: state_v1_enum_pb.WeathersMap[keyof state_v1_enum_pb.WeathersMap],
+    ): void;
 
-  getMinDur(): number;
-  setMinDur(value: number): void;
+    getMinDur(): number;
+    setMinDur(value: number): void;
 
-  getMaxDur(): number;
-  setMaxDur(value: number): void;
+    getMaxDur(): number;
+    setMaxDur(value: number): void;
 
-  serializeBinary(): Uint8Array;
-  toObject(includeInstance?: boolean): Weather.AsObject;
-  static toObject(includeInstance: boolean, msg: Weather): Weather.AsObject;
-  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
-  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
-  static serializeBinaryToWriter(message: Weather, writer: jspb.BinaryWriter): void;
-  static deserializeBinary(bytes: Uint8Array): Weather;
-  static deserializeBinaryFromReader(message: Weather, reader: jspb.BinaryReader): Weather;
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): Weather.AsObject;
+    static toObject(includeInstance: boolean, msg: Weather): Weather.AsObject;
+    static extensions: { [key: number]: jspb.ExtensionFieldInfo<jspb.Message> };
+    static extensionsBinary: {
+        [key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>;
+    };
+    static serializeBinaryToWriter(
+        message: Weather,
+        writer: jspb.BinaryWriter,
+    ): void;
+    static deserializeBinary(bytes: Uint8Array): Weather;
+    static deserializeBinaryFromReader(
+        message: Weather,
+        reader: jspb.BinaryReader,
+    ): Weather;
 }
 
 export namespace Weather {
-  export type AsObject = {
-    weather: state_v1_enum_pb.WeathersMap[keyof state_v1_enum_pb.WeathersMap],
-    minDur: number,
-    maxDur: number,
-  }
+    export type AsObject = {
+        weather: state_v1_enum_pb.WeathersMap[keyof state_v1_enum_pb.WeathersMap];
+        minDur: number;
+        maxDur: number;
+    };
 }
 
 export class Terrains extends jspb.Message {
-  getTerrain(): state_v1_enum_pb.TerrainMap[keyof state_v1_enum_pb.TerrainMap];
-  setTerrain(value: state_v1_enum_pb.TerrainMap[keyof state_v1_enum_pb.TerrainMap]): void;
+    getTerrain(): state_v1_enum_pb.TerrainMap[keyof state_v1_enum_pb.TerrainMap];
+    setTerrain(
+        value: state_v1_enum_pb.TerrainMap[keyof state_v1_enum_pb.TerrainMap],
+    ): void;
 
-  getMinDur(): number;
-  setMinDur(value: number): void;
+    getMinDur(): number;
+    setMinDur(value: number): void;
 
-  getMaxDur(): number;
-  setMaxDur(value: number): void;
+    getMaxDur(): number;
+    setMaxDur(value: number): void;
 
-  serializeBinary(): Uint8Array;
-  toObject(includeInstance?: boolean): Terrains.AsObject;
-  static toObject(includeInstance: boolean, msg: Terrains): Terrains.AsObject;
-  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
-  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
-  static serializeBinaryToWriter(message: Terrains, writer: jspb.BinaryWriter): void;
-  static deserializeBinary(bytes: Uint8Array): Terrains;
-  static deserializeBinaryFromReader(message: Terrains, reader: jspb.BinaryReader): Terrains;
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): Terrains.AsObject;
+    static toObject(includeInstance: boolean, msg: Terrains): Terrains.AsObject;
+    static extensions: { [key: number]: jspb.ExtensionFieldInfo<jspb.Message> };
+    static extensionsBinary: {
+        [key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>;
+    };
+    static serializeBinaryToWriter(
+        message: Terrains,
+        writer: jspb.BinaryWriter,
+    ): void;
+    static deserializeBinary(bytes: Uint8Array): Terrains;
+    static deserializeBinaryFromReader(
+        message: Terrains,
+        reader: jspb.BinaryReader,
+    ): Terrains;
 }
 
 export namespace Terrains {
-  export type AsObject = {
-    terrain: state_v1_enum_pb.TerrainMap[keyof state_v1_enum_pb.TerrainMap],
-    minDur: number,
-    maxDur: number,
-  }
+    export type AsObject = {
+        terrain: state_v1_enum_pb.TerrainMap[keyof state_v1_enum_pb.TerrainMap];
+        minDur: number;
+        maxDur: number;
+    };
 }
 
 export class Field extends jspb.Message {
-  hasPseudoweather(): boolean;
-  clearPseudoweather(): void;
-  getPseudoweather(): Pseudoweathers | undefined;
-  setPseudoweather(value?: Pseudoweathers): void;
+    hasPseudoweather(): boolean;
+    clearPseudoweather(): void;
+    getPseudoweather(): Pseudoweathers | undefined;
+    setPseudoweather(value?: Pseudoweathers): void;
 
-  hasWeather(): boolean;
-  clearWeather(): void;
-  getWeather(): Weather | undefined;
-  setWeather(value?: Weather): void;
+    hasWeather(): boolean;
+    clearWeather(): void;
+    getWeather(): Weather | undefined;
+    setWeather(value?: Weather): void;
 
-  hasTerrain(): boolean;
-  clearTerrain(): void;
-  getTerrain(): Terrains | undefined;
-  setTerrain(value?: Terrains): void;
+    hasTerrain(): boolean;
+    clearTerrain(): void;
+    getTerrain(): Terrains | undefined;
+    setTerrain(value?: Terrains): void;
 
-  serializeBinary(): Uint8Array;
-  toObject(includeInstance?: boolean): Field.AsObject;
-  static toObject(includeInstance: boolean, msg: Field): Field.AsObject;
-  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
-  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
-  static serializeBinaryToWriter(message: Field, writer: jspb.BinaryWriter): void;
-  static deserializeBinary(bytes: Uint8Array): Field;
-  static deserializeBinaryFromReader(message: Field, reader: jspb.BinaryReader): Field;
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): Field.AsObject;
+    static toObject(includeInstance: boolean, msg: Field): Field.AsObject;
+    static extensions: { [key: number]: jspb.ExtensionFieldInfo<jspb.Message> };
+    static extensionsBinary: {
+        [key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>;
+    };
+    static serializeBinaryToWriter(
+        message: Field,
+        writer: jspb.BinaryWriter,
+    ): void;
+    static deserializeBinary(bytes: Uint8Array): Field;
+    static deserializeBinaryFromReader(
+        message: Field,
+        reader: jspb.BinaryReader,
+    ): Field;
 }
 
 export namespace Field {
-  export type AsObject = {
-    pseudoweather?: Pseudoweathers.AsObject,
-    weather?: Weather.AsObject,
-    terrain?: Terrains.AsObject,
-  }
+    export type AsObject = {
+        pseudoweather?: Pseudoweathers.AsObject;
+        weather?: Weather.AsObject;
+        terrain?: Terrains.AsObject;
+    };
 }
 
 export class Context extends jspb.Message {
-  hasSideConditions1(): boolean;
-  clearSideConditions1(): void;
-  getSideConditions1(): SideConditions | undefined;
-  setSideConditions1(value?: SideConditions): void;
+    hasSideConditions1(): boolean;
+    clearSideConditions1(): void;
+    getSideConditions1(): SideConditions | undefined;
+    setSideConditions1(value?: SideConditions): void;
 
-  hasSideConditions2(): boolean;
-  clearSideConditions2(): void;
-  getSideConditions2(): SideConditions | undefined;
-  setSideConditions2(value?: SideConditions): void;
+    hasSideConditions2(): boolean;
+    clearSideConditions2(): void;
+    getSideConditions2(): SideConditions | undefined;
+    setSideConditions2(value?: SideConditions): void;
 
-  hasVolatileStatus1(): boolean;
-  clearVolatileStatus1(): void;
-  getVolatileStatus1(): VolatileStatuses | undefined;
-  setVolatileStatus1(value?: VolatileStatuses): void;
+    hasVolatileStatus1(): boolean;
+    clearVolatileStatus1(): void;
+    getVolatileStatus1(): VolatileStatuses | undefined;
+    setVolatileStatus1(value?: VolatileStatuses): void;
 
-  hasVolatileStatus2(): boolean;
-  clearVolatileStatus2(): void;
-  getVolatileStatus2(): VolatileStatuses | undefined;
-  setVolatileStatus2(value?: VolatileStatuses): void;
+    hasVolatileStatus2(): boolean;
+    clearVolatileStatus2(): void;
+    getVolatileStatus2(): VolatileStatuses | undefined;
+    setVolatileStatus2(value?: VolatileStatuses): void;
 
-  hasBoosts1(): boolean;
-  clearBoosts1(): void;
-  getBoosts1(): Boosts | undefined;
-  setBoosts1(value?: Boosts): void;
+    hasBoosts1(): boolean;
+    clearBoosts1(): void;
+    getBoosts1(): Boosts | undefined;
+    setBoosts1(value?: Boosts): void;
 
-  hasBoosts2(): boolean;
-  clearBoosts2(): void;
-  getBoosts2(): Boosts | undefined;
-  setBoosts2(value?: Boosts): void;
+    hasBoosts2(): boolean;
+    clearBoosts2(): void;
+    getBoosts2(): Boosts | undefined;
+    setBoosts2(value?: Boosts): void;
 
-  hasField(): boolean;
-  clearField(): void;
-  getField(): Field | undefined;
-  setField(value?: Field): void;
+    hasField(): boolean;
+    clearField(): void;
+    getField(): Field | undefined;
+    setField(value?: Field): void;
 
-  serializeBinary(): Uint8Array;
-  toObject(includeInstance?: boolean): Context.AsObject;
-  static toObject(includeInstance: boolean, msg: Context): Context.AsObject;
-  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
-  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
-  static serializeBinaryToWriter(message: Context, writer: jspb.BinaryWriter): void;
-  static deserializeBinary(bytes: Uint8Array): Context;
-  static deserializeBinaryFromReader(message: Context, reader: jspb.BinaryReader): Context;
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): Context.AsObject;
+    static toObject(includeInstance: boolean, msg: Context): Context.AsObject;
+    static extensions: { [key: number]: jspb.ExtensionFieldInfo<jspb.Message> };
+    static extensionsBinary: {
+        [key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>;
+    };
+    static serializeBinaryToWriter(
+        message: Context,
+        writer: jspb.BinaryWriter,
+    ): void;
+    static deserializeBinary(bytes: Uint8Array): Context;
+    static deserializeBinaryFromReader(
+        message: Context,
+        reader: jspb.BinaryReader,
+    ): Context;
 }
 
 export namespace Context {
-  export type AsObject = {
-    sideConditions1?: SideConditions.AsObject,
-    sideConditions2?: SideConditions.AsObject,
-    volatileStatus1?: VolatileStatuses.AsObject,
-    volatileStatus2?: VolatileStatuses.AsObject,
-    boosts1?: Boosts.AsObject,
-    boosts2?: Boosts.AsObject,
-    field?: Field.AsObject,
-  }
+    export type AsObject = {
+        sideConditions1?: SideConditions.AsObject;
+        sideConditions2?: SideConditions.AsObject;
+        volatileStatus1?: VolatileStatuses.AsObject;
+        volatileStatus2?: VolatileStatuses.AsObject;
+        boosts1?: Boosts.AsObject;
+        boosts2?: Boosts.AsObject;
+        field?: Field.AsObject;
+    };
 }
-
