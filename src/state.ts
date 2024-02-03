@@ -447,9 +447,7 @@ export class Int8State {
             const ident = (entity ?? {}).ident ?? "";
             const amalgam = {
                 ...paddedPokemonObj,
-                ...(entity === undefined
-                    ? {}
-                    : this.handler.getPokemon(privateIndex, ident)),
+                ...(entity === undefined ? {} : this.handler.getPokemon(ident)),
             };
             teamArray.set(
                 getPrivatePokemon(this.handler.getMyBattle(), amalgam),
@@ -535,7 +533,7 @@ export class Int8State {
         return mask;
     }
 
-    updatetHistoryVectors(contextVector: Int8Array): void {
+    updatetHistoryVectors(): void {
         // let offset = 0;
 
         for (const [key, moveStore] of Object.entries(
@@ -564,6 +562,7 @@ export class Int8State {
             // const targetProps = this.handler.getPokemon(targetSide, target);
             const moveArray = new Int8Array(
                 new Int16Array([
+                    1,
                     isCritical ? 1 : 0,
                     effectiveness,
                     missed ? 1 : 0,
@@ -621,17 +620,17 @@ export class Int8State {
         const turn = this.handler.getBattleTurn();
         this.handler.getAggregatedTurnLines();
 
-        const heuristicAction = this.done
-            ? -1
-            : this.handler.getHeuristicActionIndex(
-                  this.playerIndex,
-                  this.workerIndex
-              );
+        // const heuristicAction = this.done
+        //     ? -1
+        //     : this.handler.getHeuristicActionIndex(
+        //           this.playerIndex,
+        //           this.workerIndex
+        //       );
         const legalMask = this.getLegalMask();
 
         const contextVector = this.getContextVector();
 
-        this.updatetHistoryVectors(contextVector);
+        this.updatetHistoryVectors();
 
         const damageInfos = Object.values(this.handler.damageInfos)
             .sort((a, b) => a.context.order - b.context.order)
@@ -643,7 +642,7 @@ export class Int8State {
         const historyPadding = new Int8Array(
             historyVectorSize * (20 - historyVectors.length)
         );
-        historyPadding.fill(-1);
+        historyPadding.fill(0);
 
         const data = [
             new Int8Array([
@@ -652,7 +651,7 @@ export class Int8State {
                 this.done,
                 this.reward,
                 turn,
-                heuristicAction,
+                0, //heuristicAction,
             ]),
             this.getMyPrivateTeam(),
             this.getMyPublicTeam(),
@@ -662,13 +661,13 @@ export class Int8State {
             historyPadding,
             legalMask,
         ];
-        if (heuristicAction >= 0) {
-            for (const [actionIndex, legalMaskValue] of legalMask.entries()) {
-                if (actionIndex === heuristicAction && legalMaskValue === 0) {
-                    console.error("bad action");
-                }
-            }
-        }
+        // if (heuristicAction >= 0) {
+        //     for (const [actionIndex, legalMaskValue] of legalMask.entries()) {
+        //         if (actionIndex === heuristicAction && legalMaskValue === 0) {
+        //             console.error("bad action");
+        //         }
+        //     }
+        // }
         if (stateSize === undefined) {
             stateSize = data.reduce(
                 (accumulator, currentValue) =>

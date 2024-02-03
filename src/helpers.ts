@@ -256,7 +256,7 @@ class SimpleHeuristicPlayer {
         const switches: any[] = requestSide.pokemon
             .filter((x: AnyObject) => !x.active)
             .map((x: AnyObject) => x.ident)
-            .map((ident: string) => this.handler.getPokemon(sideIndex, ident));
+            .map((ident: string) => this.handler.getPokemon(ident));
 
         const mySide = battle.sides[this.playerIndex];
         const oppSide = battle.sides[1 - this.playerIndex];
@@ -267,10 +267,7 @@ class SimpleHeuristicPlayer {
         }
         const requestActive = request.active[0];
 
-        const privateActive = this.handler.getPokemon(
-            sideIndex,
-            active.originalIdent
-        );
+        const privateActive = this.handler.getPokemon(active.originalIdent);
 
         const calcRatio = active !== null && opponent !== null;
 
@@ -494,7 +491,7 @@ class moveInfo {
     }
 }
 
-export const historyVectorSize = 213;
+export const historyVectorSize = 215;
 export class BattlesHandler {
     playerIndex: number;
     battles: clientBattle[];
@@ -539,21 +536,28 @@ export class BattlesHandler {
         return numFainted;
     }
 
-    getPokemon(sideIndex: number, ident: string) {
+    getPokemon(ident: string): AnyObject {
+        if (ident.startsWith("p1a") || ident.startsWith("p2a")) {
+            ident = ident.slice(0, 2) + ident.slice(3);
+        }
         const battle = this.getMyBattle();
-        const side = battle.getSide(`p${sideIndex + 1}`);
-        const team = side.team;
         const request = battle.request;
         const requestSidePokemon = request?.side?.pokemon ?? [];
-        const publicPokemon =
-            team.filter((x) => x.originalIdent === ident)[0] ?? {};
         const privatePokemon =
             requestSidePokemon.filter((x) => x?.ident === ident)[0] ?? {};
-        const moves = privatePokemon.moves;
+        for (const side of battle.sides) {
+            const team = side.team;
+            for (const member of team) {
+                if (member.originalIdent === ident) {
+                    return {
+                        ...member,
+                        ...privatePokemon,
+                    };
+                }
+            }
+        }
         return {
-            ...publicPokemon,
             ...privatePokemon,
-            moves,
         };
     }
 
@@ -721,13 +725,11 @@ export class BattlesHandler {
         if (line.startsWith("|move")) {
             let [_, __, user, ___, target] = line.split("|");
             const userSide = parseInt(user.slice(1, 2)) - 1;
-            user = user.slice(0, 2) + user.slice(3);
             const targetCorrect = target === "" ? user : target ?? user;
             const targetSide = parseInt(targetCorrect.slice(1, 2)) - 1;
-            target = targetCorrect.slice(0, 2) + targetCorrect.slice(3);
             const isMe = this.playerIndex === userSide ? 1 : 0;
-            const userProps = this.getPokemon(userSide, user);
-            const targetProps = this.getPokemon(targetSide, target);
+            const userProps = this.getPokemon(user);
+            const targetProps = this.getPokemon(target);
             const userVector =
                 userSide === this.playerIndex
                     ? getPublicPokemon(
@@ -766,8 +768,8 @@ export class BattlesHandler {
                 target;
             const userSide = targetSide;
             const isMe = this.playerIndex === userSide ? 1 : 0;
-            const userProps = this.getPokemon(userSide, user);
-            const targetProps = this.getPokemon(targetSide, target);
+            const userProps = this.getPokemon(user);
+            const targetProps = this.getPokemon(target);
             const userVector =
                 userSide === this.playerIndex
                     ? getPublicPokemon(

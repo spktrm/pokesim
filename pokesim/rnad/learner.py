@@ -195,6 +195,7 @@ class Learner:
 
         self.scaler = torch.cuda.amp.GradScaler(enabled=False)
         self.learner_steps = 0
+        self.scale_factor = 0
 
     def save(self, fpath: str):
         obj = {
@@ -373,7 +374,7 @@ class Learner:
                 loss_entropy = get_loss_entropy(params.policy, params.log_policy, legal)
                 loss_entropy = (loss_entropy * valid).sum() / valid_sum
 
-        loss = loss / self.config.accum_steps
+        # loss = loss / self.config.accum_steps
 
         self.scaler.scale(loss).backward()
 
@@ -387,9 +388,17 @@ class Learner:
         """A jitted pure-functional part of the `step`."""
 
         loss_vals = self.loss(batch, alpha)
+        self.scale_factor += batch.valid.sum()
 
-        if self.learner_steps % self.config.accum_steps == 0:
+        if (
+            self.learner_steps % self.config.accum_steps == 0
+        ) and self.learner_steps > 0:
             self.scaler.unscale_(self.optimizer)
+
+            for param in self.params.parameters():
+                if param.grad is not None:
+                    param.grad.data /= self.scale_factor
+            self.scale_factor = 0
 
             nn.utils.clip_grad.clip_grad_value_(
                 self.params.parameters(), self.config.clip_gradient

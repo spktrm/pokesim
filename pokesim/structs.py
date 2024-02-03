@@ -227,9 +227,9 @@ class State(NamedTuple):
 
     def _get_history(self, leading_dims: Sequence[int]):
         history = self.raw[..., HISTORY_OFFSET:].view(np.int8)
-        history = history.reshape(*leading_dims, -1, 213)
+        history = history.reshape(*leading_dims, -1, 215)
         history_right = history[..., 99:].view(np.int16)
-        return history[..., :99], history_right[..., :-9], history_right[..., -9:]
+        return history[..., :99], history_right[..., :-10], history_right[..., -10:]
 
     def get_history(self, leading_dims: Sequence[int]):
         history_context, history_entities, history_stats = self._get_history(

@@ -130,8 +130,10 @@ type GenData = {
 function mapId<T extends { id: string; [key: string]: any }>(
     arr: T[]
 ): string[] {
-    return new Set(arr.map((item) => item.id));
+    return arr.map((item) => item.id);
 }
+
+const extraTokens = [];
 
 function formatData(data: GenData) {
     const moveIds = [

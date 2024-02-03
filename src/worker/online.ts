@@ -119,8 +119,8 @@ async function runPlayer(
             if (line.startsWith("|error")) {
                 console.error(line);
             }
-            handler.appendTurnLine(playerIndex, workerIndex, line);
             p1battle.add(line);
+            handler.appendTurnLine(playerIndex, workerIndex, line);
             if (line.startsWith("|win")) {
                 winner = line.split("|")[2];
             }

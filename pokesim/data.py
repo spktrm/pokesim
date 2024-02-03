@@ -5,7 +5,7 @@ import numpy as np
 
 from typing import Any, Dict
 
-STATE_SIZE = 5239
+STATE_SIZE = 5279
 
 
 with open(os.path.abspath("./config.yml"), "r") as f:

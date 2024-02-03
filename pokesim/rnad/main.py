@@ -1,5 +1,6 @@
 import os
 
+
 os.environ["OMP_NUM_THREADS"] = "1"
 
 import torch
@@ -19,6 +20,7 @@ from pokesim.data import EVAL_MAPPING, NUM_WORKERS
 from pokesim.structs import Batch, Trajectory
 from pokesim.rnad.learner import Learner
 from pokesim.rnad.actor import run_environment
+from pokesim.utils import get_most_recent_file
 
 
 def run_environment_wrapper(*args, **kwargs):
