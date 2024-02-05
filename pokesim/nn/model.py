@@ -18,6 +18,7 @@ from pokesim.data import (
 )
 
 from typing import Tuple
+from pokesim.embeddings.moves import construct_moves_encoding
 from pokesim.embeddings.species import construct_species_encoding
 
 from pokesim.structs import ModelOutput
@@ -49,6 +50,10 @@ def get_species_encodng():
     return nn.Embedding.from_pretrained(torch.from_numpy(construct_species_encoding(3)))
 
 
+def get_moves_encoding():
+    return nn.Embedding.from_pretrained(torch.from_numpy(construct_moves_encoding(3)))
+
+
 class Encoder(nn.Module):
     def __init__(
         self,
@@ -62,7 +67,10 @@ class Encoder(nn.Module):
         self.species_onehot = get_species_encodng()
         self.item_onehot = get_onehot_encoding(NUM_ITEMS)
         self.ability_onehot = get_onehot_encoding(NUM_ABILITIES)
-        self.moves_onehot = get_onehot_encoding(NUM_MOVES)
+        self.moves_onehot = get_moves_encoding()
+        self.moves_lin = _layer_init(
+            nn.Linear(self.moves_onehot.weight.shape[-1], 2 * entity_size)
+        )
         self.hp_onehot = get_onehot_encoding(65)
         self.status_onehot = get_onehot_encoding(NUM_STATUS)
         self.active_onehot = get_onehot_encoding(2)
@@ -80,7 +88,8 @@ class Encoder(nn.Module):
                     self.species_onehot.weight.shape[-1]
                     + self.item_onehot.weight.shape[-1]
                     + self.ability_onehot.weight.shape[-1]
-                    + 2 * self.moves_onehot.weight.shape[-1]
+                    + 1 * self.moves_onehot.weight.shape[-1]
+                    + self.moves_lin.out_features
                     + 1 * self.hp_onehot.weight.shape[-1]
                     + self.status_onehot.weight.shape[-1]
                     + self.active_onehot.weight.shape[-1]
@@ -215,7 +224,7 @@ class Encoder(nn.Module):
         public_onehot = self.public_onehot(public_token)
         sleep_turns_onehot = self.sleep_turns_onehot(sleep_turns_token)
         toxic_turns_onehot = self.toxic_turns_onehot(toxic_turns_token)
-        moveset_onehot = (self.moves_onehot(move_tokens) / 4).sum(-2)
+        moveset_onehot = (self.moves_lin(self.moves_onehot(move_tokens)) / 4).sum(-2)
 
         onehot = torch.cat(
             (
@@ -523,7 +532,7 @@ class PolicyHead(nn.Module):
         switch_tokens = SWITCH_TOKEN * torch.ones(6, dtype=torch.long)
         self.register_buffer("switch_tokens", switch_tokens)
 
-        self.moves_onehot = nn.Embedding.from_pretrained(torch.eye(NUM_MOVES + 3))
+        self.moves_onehot = get_moves_encoding()
         self.legal_onehot = nn.Embedding.from_pretrained(torch.eye(2))
 
         self.legal_embedding = nn.Embedding.from_pretrained(torch.eye(2))
@@ -600,7 +609,11 @@ class PolicyHead(nn.Module):
         active_embedding: torch.Tensor,
         entity_embeddings: torch.Tensor,
         state_embedding: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor,]:
+    ) -> Tuple[
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+    ]:
         action_tokens = self.get_action_tokens(active_weight, teams)
         action_embeddings = self.embed_actions(action_tokens, legal)
 

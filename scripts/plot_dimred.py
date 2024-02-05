@@ -7,7 +7,7 @@ from sklearn.manifold import TSNE
 from pokesim.data import MOVES_STOI, SPECIES_STOI
 
 from pokesim.embeddings.species import construct_species_encoding
-from pokesim.embeddings.moves import construct_move_encoding
+from pokesim.embeddings.moves import construct_moves_encoding
 
 
 def perform_pca(data: np.ndarray, n_components: int = 2) -> np.ndarray:
@@ -80,7 +80,7 @@ def plot_pca_3d(data: np.ndarray, title: str = "3D PCA Plot", **kwargs) -> None:
 
 def main(gen: int = 4, ndims: int = 2):
 
-    data = construct_move_encoding(gen)
+    data = construct_moves_encoding(gen)
 
     indices = []
     names = []
@@ -91,7 +91,7 @@ def main(gen: int = 4, ndims: int = 2):
             indices.append(value)
 
     data = data[np.array(indices)]
-    transformed_data = perform_pca(data, n_components=min(data.shape[-1], 128))
+    transformed_data = perform_pca(data, n_components=min(data.shape[-1], 3))
     transformed_data = transformed_data[..., :ndims]
 
     if ndims == 2:

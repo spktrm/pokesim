@@ -80,7 +80,7 @@ def get_moves_df(gen: int):
     return df
 
 
-def construct_move_encoding(gen: int):
+def construct_moves_encoding(gen: int):
     moves_df = get_moves_df(gen)
 
     feature_vector_dfs = []
@@ -104,7 +104,7 @@ def construct_move_encoding(gen: int):
     concat_df = concat_encodings(feature_vector_dfs)
     concat_df.index = moves_df["name"].map(to_id)
 
-    placeholder = np.zeros((len(MOVES_STOI), concat_df.shape[-1]+1))
+    placeholder = np.zeros((len(MOVES_STOI), concat_df.shape[-1] + 1))
 
     for name, row in concat_df.iterrows():
         row_index = MOVES_STOI[name]
@@ -120,4 +120,4 @@ def construct_move_encoding(gen: int):
 
 
 if __name__ == "__main__":
-    print(construct_move_encoding(3).shape)
+    print(construct_moves_encoding(3).shape)

@@ -28,8 +28,8 @@ def get_loss_v(
     loss_v_list = []
     for v_n, v_target, mask in zip(v_list, v_target_list, mask_list):
         loss_v = torch.unsqueeze(mask, dim=-1) * (v_n - v_target.detach()) ** 2
-        normalization = torch.sum(mask)
-        loss_v = torch.sum(loss_v) / (normalization + (normalization == 0.0))
+        # normalization = torch.sum(mask)
+        loss_v = torch.sum(loss_v)  # / (normalization + (normalization == 0.0))
         loss_v_list.append(loss_v)
     return sum(loss_v_list)
 
@@ -51,8 +51,8 @@ def apply_force_with_threshold(
 def renormalize(loss: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     """The `normalization` is the number of steps over which loss is computed."""
     loss = torch.sum(loss * mask)
-    normalization = torch.sum(mask)
-    return loss / (normalization + (normalization == 0.0))
+    # normalization = torch.sum(mask)
+    return loss  # / (normalization + (normalization == 0.0))
 
 
 def get_loss_entropy(
@@ -395,10 +395,10 @@ class Learner:
         ) and self.learner_steps > 0:
             self.scaler.unscale_(self.optimizer)
 
-            # for param in self.params.parameters():
-            #     if param.grad is not None:
-            #         param.grad.data /= self.scale_factor
-            # self.scale_factor = 0
+            for param in self.params.parameters():
+                if param.grad is not None:
+                    param.grad.data /= self.scale_factor
+            self.scale_factor = 0
 
             nn.utils.clip_grad.clip_grad_value_(
                 self.params.parameters(), self.config.clip_gradient
