@@ -414,7 +414,6 @@ class Encoder(nn.Module):
         history_entities: torch.Tensor,
         history_stats: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-
         raw_embeddings = self.forward_entities(teams[:, :, -1]).flatten(2, 3)
         entity_embeddings = self.concat_cls_entities(raw_embeddings)
 
@@ -601,11 +600,7 @@ class PolicyHead(nn.Module):
         active_embedding: torch.Tensor,
         entity_embeddings: torch.Tensor,
         state_embedding: torch.Tensor,
-    ) -> Tuple[
-        torch.Tensor,
-        torch.Tensor,
-        torch.Tensor,
-    ]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor,]:
         action_tokens = self.get_action_tokens(active_weight, teams)
         action_embeddings = self.embed_actions(action_tokens, legal)
 

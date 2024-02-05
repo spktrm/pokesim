@@ -1,12 +1,13 @@
 import numpy as np
+
 import plotly.graph_objects as go
 from sklearn.decomposition import PCA
-from typing import Tuple
 
 from sklearn.manifold import TSNE
-from pokesim.data import SPECIES_STOI
+from pokesim.data import MOVES_STOI, SPECIES_STOI
 
 from pokesim.embeddings.species import construct_species_encoding
+from pokesim.embeddings.moves import construct_move_encoding
 
 
 def perform_pca(data: np.ndarray, n_components: int = 2) -> np.ndarray:
@@ -77,14 +78,14 @@ def plot_pca_3d(data: np.ndarray, title: str = "3D PCA Plot", **kwargs) -> None:
     fig.show()
 
 
-def main(gen: int = 3, ndims: int = 2):
+def main(gen: int = 4, ndims: int = 2):
 
-    data = construct_species_encoding(gen)
+    data = construct_move_encoding(gen)
 
     indices = []
     names = []
 
-    for key, value in SPECIES_STOI.items():
+    for key, value in MOVES_STOI.items():
         if data[value].sum() != 0:
             names.append(key)
             indices.append(value)

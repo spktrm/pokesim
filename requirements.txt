@@ -13,3 +13,4 @@ tqdm==4.66.1
 uvloop==0.17.0
 wandb
 tabulate
+scikit-learn

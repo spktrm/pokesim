@@ -1,20 +1,16 @@
 import math
-import traceback
+
 import numpy as np
-import pandas as pd
-
-from typing import Any, Callable, Dict, List
-
-from torch import ge
 
 from pokesim.data import SPECIES_STOI, load_gendata
 from pokesim.embeddings.encoding_funcs import (
     concat_encodings,
     multihot_encode,
     onehot_encode,
-    sqrt_onehot_encode,
     z_score_scale,
 )
+from pokesim.embeddings.helpers import to_id
+from pokesim.embeddings.moves import get_df
 
 
 ONEHOT_FEATURES = [
@@ -59,31 +55,6 @@ SPECIES_PROTOCOLS = [
         for stat_feature in MULTIHOT_FEATURES
     ],
 ]
-
-
-def to_id(string: str) -> str:
-    return "".join(c for c in string if c.isalnum()).lower()
-
-
-def get_feature_vector(
-    df: pd.DataFrame, feature: str, encoding_func: Callable
-) -> pd.DataFrame:
-    return encoding_func(df[feature])
-
-
-def get_df(data: List[Dict[str, Any]]):
-    df = pd.json_normalize(data)
-    for mask_fn in [
-        lambda: df["isNonstandard"].map(lambda x: x is None),
-        lambda: (df["tier"] != "Illegal"),
-    ]:
-        try:
-            mask = mask_fn()
-            df = df[mask]
-        except Exception:
-            # traceback.print_exc()
-            return df
-    return df
 
 
 def get_species_df(gen: int):
