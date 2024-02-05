@@ -5,6 +5,8 @@ import numpy as np
 
 from typing import Any, Dict
 
+STATE_SIZE = 9395
+
 
 with open(os.path.abspath("./config.yml"), "r") as f:
     CONFIG: Dict[str, Any] = yaml.safe_load(f)
@@ -55,53 +57,58 @@ EVAL_MAPPING = {
 TURN_OFFSET = 0
 TURN_SIZE = 1
 
-TEAM_OFFSET = TURN_OFFSET + TURN_SIZE
-TEAM_SIZE = 3 * 6 * 22
+HEURISTIC_OFFSET = TURN_OFFSET + TURN_SIZE
+HEURISTIC_SIZE = 1
+
+TEAM_OFFSET = HEURISTIC_OFFSET + HEURISTIC_SIZE
+TEAM_SIZE = 3 * 6 * 48
 
 SIDE_CONDITION_OFFSET = TEAM_OFFSET + TEAM_SIZE
-SIDE_CONDITION_SIZE = 2 * 15
+SIDE_CONDITION_SIZE = 2 * 16
 
 VOLATILE_STATUS_OFFSET = SIDE_CONDITION_OFFSET + SIDE_CONDITION_SIZE
-VOLATILE_STATUS_SIZE = 2 * 20
+VOLATILE_STATUS_SIZE = 2 * 108
 
 BOOSTS_OFFSET = VOLATILE_STATUS_OFFSET + VOLATILE_STATUS_SIZE
 BOOSTS_SIZE = 2 * 7
 
-FIELD_OFFSET = BOOSTS_OFFSET + BOOSTS_SIZE
-FIELD_SIZE = 9 + 6
+PSEUDOWEATHER_OFFSET = BOOSTS_OFFSET + BOOSTS_SIZE
+PSEUDOWEATHER_SIZE = 27
 
-HISTORY_OFFSET = FIELD_OFFSET + FIELD_SIZE
+WEATHER_OFFSET = PSEUDOWEATHER_OFFSET + PSEUDOWEATHER_SIZE
+WEATHER_SIZE = 3
+
+TERRAIN_OFFSET = WEATHER_OFFSET + WEATHER_SIZE
+TERRAIN_SIZE = 3
+
+HISTORY_OFFSET = TERRAIN_OFFSET + TERRAIN_SIZE
+
+HISTORY_SIDE_CONDITION_OFFSET = 0
+HISTORY_VOLATILE_STATUS_OFFSET = HISTORY_SIDE_CONDITION_OFFSET + SIDE_CONDITION_SIZE
+HISTORY_BOOSTS_OFFSET = HISTORY_VOLATILE_STATUS_OFFSET + VOLATILE_STATUS_SIZE
+HISTORY_PSEUDOWEATHER_OFFSET = HISTORY_BOOSTS_OFFSET + BOOSTS_SIZE
+HISTORY_WEATHER_OFFSET = HISTORY_PSEUDOWEATHER_OFFSET + PSEUDOWEATHER_SIZE
+HISTORY_TERRAIN_OFFSET = HISTORY_WEATHER_OFFSET + WEATHER_SIZE
 
 
-with open(os.path.abspath("./src/data.json"), "r") as f:
+with open(os.path.abspath("./src/data/data.json"), "r") as f:
     DATA = json.load(f)
 
 
-STATUS_MAPPING = {
-    "slp": 0,
-    "psn": 1,
-    "brn": 2,
-    "frz": 3,
-    "par": 4,
-    "tox": 5,
-}
+def load_gendata(gen: int, datum: str):
+    with open(os.path.abspath(f"./src/data/gen{gen}/{datum}.json"), "r") as f:
+        return json.load(f)
 
-BOOSTS_MAPPING = {
-    "atk": 0,
-    "def": 1,
-    "spa": 2,
-    "spd": 3,
-    "spe": 4,
-    "accuracy": 5,
-    "evasion": 6,
-}
 
 VERBOSE = False
 
-NUM_SPECIES = len(DATA["species"])
+SPECIES_STOI = DATA["species"]
+MOVES_STOI = DATA["moves"]
+
+NUM_SPECIES = len(SPECIES_STOI)
 NUM_ABILITIES = len(DATA["abilities"])
 NUM_ITEMS = len(DATA["items"])
-NUM_MOVES = len(DATA["moves"])
+NUM_MOVES = len(MOVES_STOI)
 
 # NUM_TYPES = len(DATA["types"])
 
@@ -115,8 +122,8 @@ NUM_PSEUDOWEATHER = len(DATA["pseudoWeather"])
 MAX_HP = 1024
 NUM_HP_BUCKETS = int(MAX_HP**0.5 + 1)
 
-NUM_STATUS = len(STATUS_MAPPING)
-NUM_BOOSTS = len(BOOSTS_MAPPING)
+NUM_STATUS = len(DATA["statuses"])
+NUM_BOOSTS = len(DATA["boosts"])
 
 if VERBOSE:
     print(f"NUM_SPECIES: {NUM_SPECIES}")
@@ -144,20 +151,27 @@ def get_positional_encoding_matrix(
 
 
 TURN_ENC_SIZE = 64
-TURN_MAX = 100
+TURN_MAX = 127
 
 NUM_PLAYERS = 2
 NUM_HISTORY = 8
 
 MODEL_INPUT_KEYS = {
     "turn",
-    "active_moveset",
     "teams",
     "side_conditions",
     "volatile_status",
     "boosts",
-    "field",
+    "pseudoweather",
+    "weather",
+    "terrain",
+    "history_side_conditions",
+    "history_volatile_status",
+    "history_boosts",
+    "history_pseudoweather",
+    "history_weather",
+    "history_terrain",
+    "history_entities",
+    "history_stats",
     "legal",
-    "history",
-    "history_mask",
 }

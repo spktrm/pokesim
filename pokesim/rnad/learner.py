@@ -3,19 +3,20 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 
 from copy import deepcopy
 from dataclasses import asdict
-from typing import Any, List, Mapping, Sequence
+from typing import Any, List, Mapping
 
-from pokesim.data import NUM_PLAYERS
-from pokesim.nn.modelv2 import Model
+from pokesim.data import MODEL_INPUT_KEYS, NUM_HISTORY, NUM_PLAYERS
+from pokesim.nn.model import Model
 from pokesim.structs import Batch, ModelOutput, State
 
 from pokesim.rnad.utils import EntropySchedule, v_trace, _player_others, _policy_ratio
 from pokesim.rnad.config import RNaDConfig
 
-from pokesim.utils import finetune, _print_params, SGDTowardsModel
+from pokesim.utils import finetune, _print_params, SGDTowardsModel, get_example
 
 
 def get_loss_v(
@@ -27,8 +28,8 @@ def get_loss_v(
     loss_v_list = []
     for v_n, v_target, mask in zip(v_list, v_target_list, mask_list):
         loss_v = torch.unsqueeze(mask, dim=-1) * (v_n - v_target.detach()) ** 2
-        normalization = torch.sum(mask)
-        loss_v = torch.sum(loss_v) / (normalization + (normalization == 0.0))
+        # normalization = torch.sum(mask)
+        loss_v = torch.sum(loss_v)  # / (normalization + (normalization == 0.0))
         loss_v_list.append(loss_v)
     return sum(loss_v_list)
 
@@ -50,8 +51,19 @@ def apply_force_with_threshold(
 def renormalize(loss: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     """The `normalization` is the number of steps over which loss is computed."""
     loss = torch.sum(loss * mask)
-    normalization = torch.sum(mask)
-    return loss / (normalization + (normalization == 0.0))
+    # normalization = torch.sum(mask)
+    return loss  # / (normalization + (normalization == 0.0))
+
+
+def get_loss_entropy(
+    policy: torch.Tensor, log_policy: torch.Tensor, legal: torch.Tensor
+) -> torch.Tensor:
+    loss_entropy = (policy * log_policy).sum(-1)
+    num_legal_actions = legal.sum(-1)
+    denom = torch.log(num_legal_actions)
+    denom = torch.where(num_legal_actions <= 1, 1, denom)
+    loss_entropy = loss_entropy / denom
+    return loss_entropy
 
 
 def get_loss_nerd(
@@ -92,23 +104,6 @@ def get_loss_nerd(
     return sum(loss_pi_list)
 
 
-def get_example(T: int, B: int, device: str):
-    mask = torch.zeros(T, B, 12, dtype=torch.bool, device=device)
-    mask[..., 0] = True
-    return (
-        torch.zeros(T, B, 8, dtype=torch.long, device=device),
-        torch.zeros(T, B, 4, dtype=torch.long, device=device),
-        torch.zeros(T, B, 8, 3, 6, 11, dtype=torch.long, device=device),
-        torch.zeros(T, B, 8, 2, 15, dtype=torch.long, device=device),
-        torch.zeros(T, B, 8, 2, 20, 2, dtype=torch.long, device=device),
-        torch.zeros(T, B, 8, 2, 7, dtype=torch.long, device=device),
-        torch.zeros(T, B, 8, 5, 3, dtype=torch.long, device=device),
-        mask,
-        torch.ones(T, B, 8, 4, 3, dtype=torch.long, device=device),
-        torch.ones(T, B, 8, dtype=torch.bool, device=device),
-    )
-
-
 class Learner:
     def __init__(
         self,
@@ -121,46 +116,52 @@ class Learner:
         self.config = config
         self.use_amp = use_amp
         self._entropy_schedule = EntropySchedule(
-            sizes=self.config.entropy_schedule_size,
+            sizes=[
+                s * self.config.accum_steps for s in self.config.entropy_schedule_size
+            ],
             repeats=self.config.entropy_schedule_repeats,
         )
+
+        # param_keys = list(init.keys())
+        # for key in param_keys:
+        #     if key.startswith("action") or key.startswith("value"):
+        #         init.pop(key)
 
         # Create initial parameters.
         self.params = Model()
         if init is not None:
             self.params.load_state_dict(init)
 
-        self.params.train()
-
         self.extra_config = {
             "num_params": _print_params(self.params)[0],
             "entity_size": self.params.entity_size,
-            "vector1_size": self.params.vector1_size,
-            "vector2_size": self.params.vector2_size,
+            "stream_size": self.params.stream_size,
         }
 
         self.params_actor = deepcopy(self.params).share_memory()
-        self.params_actor.eval()
-
         self.params_target = deepcopy(self.params)
+
+        self.params.train()
+        self.params_actor.eval()
+        self.params_target.train()
+
         if self.config.enable_regularization:
             self.params_prev = deepcopy(self.params)
             self.params_prev_ = deepcopy(self.params)
 
-        self.params_target.train()
-        if self.config.enable_regularization:
             self.params_prev.train()
             self.params_prev_.train()
 
         self.params.to(self.config.learner_device)
         self.params_actor.to(self.config.actor_device)
         self.params_target.to(self.config.learner_device)
+
         if self.config.enable_regularization:
             self.params_prev.to(self.config.learner_device)
             self.params_prev_.to(self.config.learner_device)
 
         if not debug and trace_nets:
-            actor_example = get_example(1, 1, self.config.actor_device)
+            actor_example = get_example(1, 1, device=self.config.actor_device)
             self.params_actor = torch.jit.trace(self.params_actor, actor_example)
 
             with torch.autocast(
@@ -168,7 +169,7 @@ class Learner:
                 dtype=torch.float16,
                 enabled=self.use_amp,
             ):
-                learner_example = get_example(1, 1, self.config.learner_device)
+                learner_example = get_example(1, 1, device=self.config.learner_device)
 
                 self.params = torch.jit.trace(self.params, learner_example)
                 self.params_target = torch.jit.trace(
@@ -194,6 +195,7 @@ class Learner:
 
         self.scaler = torch.cuda.amp.GradScaler(enabled=False)
         self.learner_steps = 0
+        self.scale_factor = 0
 
     def save(self, fpath: str):
         obj = {
@@ -250,29 +252,21 @@ class Learner:
             "legal": batch.legal,
         }
 
-        forward_batch = {
-            key: self._to_torch(state[key])
-            for key in [
-                "turn",
-                "active_moveset",
-                "teams",
-                "side_conditions",
-                "volatile_status",
-                "boosts",
-                "field",
-                "history",
-                "legal",
-            ]
-        }
+        forward_batch = {key: self._to_torch(state[key]) for key in MODEL_INPUT_KEYS}
 
-        params: ModelOutput = self.params(**forward_batch)
+        assert np.all(
+            (np.where(batch.valid, batch.game_id, -1) == batch.game_id[0, None]).mean(0)
+            == batch.valid.mean(0)
+        )
+
+        params = ModelOutput(*self.params(**forward_batch))
 
         with torch.no_grad():
-            params_target: ModelOutput = self.params_target(**forward_batch)
+            params_target = ModelOutput(*self.params_target(**forward_batch))
 
             if self.config.enable_regularization:
-                params_prev: ModelOutput = self.params_prev(**forward_batch)
-                params_prev_: ModelOutput = self.params_prev_(**forward_batch)
+                params_prev = ModelOutput(*self.params_prev(**forward_batch))
+                params_prev_ = ModelOutput(*self.params_prev_(**forward_batch))
 
         # This line creates the reward transform log(pi(a|x)/pi_reg(a|x)).
         # For the stability reasons, reward changes smoothly between iterations.
@@ -299,6 +293,8 @@ class Learner:
         legal = self._to_torch(batch.legal)
 
         action_oh = np.eye(params.policy.shape[-1])[batch.action]
+
+        assert np.all(np.abs(_rewards.sum(0)) == 1)
 
         for player in range(NUM_PLAYERS):
             reward = _rewards[:, :, player]  # [T, B, Player]
@@ -353,17 +349,32 @@ class Learner:
 
         valid_sum = valid.sum()
 
-        loss = loss_v + loss_nerd
+        # heuristic_action = torch.from_numpy(state["heuristic_action"][..., -1])
+        # heuristic_action = heuristic_action.to(self.config.learner_device)
+        # heurisitc_loss = F.cross_entropy(
+        #     torch.flatten(params.logits, 0, 1),
+        #     torch.flatten(heuristic_action, 0, 1),
+        #     reduction="none",
+        # ).view_as(heuristic_action)
+        # heurisitc_loss = (heurisitc_loss * valid).sum() / valid_sum
+
+        loss = (
+            loss_v
+            + loss_nerd
+            # + max(0, (1 - self.learner_steps / 10000)) * heurisitc_loss
+        )
 
         if not self.config.enable_regularization:
-            loss_entropy = (params.policy * params.log_policy).sum(-1)
+            loss_entropy = get_loss_entropy(params.policy, params.log_policy, legal)
             loss_entropy = (loss_entropy * valid).sum() / valid_sum
-            loss = loss + 1e-3 * loss_entropy
+            # loss = loss + 1e-3 * loss_entropy
 
         else:
             with torch.no_grad():
-                loss_entropy = (params.policy * params.log_policy).sum(-1)
+                loss_entropy = get_loss_entropy(params.policy, params.log_policy, legal)
                 loss_entropy = (loss_entropy * valid).sum() / valid_sum
+
+        # loss = loss / self.config.accum_steps
 
         self.scaler.scale(loss).backward()
 
@@ -371,16 +382,23 @@ class Learner:
             "v_loss": loss_v.item(),
             "p_loss": loss_nerd.item(),
             "e_loss": loss_entropy.item(),
-            # "r_loss": loss_dyn.item(),
         }
 
     def update_parameters(self, batch: Batch, alpha: float, update_target_net: bool):
         """A jitted pure-functional part of the `step`."""
 
         loss_vals = self.loss(batch, alpha)
+        self.scale_factor += batch.valid.sum()
 
-        if self.learner_steps % 1 == 0:
+        if (
+            self.learner_steps % self.config.accum_steps == 0
+        ) and self.learner_steps > 0:
             self.scaler.unscale_(self.optimizer)
+
+            for param in self.params.parameters():
+                if param.grad is not None:
+                    param.grad.data /= self.scale_factor
+            self.scale_factor = 0
 
             nn.utils.clip_grad.clip_grad_value_(
                 self.params.parameters(), self.config.clip_gradient

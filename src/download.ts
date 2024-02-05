@@ -133,6 +133,11 @@ function mapId<T extends { id: string; [key: string]: any }>(
     return arr.map((item) => item.id);
 }
 
+const padToken = "<PAD>";
+const unkToken = "<UNK>";
+const nullToken = "<NULL>";
+const extraTokens = [padToken, unkToken];
+
 function formatData(data: GenData) {
     const moveIds = [
         ...data.moves.map((item) => {
@@ -152,10 +157,10 @@ function formatData(data: GenData) {
         "return",
     ];
     return {
-        species: enumerate(mapId(data.species)),
-        moves: enumerate(moveIds),
-        abilities: enumerate(mapId(data.abilities)),
-        items: enumerate(mapId(data.items)),
+        species: enumerate([...extraTokens, ...mapId(data.species)]),
+        moves: enumerate(["<SWITCH>", "<NONE>", ...extraTokens, ...moveIds]),
+        abilities: enumerate([...extraTokens, ...mapId(data.abilities)]),
+        items: enumerate([nullToken, ...extraTokens, ...mapId(data.items)]),
     };
 }
 
@@ -213,18 +218,61 @@ async function main(): Promise<void> {
     let pseudoweather = extractPatterns(src, pseudoWeatherPattern);
     pseudoweather = reduce(pseudoweather);
 
+    const genData = await getGenData(9);
+
     // Create the data object
     const data = {
-        pseudoWeather: enumerate(pseudoweather),
-        volatileStatus: enumerate(volatileStatus),
-        weathers: enumerate(weathers),
-        terrain: enumerate(terrain),
-        sideConditions: enumerate(sideConditions),
-        ...formatData(await getGenData(9)),
+        pseudoWeather: enumerate([nullToken, ...pseudoweather]),
+        volatileStatus: enumerate([nullToken, ...volatileStatus]),
+        weathers: enumerate([nullToken, ...weathers]),
+        terrain: enumerate([nullToken, ...terrain]),
+        sideConditions: enumerate([nullToken, ...sideConditions]),
+        ...formatData(genData),
+        statuses: enumerate([
+            nullToken,
+            "slp",
+            "psn",
+            "brn",
+            "frz",
+            "par",
+            "tox",
+        ]),
+        boosts: enumerate([
+            "atk",
+            "def",
+            "spa",
+            "spd",
+            "spe",
+            "accuracy",
+            "evasion",
+        ]),
     };
 
+    const parentDataDir = `src/data/`;
+
+    if (!fs.existsSync(parentDataDir)) {
+        fs.mkdirSync(parentDataDir, { recursive: true });
+    }
+
     // Write the data to a JSON file
-    fs.writeFileSync("src/data.json", JSON.stringify(data, null, 2));
+    fs.writeFileSync(
+        `${parentDataDir}/data.json`,
+        JSON.stringify(data, null, 2),
+    );
+
+    for (const genNo of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+        const parentDir = `${parentDataDir}/gen${genNo}/`;
+        if (!fs.existsSync(parentDir)) {
+            fs.mkdirSync(parentDir, { recursive: true });
+        }
+        const genData = await getGenData(genNo);
+        for (const [key, value] of Object.entries(genData)) {
+            fs.writeFileSync(
+                `${parentDir}/${key}.json`,
+                JSON.stringify(value, null, 2),
+            );
+        }
+    }
 }
 
 // Execute the main function

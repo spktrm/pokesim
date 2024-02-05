@@ -29,24 +29,26 @@ class RNaDConfig:
     learner_device = "cuda"
 
     # The batch size to use when learning/improving parameters.
-    batch_size: int = 8
+    batch_size: int = 4
+    # The number of steps to accumulate gradients for.
+    accum_steps: int = 16
     # The learning rate for `params`.
-    learning_rate: float = 3e-5
+    learning_rate: float = 5e-5
     # The config related to the ADAM optimizer used for updating `params`.
     adam: AdamConfig = AdamConfig()
     # All gradients values are clipped to [-clip_gradient, clip_gradient].
     clip_gradient: float = 10000
     # The "speed" at which `params_target` is following `params`.
-    target_network_avg: float = 1e-3
+    target_network_avg: float = 1e-2
 
     # RNaD algorithm configuration.
     # Entropy schedule configuration. See EntropySchedule class documentation.
     entropy_schedule_repeats: List[int] = (1,)
-    entropy_schedule_size: List[int] = (10000,)
+    entropy_schedule_size: List[int] = (1000,)
     # The weight of the reward regularisation term in RNaD.
-    eta_reward_transform: float = 0.2
+    eta_reward_transform: float = 1
     nerd: NerdConfig = NerdConfig()
-    c_vtrace: float = 1.0
+    c_vtrace: float = 1
     rho: float = np.inf
 
-    enable_regularization: bool = True
+    enable_regularization: bool = False

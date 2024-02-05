@@ -53,6 +53,8 @@ function isEvalPlayer(workerIndex: number, playerIndex: number): boolean {
                 return true;
             case maxdmgWorkerIndex:
                 return true;
+            case heuristicWorkerIndex:
+                return true;
             default:
                 return false;
         }
@@ -70,11 +72,11 @@ function getEvalAction(
         case defaultWorkerIndex:
             return "default";
         case randomWorkerIndex:
-            return handler.getRandomAction(playerIndex, workerIndex);
+            return handler.getRandomActionString(playerIndex, workerIndex);
         case maxdmgWorkerIndex:
-            return handler.getMaxdmgAction(playerIndex, workerIndex);
+            return handler.getMaxdmgActionString(playerIndex, workerIndex);
         case heuristicWorkerIndex:
-            return handler.getHeuristicAction(playerIndex, workerIndex);
+            return handler.getHeuristicActionString(playerIndex, workerIndex);
         default:
             return "default";
     }
@@ -87,7 +89,7 @@ async function runPlayer(
     p2battle: clientBattle,
 ) {
     // const handler = new BattlesHandler([p1battle, p2battle]);
-    const handler = new BattlesHandler([p1battle]);
+    const handler = new BattlesHandler(playerIndex, [p1battle]);
     const isEval = isEvalPlayer(workerIndex, playerIndex);
 
     const log = [];
@@ -118,6 +120,7 @@ async function runPlayer(
                 console.error(line);
             }
             p1battle.add(line);
+            handler.appendTurnLine(playerIndex, workerIndex, line);
             if (line.startsWith("|win")) {
                 winner = line.split("|")[2];
             }
@@ -125,9 +128,6 @@ async function runPlayer(
                 console.log(line);
             }
             log.push(line);
-            if (isAction(line)) {
-                handler.appendTurnLine(turn, line);
-            }
         }
         if (chunk.includes("|request")) {
             p1battle.update(); // optional, only relevant if stream contains |request|
@@ -139,7 +139,7 @@ async function runPlayer(
             if (isEval) {
                 action = getEvalAction(workerIndex, playerIndex, handler);
             } else {
-                state = handler.getState(0, playerIndex, workerIndex); //, reward);
+                state = handler.getState({ done: 0, playerIndex, workerIndex }); //, reward);
                 parentPort?.postMessage(state, [state.buffer]);
                 const actionChar =
                     await queueManager.queues[playerIndex].dequeue();
@@ -162,7 +162,7 @@ async function runPlayer(
     );
     reward = hp_count[playerIndex] > hp_count[1 - playerIndex] ? 1 : -1;
     // reward = winner === p1battle.sides[playerIndex].name ? 1 : -1;
-    state = handler.getState(1, playerIndex, workerIndex, reward);
+    state = handler.getState({ done: 1, playerIndex, workerIndex, reward });
     parentPort?.postMessage(state, [state.buffer]);
     await queueManager.queues[playerIndex].dequeue();
     p1battle.request = undefined;

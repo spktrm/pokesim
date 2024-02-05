@@ -4,21 +4,23 @@ import os
 os.environ["OMP_NUM_THREADS"] = "1"
 
 import torch
+
 import time
 import wandb
 import threading
 import traceback
 
-from torch import multiprocessing as mp
+import torch.multiprocessing as mp
+from multiprocessing.context import ForkContext
 
 from tqdm import tqdm
-from typing import List
+from typing import Any, Dict, List
 
 from pokesim.data import EVAL_MAPPING, NUM_WORKERS
 from pokesim.structs import Batch, Trajectory
-
 from pokesim.rnad.learner import Learner
 from pokesim.rnad.actor import run_environment
+from pokesim.utils import get_most_recent_file
 
 
 def run_environment_wrapper(*args, **kwargs):
@@ -50,6 +52,33 @@ def learn(learner: Learner, batch: Batch, lock=threading.Lock()):
         return logs
 
 
+class WandbLogger:
+    def __init__(self, accum_steps: int):
+        self.accum_steps = accum_steps
+        self.history = []
+        self.count = 0
+
+    def aggregate(self):
+        agg_log = {}
+        for log in self.history:
+            for key, value in log.items():
+                if key not in agg_log:
+                    agg_log[key] = 0
+                agg_log[key] += value
+        for key, value in agg_log.items():
+            agg_log[key] = value / self.accum_steps
+        agg_log["learner_steps"] = self.history[-1]["learner_steps"]
+        self.history = []
+        return agg_log
+
+    def __call__(self, logs: Dict[str, Any]):
+        self.history.append(logs)
+        if self.count % self.accum_steps == 0:
+            agg_logs = self.aggregate()
+            wandb.log(agg_logs)
+        self.count += 1
+
+
 def learn_loop(
     learner: Learner,
     queue: mp.Queue,
@@ -58,6 +87,7 @@ def learn_loop(
 ):
     progress = tqdm(desc="Learning")
     env_steps = 0
+    wandb_logger = WandbLogger(learner.config.accum_steps)
 
     while True:
         batch = []
@@ -76,36 +106,18 @@ def learn_loop(
         #     condition.notify_all()
 
         if not debug:
-            wandb.log(logs)
+            wandb_logger(logs)
         progress.update(1)
 
 
-def get_most_recent_file(dir_path):
-    # List all files in the directory
-    files = [
-        os.path.join(dir_path, f)
-        for f in os.listdir(dir_path)
-        if os.path.isfile(os.path.join(dir_path, f))
-    ]
-
-    if not files:
-        return None
-
-    # Sort files by creation time
-    most_recent_file = max(files, key=os.path.getctime)
-
-    return most_recent_file
-
-
-def main(ctx, debug):
-    # init = torch.load("ckpts/038847.pt", map_location="cpu")
+def main(ctx: ForkContext = ForkContext(), debug: bool = False):
     # fpath = get_most_recent_file("ckpts")
     # print(fpath)
     # init = torch.load(fpath, map_location="cpu")
     # init = init["params"]
 
     init = None
-    learner = Learner(init=init, debug=debug, trace_nets=False)
+    learner = Learner(init=init, debug=debug, trace_nets=False)  # not debug)
 
     # learner = Learner.from_fpath(fpath, trace_nets=False)
 

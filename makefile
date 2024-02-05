@@ -1,18 +1,17 @@
 start-online: 
-	tsc
+	${MAKE} build
 	node dist/server/online.js 2> debug/server-online.err.log
 
-start-offline: 
-	tsc
-	node dist/server/offline.js 2> debug/server-offline.err.log
-
 start-debug: 
-	tsc
+	${MAKE} build
 	node dist/server/online.js debug 2> debug/server-online.err.log
 
 start-eval:
-	tsc
+	${MAKE} build
 	node dist/eval/worker.js
+
+build:
+	tsc
 
 clean:
 	@echo "Cleaning up..."

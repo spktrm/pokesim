@@ -3,19 +3,20 @@ import os
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
+import torch
 import time
 import wandb
 import threading
 import traceback
 
-import multiprocessing as mp
+import torch.multiprocessing as mp
 
 from tqdm import tqdm
 from typing import List
 
 from pokesim.data import EVAL_MAPPING, NUM_WORKERS
 from pokesim.structs import Batch, Trajectory
-
+from pokesim.utils import get_most_recent_file
 from pokesim.impala.learner import Learner
 from pokesim.impala.actor import run_environment
 
@@ -56,7 +57,7 @@ def learn_loop(learner: Learner, queue: mp.Queue, debug: bool = False):
         batch = Batch.from_trajectories(
             tuple(
                 [
-                    queue.get()  # Trajectory.deserialize(queue.get())
+                    Trajectory.deserialize(queue.get())
                     for _ in range(learner.config.batch_size)
                 ]
             )
@@ -72,10 +73,12 @@ def learn_loop(learner: Learner, queue: mp.Queue, debug: bool = False):
 
 
 def main(debug):
-    # # init = torch.load("ckpts/320895.pt", map_location="cpu")
-    # # init = init["params"]
+    # fpath = get_most_recent_file("ckpts")
+    # print(fpath)
+    # init = torch.load(fpath, map_location="cpu")
+    # init = init["params"]
     init = None
-    learner = Learner(init=init, debug=debug, trace_nets=False)
+    learner = Learner(init=init, debug=debug, trace_nets=False)  # not debug)
     # learner = Learner.from_fpath("ckpts/129303.pt", trace_nets=False)
 
     if not debug:
@@ -104,13 +107,7 @@ def main(debug):
     for worker_index in range(num_workers):
         process = mp.Process(
             target=run_environment_wrapper,
-            args=(
-                worker_index,
-                learner.params_actor,
-                None,  # learner.params_actor_prev,
-                learn_queue,
-                eval_queue,
-            ),
+            args=(worker_index, learner.params_actor, learn_queue, eval_queue),
         )
         process.start()
         processes.append(process)
@@ -132,7 +129,7 @@ def main(debug):
         while True:
             time.sleep(1)
 
-            if (time.time() - prev_time) >= 5 * 60:
+            if (time.time() - prev_time) >= 15 * 60:
                 learner.save(
                     f"ckpts/{learner.learner_steps:06}.pt",
                 )

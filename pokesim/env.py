@@ -4,10 +4,8 @@ import numpy as np
 
 from typing import Callable, Sequence, Tuple, Dict
 
-from pokesim.data import SOCKET_PATH, ENCODING, NUM_HISTORY
+from pokesim.data import SOCKET_PATH, ENCODING, NUM_HISTORY, STATE_SIZE
 from pokesim.structs import Observation, State
-
-STATE_SIZE = 542
 
 
 def read(sock: socket.socket, state_size: int = STATE_SIZE) -> bytes:
@@ -318,7 +316,7 @@ class EnvironmentNoStackSingleStep:
     def process_state(self) -> Tuple[Dict[str, np.ndarray], int, bool, int]:
         reward = np.zeros(1)
 
-        # worker_index = self.observation.get_worker_index()
+        worker_index = self.observation.get_worker_index()
         player_index = self.observation.get_player_index()
         self.current_player = player_index.item()
         done = self.observation.get_done()
@@ -340,6 +338,7 @@ class EnvironmentNoStackSingleStep:
 
         reward = reward.reshape((1,))
         return (
+            worker_index,
             state,
             reward.copy(),  # * is_done,
             bool(done),

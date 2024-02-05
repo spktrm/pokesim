@@ -178,3 +178,5 @@ env/
 
 *.pt
 *.ptm
+
+src/data

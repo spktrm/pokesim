@@ -15,7 +15,7 @@ from pokesim.data import MODEL_INPUT_KEYS, NUM_HISTORY
 from pokesim.nn.model import Model
 from pokesim.structs import Batch, ModelOutput, State
 
-from pokesim.impala.config import ImpalaConfig
+from pokesim.teacher_forcing.config import ImpalaConfig
 from pokesim.utils import _print_params, get_example
 
 
@@ -34,11 +34,11 @@ VTraceReturns = collections.namedtuple("VTraceReturns", "vs pg_advantages")
 
 
 def action_log_probs(policy_logits, actions):
-    return -F.nll_loss(
-        torch.log(torch.flatten(policy_logits, 0, -2)),
-        torch.flatten(actions),
-        reduction="none",
-    ).view_as(actions)
+    return torch.log(
+        torch.gather(
+            torch.flatten(policy_logits, 0, -2), -1, actions.view(-1, 1)
+        ).view_as(actions)
+    )
 
 
 def get_loss_entropy(
@@ -122,15 +122,15 @@ def compute_baseline_loss(advantages: torch.Tensor) -> torch.Tensor:
 
 
 def compute_policy_gradient_loss(
-    log_policy: torch.Tensor, actions: torch.Tensor, advantages: torch.Tensor
+    logits: torch.Tensor, actions: torch.Tensor, legal: torch.Tensor
 ) -> torch.Tensor:
-    cross_entropy = F.nll_loss(
-        torch.flatten(log_policy, 0, 1),
+    cross_entropy = F.cross_entropy(
+        torch.flatten(torch.where(legal, logits, float("-inf")), 0, 1),
         target=torch.flatten(actions, 0, 1),
         reduction="none",
     )
-    cross_entropy = cross_entropy.view_as(advantages)
-    return cross_entropy * advantages.detach()
+    cross_entropy = cross_entropy.view_as(actions)
+    return cross_entropy
 
 
 class Learner:
@@ -241,6 +241,9 @@ class Learner:
 
         forward_batch = {key: self._to_torch(state[key]) for key in MODEL_INPUT_KEYS}
 
+        heuristic_action = torch.from_numpy(state["heuristic_action"][..., -1])
+        heuristic_policy = torch.eye(10)[heuristic_action]
+
         learner_outputs = ModelOutput(*self.params(**forward_batch))
 
         behavior_policy_logits = torch.from_numpy(batch.policy)
@@ -259,7 +262,7 @@ class Learner:
             target_values = learner_target_outputs.value.cpu().squeeze(-1)
             vtrace_returns = from_logits(
                 behavior_policy_logits=behavior_policy_logits,
-                target_policy_logits=target_policy_logits,
+                target_policy_logits=heuristic_policy,
                 actions=action,
                 discounts=discounts,
                 rewards=rewards,
@@ -268,12 +271,13 @@ class Learner:
             )
 
         discounts = discounts.to(self.config.learner_device)
-        pg_advantages = vtrace_returns.pg_advantages.to(self.config.learner_device)
         vs = vtrace_returns.vs.to(self.config.learner_device)
         action = action.to(self.config.learner_device)
 
         pg_loss = compute_policy_gradient_loss(
-            learner_outputs.log_policy, action, pg_advantages
+            learner_outputs.logits - learner_outputs.logits.mean(-1, keepdim=True),
+            heuristic_action.to(self.config.learner_device),
+            forward_batch["legal"],
         )
         baseline_loss = compute_baseline_loss(vs - values)
         entropy_loss = get_loss_entropy(
@@ -283,7 +287,11 @@ class Learner:
         )
 
         discounts_sum = discounts.sum()
-        loss = pg_loss + baseline_loss + 1e-2 * entropy_loss
+        loss = (
+            pg_loss
+            + baseline_loss
+            # + 1e-2 * (entropy_loss + torch.norm(learner_outputs.logits, dim=-1))
+        )
         loss = (loss * discounts).sum()
         loss = loss / discounts_sum
 
@@ -296,7 +304,7 @@ class Learner:
         }
 
     def update_parameters(self, batch: Batch):
-        """A jitted pure-functional part of the ``step`."""
+        """A jitted pure-functional part of the `step`."""
 
         loss_vals = self.loss(batch)
 

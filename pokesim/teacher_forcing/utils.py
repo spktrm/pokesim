@@ -13,14 +13,14 @@ from jax import tree_util as tree
 from functools import partial
 from typing import Any, Dict, List, Tuple
 
-from pokesim.rnad.config import RNaDConfig
+from pokesim.teacher_forcing.config import ImpalaConfig
 from pokesim.structs import ModelOutput
 
 
 def optimized_forward(
     module: nn.Module,
     inputs: Dict[str, torch.Tensor],
-    config: RNaDConfig,
+    config: ImpalaConfig,
 ) -> ModelOutput:
     results = []
 
@@ -288,13 +288,13 @@ def v_trace(
     class LoopVTraceCarry:
         """The carry of the v-trace scan loop."""
 
-        reward: chex.Array
+        reward: np.ndarray
         # The cumulated reward until the end of the episode. Uncorrected (v-trace).
         # Gamma discounted and includes eta_reg_entropy.
-        reward_uncorrected: chex.Array
-        next_value: chex.Array
-        next_v_target: chex.Array
-        importance_sampling: chex.Array
+        reward_uncorrected: np.ndarray
+        next_value: np.ndarray
+        next_v_target: np.ndarray
+        importance_sampling: np.ndarray
 
     init_state_v_trace = LoopVTraceCarry(
         reward=jnp.zeros_like(reward[-1]),
