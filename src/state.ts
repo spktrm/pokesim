@@ -19,19 +19,14 @@ import { BattlesHandler, historyVectorSize } from "./helpers";
 
 let stateSize: number | undefined = undefined;
 
-function formatKey(key: string | undefined): string | undefined {
-    // Convert to lowercase and remove spaces and non-alphanumeric characters
-    if (key === undefined) {
-        return undefined;
-    } else {
-        return key.toLowerCase().replace(/[\W_]+/g, "");
-    }
+function formatKey(key: string): string {
+    return key.startsWith("<") ? key : key.toLowerCase().replace(/[\W_]+/g, "");
 }
 
 function getMappingValue(
     pokemon: AnyObject,
     mapping: AnyObject,
-    key: string
+    key: string,
 ): number {
     let suffix: string = "";
     if (key === "asone") {
@@ -45,33 +40,19 @@ function getMappingValue(
     return mapping[key];
 }
 
-function logKeyError(key: string, mapping: AnyObject) {
-    if (key !== undefined && key !== "") {
-        console.error(`${key} not in ${JSON.stringify(mapping).slice(0, 30)}`);
-    }
-}
-
-const paddingToken = -1;
-const unknownToken = -2;
-const switchToken = -3;
-
 function getMappingValueWrapper(
     pokemon: AnyObject,
     mapping: AnyObject,
-    key: string | undefined
+    key: string,
 ): number {
-    if (key === "") {
-        return unknownToken;
-    } else if (key === undefined) {
-        return paddingToken;
-    }
     const mappedValue = getMappingValue(pokemon, mapping, key);
     if (mappedValue === undefined) {
-        logKeyError(key, mapping);
-        return paddingToken;
-    } else {
-        return mappedValue;
+        throw new Error(
+            `${key} not in ${JSON.stringify(mapping).slice(0, 20)}`,
+        );
     }
+
+    return mappedValue;
 }
 
 export function getPublicPokemon(
@@ -79,7 +60,7 @@ export function getPublicPokemon(
     pokemon: AnyObject,
     active: boolean,
     sideToken: number,
-    buckets: number = 1024
+    buckets: number = 1024,
 ): Int8Array {
     let moveTokens = [];
     let movePpLeft = [];
@@ -91,36 +72,52 @@ export function getPublicPokemon(
 
     for (let i = 0; i < 4; i++) {
         moveTokens.push(
-            getMappingValueWrapper(pokemon, moveMapping, moves[i] ?? "")
+            getMappingValueWrapper(pokemon, moveMapping, moves[i] ?? "<UNK>"),
         );
         const ppUsed = (moveSlots[i] ?? {})?.ppUsed ?? 0;
         movePpLeft.push(ppUsed);
         if (battle !== undefined) {
-            movePpMax[i] = battle.gen.dex.moves.get(moves[i]).pp * (8 / 5);
+            movePpMax[i] = ~~battle.gen.dex.moves.get(moves[i]).pp * (8 / 5);
         }
     }
-    const lastMoveToken =
+
+    const lastMove =
         (pokemon.lastMove === "" && !!pokemon.newlySwitched) ||
         pokemon.lastMove === "switch-in"
-            ? switchToken
-            : getMappingValueWrapper(pokemon, moveMapping, pokemon.lastMove);
+            ? "<SWITCH>"
+            : pokemon.lastMove === "" || pokemon.lastMove === undefined
+              ? "<NONE>"
+              : pokemon.lastMove;
+    const lastMoveToken = getMappingValueWrapper(
+        pokemon,
+        moveMapping,
+        lastMove,
+    );
 
-    const formatedPokemonName = formatKey(pokemon.name);
+    const formatedPokemonName =
+        pokemon.name === undefined ? "<UNK>" : formatKey(pokemon.name);
     const speciesToken = getMappingValueWrapper(
         pokemon,
         pokemonMapping,
-        formatedPokemonName
+        formatedPokemonName,
     );
-    const itemToken = getMappingValueWrapper(
-        pokemon,
-        itemMapping,
-        pokemon.item
-    );
+
+    const item =
+        pokemon.item === "" || pokemon.item === undefined
+            ? "<UNK>"
+            : pokemon.item;
+    const itemToken = getMappingValueWrapper(pokemon, itemMapping, item);
+
+    const ability =
+        pokemon.ability === "" || pokemon.ability === undefined
+            ? "<UNK>"
+            : pokemon.ability;
     const abilityToken = getMappingValueWrapper(
         pokemon,
         abilityMapping,
-        pokemon.ability
+        ability,
     );
+
     const hpToken =
         pokemon.maxhp !== undefined && pokemon.maxhp > 0
             ? Math.floor(buckets * (pokemon.hp / pokemon.maxhp))
@@ -133,7 +130,7 @@ export function getPublicPokemon(
         hpToken,
         active ? 1 : 0,
         pokemon.fainted ? 1 : 0,
-        statusMapping[pokemon.status] ?? paddingToken,
+        statusMapping[pokemon.status],
         lastMoveToken,
         1,
         sideToken,
@@ -149,7 +146,7 @@ export function getPublicPokemon(
 export function getPrivatePokemon(
     battle: Battle | undefined,
     pokemon: AnyObject,
-    buckets: number = 1024
+    buckets: number = 1024,
 ): Int8Array {
     let moveTokens = [];
     let movePpLeft = [];
@@ -161,40 +158,57 @@ export function getPrivatePokemon(
 
     for (let i = 0; i < 4; i++) {
         moveTokens.push(
-            getMappingValueWrapper(pokemon, moveMapping, moves[i] ?? "")
+            getMappingValueWrapper(pokemon, moveMapping, moves[i] ?? "<PAD>"),
         );
         const ppUsed = (moveSlots[i] ?? {})?.ppUsed ?? 0;
         movePpLeft.push(ppUsed);
         if (battle !== undefined) {
-            movePpMax[i] = battle.gen.dex.moves.get(moves[i]).pp * (8 / 5);
+            movePpMax[i] = ~~battle.gen.dex.moves.get(moves[i]).pp * (8 / 5);
         }
     }
 
-    const lastMoveToken =
+    const lastMove =
         (pokemon.lastMove === "" && !!pokemon.newlySwitched) ||
         pokemon.lastMove === "switch-in"
-            ? switchToken
-            : getMappingValueWrapper(pokemon, moveMapping, pokemon.lastMove);
-    const formatedPokemonName = formatKey(pokemon.name);
+            ? "<SWITCH>"
+            : pokemon.lastMove === "" || pokemon.lastMove === undefined
+              ? "<NONE>"
+              : pokemon.lastMove;
+    const lastMoveToken = getMappingValueWrapper(
+        pokemon,
+        moveMapping,
+        lastMove,
+    );
+
+    const formatedPokemonName =
+        pokemon.name === undefined ? "<UNK>" : formatKey(pokemon.name);
     const speciesToken = getMappingValueWrapper(
         pokemon,
         pokemonMapping,
-        formatedPokemonName
+        formatedPokemonName,
     );
-    const itemToken = getMappingValueWrapper(
-        pokemon,
-        itemMapping,
-        pokemon.item === "" ? undefined : pokemon.item
-    );
+
+    const item =
+        pokemon.item === "" || pokemon.item === undefined
+            ? "<UNK>"
+            : pokemon.item;
+    const itemToken = getMappingValueWrapper(pokemon, itemMapping, item);
+
+    const ability =
+        pokemon.ability === "" || pokemon.ability === undefined
+            ? "<UNK>"
+            : pokemon.ability;
     const abilityToken = getMappingValueWrapper(
         pokemon,
         abilityMapping,
-        pokemon.ability
+        ability,
     );
+
     const hpToken =
         pokemon.maxhp !== undefined
             ? Math.floor(buckets * (pokemon.hp / pokemon.maxhp))
             : buckets;
+
     const pokemonArray = [
         speciesToken,
         itemToken,
@@ -202,7 +216,7 @@ export function getPrivatePokemon(
         hpToken,
         pokemon.active ? 1 : 0,
         pokemon.fainted ? 1 : 0,
-        statusMapping[pokemon.status] ?? paddingToken,
+        statusMapping[pokemon.status],
         lastMoveToken,
         0,
         1,
@@ -215,29 +229,55 @@ export function getPrivatePokemon(
     return new Int8Array(new Int16Array(pokemonArray).buffer);
 }
 
-const paddedPokemonObj = { moves: [] };
+const paddedPokemonObj = {
+    name: "<PAD>",
+    item: "<PAD>",
+    ability: "<PAD>",
+    lastMove: "<PAD>",
+    status: "<NULL>",
+    moves: ["<PAD>", "<PAD>", "<PAD>", "<PAD>"],
+};
 const paddedPokemonArray = getPublicPokemon(
     undefined,
     paddedPokemonObj,
     false,
-    1
+    1,
 );
 
-const unknownPokemonObj = { name: "", moves: [] };
+const unknownPokemonObj = {
+    name: "<UNK>",
+    item: "<UNK>",
+    ability: "<UNK>",
+    lastMove: "<UNK>",
+    status: "<NULL>",
+    moves: ["<UNK>", "<UNK>", "<UNK>", "<UNK>"],
+};
 const unknownPokemonArray0 = getPublicPokemon(
     undefined,
     unknownPokemonObj,
     false,
-    0
+    0,
 );
 const unknownPokemonArray1 = getPublicPokemon(
     undefined,
     unknownPokemonObj,
     false,
-    1
+    1,
 );
 
 const boostsEntries = Object.entries(boostsMapping);
+
+const pseudoWeatherOffset = 0;
+const pseudoWeatherVectorSize = 3 * Object.values(pseudoWeatherMapping).length;
+
+const weatherOffset = pseudoWeatherOffset + pseudoWeatherVectorSize;
+const weatherVectorSize = 3;
+
+const terrainOffset = weatherOffset + weatherVectorSize;
+const terrainVectorSize = 3;
+
+const fieldVectorLength =
+    pseudoWeatherVectorSize + weatherVectorSize + terrainVectorSize;
 
 export class Int8State {
     handler: BattlesHandler;
@@ -271,14 +311,14 @@ export class Int8State {
 
     getBoosts(actives: (Pokemon | null)[]): Int8Array {
         const boostsVector = new Int8Array(
-            actives.length * boostsEntries.length
+            actives.length * boostsEntries.length,
         );
         boostsVector.fill(0);
 
         for (const [activeIndex, activePokemon] of actives.entries()) {
             if (activePokemon !== null) {
                 for (const [boost, value] of Object.entries(
-                    activePokemon.boosts
+                    activePokemon.boosts,
                 )) {
                     boostsVector[
                         activeIndex + boostsMapping[boost as BoostID]
@@ -289,24 +329,57 @@ export class Int8State {
         return boostsVector;
     }
 
-    getField(): Int8Array {
+    getFieldVectors(): Int8Array[] {
         const field = this.handler.getMyBattle().field;
-        const fieldVector = new Int8Array(9 + 6);
-        fieldVector.fill(-1);
-        for (const [index, [name, pseudoWeather]] of Object.entries(
-            field.pseudoWeather
-        ).entries()) {
-            fieldVector[index] = pseudoWeatherMapping[name];
-            fieldVector[index + 1] = pseudoWeather.minDuration;
-            fieldVector[index + 2] = pseudoWeather.maxDuration;
+
+        const pseudoWeatherVector = new Int8Array(pseudoWeatherVectorSize);
+        pseudoWeatherVector.fill(0);
+
+        const weatherVector = new Int8Array(weatherVectorSize);
+        weatherVector.fill(0);
+
+        const terrainVector = new Int8Array(terrainVectorSize);
+        terrainVector.fill(0);
+
+        if (Object.keys(field.pseudoWeather).length > 0) {
+            for (const [name, datum] of Object.entries(field.pseudoWeather)) {
+                const vectorIndex = pseudoWeatherMapping[name];
+                pseudoWeatherVector[vectorIndex] = 1;
+                pseudoWeatherVector[vectorIndex + 1] = datum.minDuration;
+                pseudoWeatherVector[vectorIndex + 2] = datum.maxDuration;
+            }
+        } else {
+            const vectorIndex = pseudoWeatherMapping["<NULL>"];
+            pseudoWeatherVector[vectorIndex] = 1;
+            // pseudoWeatherVector[vectorIndex + 1] = 0;
+            // pseudoWeatherVector[vectorIndex + 2] = 0;
         }
-        fieldVector[9] = weatherMapping[field.weatherState.id] ?? -1;
-        fieldVector[10] = field.weatherState.minDuration;
-        fieldVector[11] = field.weatherState.maxDuration;
-        fieldVector[12] = terrainMapping[field.terrainState.id] ?? -1;
-        fieldVector[13] = field.terrainState.minDuration;
-        fieldVector[14] = field.terrainState.maxDuration;
-        return fieldVector;
+
+        if (field.weather !== undefined) {
+            const vectorIndex = 3 * weatherMapping[field.weatherState.id];
+            weatherVector[vectorIndex] = 1;
+            weatherVector[vectorIndex + 1] = field.weatherState.minDuration;
+            weatherVector[vectorIndex + 2] = field.weatherState.maxDuration;
+        } else {
+            const vectorIndex = weatherMapping["<NULL>"];
+            weatherVector[vectorIndex] = 1;
+            // weatherVector[vectorIndex + 1] = 0;
+            // weatherVector[vectorIndex + 2] = 0;
+        }
+
+        if (field.terrain !== undefined) {
+            const vectorIndex = 3 * terrainMapping[field.terrainState.id];
+            terrainVector[vectorIndex] = 1;
+            terrainVector[vectorIndex + 1] = field.terrainState.minDuration;
+            terrainVector[vectorIndex + 2] = field.terrainState.maxDuration;
+        } else {
+            const vectorIndex = terrainMapping["<NULL>"];
+            terrainVector[vectorIndex] = 1;
+            // terrainVector[vectorIndex + 1] = 0;
+            // terrainVector[vectorIndex + 2] = 0;
+        }
+
+        return [pseudoWeatherVector, weatherVector, terrainVector];
     }
 
     getMyVolatileStatus(): Int8Array {
@@ -319,17 +392,24 @@ export class Int8State {
     }
 
     getVolatileStatus(actives: (Pokemon | null)[]): Int8Array {
-        const volatileStatusVector = new Int8Array(actives.length * 20);
-        volatileStatusVector.fill(-1);
+        const volatileStatusVector = new Int8Array(
+            actives.length * Object.values(volatileStatusMapping).length,
+        );
+        volatileStatusVector.fill(0);
         for (const [activeIndex, activePokemon] of actives.entries()) {
             if (activePokemon !== null) {
-                for (const [volatileIndex, volatileStatus] of Object.values(
-                    activePokemon.volatiles
-                ).entries()) {
-                    volatileStatusVector[activeIndex + volatileIndex] =
-                        volatileStatusMapping[volatileStatus.id];
-                    volatileStatusVector[activeIndex + volatileIndex + 1] =
-                        volatileStatus.level ?? 0;
+                if (Object.keys(activePokemon.volatiles).length > 0) {
+                    for (const volatileStatus of Object.values(
+                        activePokemon.volatiles,
+                    )) {
+                        const vectorIndex =
+                            volatileStatusMapping[volatileStatus.id];
+                        volatileStatusVector[activeIndex + vectorIndex] =
+                            volatileStatus.level ?? 0;
+                    }
+                } else {
+                    const vectorIndex = volatileStatusMapping["<NULL>"];
+                    volatileStatusVector[activeIndex + vectorIndex] = 1;
                 }
             }
         }
@@ -347,11 +427,19 @@ export class Int8State {
 
     getSideConditions(sideConditions: SideConditions): Int8Array {
         const sideConditionVector = new Int8Array(
-            Object.keys(sideConditionsMapping).length
+            Object.keys(sideConditionsMapping).length,
         );
-        for (const [name, sideCondition] of Object.entries(sideConditions)) {
-            sideConditionVector[sideConditionsMapping[name]] =
-                sideCondition.level;
+        sideConditionVector.fill(0);
+        if (Object.keys(sideConditions).length > 0) {
+            for (const [name, sideCondition] of Object.entries(
+                sideConditions,
+            )) {
+                const vectorIndex = sideConditionsMapping[name];
+                sideConditionVector[vectorIndex] = sideCondition.level;
+            }
+        } else {
+            const vectorIndex = sideConditionsMapping["<NULL>"];
+            sideConditionVector[vectorIndex] = 1;
         }
         return sideConditionVector;
     }
@@ -404,18 +492,18 @@ export class Int8State {
                     if (isMe) {
                         teamArray.set(
                             unknownPokemonArray1,
-                            i * paddedPokemonArray.length
+                            i * paddedPokemonArray.length,
                         );
                     } else {
                         teamArray.set(
                             unknownPokemonArray0,
-                            i * paddedPokemonArray.length
+                            i * paddedPokemonArray.length,
                         );
                     }
                 } else {
                     teamArray.set(
                         paddedPokemonArray,
-                        i * paddedPokemonArray.length
+                        i * paddedPokemonArray.length,
                     );
                 }
             } else {
@@ -425,9 +513,9 @@ export class Int8State {
                         this.handler.getMyBattle(),
                         team[i],
                         activeIdents.includes(ident),
-                        isMe
+                        isMe,
                     ),
-                    i * paddedPokemonArray.length
+                    i * paddedPokemonArray.length,
                 );
             }
         }
@@ -451,7 +539,7 @@ export class Int8State {
             };
             teamArray.set(
                 getPrivatePokemon(this.handler.getMyBattle(), amalgam),
-                i * paddedPokemonArray.length
+                i * paddedPokemonArray.length,
             );
         }
         return teamArray;
@@ -537,7 +625,7 @@ export class Int8State {
         // let offset = 0;
 
         for (const [key, moveStore] of Object.entries(
-            this.handler.damageInfos
+            this.handler.damageInfos,
         )) {
             if (moveStore.hasVector) {
                 continue;
@@ -560,6 +648,12 @@ export class Int8State {
             // const isMe = this.playerIndex === userSide ? 1 : 0;
             // const userProps = this.handler.getPokemon(userSide, user);
             // const targetProps = this.handler.getPokemon(targetSide, target);
+
+            const action =
+                moveName === "switch-in"
+                    ? "<SWITCH>"
+                    : formatKey(moveName ?? "") ?? "";
+
             const moveArray = new Int8Array(
                 new Int16Array([
                     1,
@@ -570,11 +664,9 @@ export class Int8State {
                     Math.floor(2047 * (1 + Math.max(-1, Math.min(1, damage)))),
                     moveCounter,
                     switchCounter,
-                    moveName === "switch-in"
-                        ? switchToken
-                        : moveMapping[formatKey(moveName) ?? ""],
+                    moveMapping[action],
                     order,
-                ]).buffer
+                ]).buffer,
             );
             // const history: Array<Int8Array> = [
             //     contextVector,
@@ -597,23 +689,16 @@ export class Int8State {
         }
     }
 
-    getContextVector(): Int8Array {
-        const context = [
+    getContextVectors(): Int8Array[] {
+        return [
             this.getMySideConditions(),
             this.getOppSideConditions(),
             this.getMyVolatileStatus(),
             this.getOppVolatileStatus(),
             this.getMyBoosts(),
             this.getOppBoosts(),
-            this.getField(),
+            ...this.getFieldVectors(),
         ];
-        const contextVector = new Int8Array(99);
-        let contextOffset = 0;
-        for (const datum of context) {
-            contextVector.set(datum, contextOffset);
-            contextOffset += datum.length;
-        }
-        return contextVector;
     }
 
     getState(): Int8Array {
@@ -628,7 +713,7 @@ export class Int8State {
         //       );
         const legalMask = this.getLegalMask();
 
-        const contextVector = this.getContextVector();
+        const contextVectors = this.getContextVectors();
 
         this.updatetHistoryVectors();
 
@@ -640,7 +725,7 @@ export class Int8State {
                 ? damageInfos.map(({ vector }) => vector)
                 : [];
         const historyPadding = new Int8Array(
-            historyVectorSize * (20 - historyVectors.length)
+            historyVectorSize * (20 - historyVectors.length),
         );
         historyPadding.fill(0);
 
@@ -656,7 +741,7 @@ export class Int8State {
             this.getMyPrivateTeam(),
             this.getMyPublicTeam(),
             this.getOppTeam(),
-            contextVector,
+            ...contextVectors,
             ...historyVectors,
             historyPadding,
             legalMask,
@@ -672,10 +757,11 @@ export class Int8State {
             stateSize = data.reduce(
                 (accumulator, currentValue) =>
                     accumulator + currentValue.length,
-                0
+                0,
             );
         }
         const state = new Int8Array(stateSize);
+        // state.set(new Int8Array(Int32Array.from([stateSize - 4]).buffer));
         let offset = 0;
         for (const datum of data) {
             state.set(datum, offset);

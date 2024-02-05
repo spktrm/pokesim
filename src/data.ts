@@ -11,7 +11,7 @@ const formatDex = generations.dex.mod(formatId.slice(0, 4) as dex.GenID);
 const maxPP = Object.fromEntries(
     (formatDex.moves as any)
         .all()
-        .map((move: { id: any; pp: number }) => [move.id, (move.pp * 8) / 5])
+        .map((move: { id: any; pp: number }) => [move.id, (move.pp * 8) / 5]),
 );
 
 const typeMapping = Object.fromEntries(
@@ -24,10 +24,10 @@ const typeMapping = Object.fromEntries(
                 index,
                 damageTaken,
             },
-        ])
+        ]),
 );
 
-const data = fs.readFileSync("./src/data.json");
+const data = fs.readFileSync("./src/data/data.json");
 const {
     sideConditions: sideConditionsMapping,
     weathers: weatherMapping,
@@ -38,26 +38,9 @@ const {
     items: itemMapping,
     abilities: abilityMapping,
     moves: moveMapping,
+    statuses: statusMapping,
+    boosts: boostsMapping,
 } = JSON.parse(data.toString());
-
-const statusMapping: { [k: string]: number } = {
-    slp: 0,
-    psn: 1,
-    brn: 2,
-    frz: 3,
-    par: 4,
-    tox: 5,
-};
-
-const boostsMapping = {
-    atk: 0,
-    def: 1,
-    spa: 2,
-    spd: 3,
-    spe: 4,
-    accuracy: 5,
-    evasion: 6,
-};
 
 export {
     pokemonMapping,

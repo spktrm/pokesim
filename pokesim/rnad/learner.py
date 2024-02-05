@@ -395,10 +395,10 @@ class Learner:
         ) and self.learner_steps > 0:
             self.scaler.unscale_(self.optimizer)
 
-            for param in self.params.parameters():
-                if param.grad is not None:
-                    param.grad.data /= self.scale_factor
-            self.scale_factor = 0
+            # for param in self.params.parameters():
+            #     if param.grad is not None:
+            #         param.grad.data /= self.scale_factor
+            # self.scale_factor = 0
 
             nn.utils.clip_grad.clip_grad_value_(
                 self.params.parameters(), self.config.clip_gradient

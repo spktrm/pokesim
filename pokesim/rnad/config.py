@@ -31,9 +31,9 @@ class RNaDConfig:
     # The batch size to use when learning/improving parameters.
     batch_size: int = 4
     # The number of steps to accumulate gradients for.
-    accum_steps: int = 16
+    accum_steps: int = 1
     # The learning rate for `params`.
-    learning_rate: float = 1e-3
+    learning_rate: float = 5e-5
     # The config related to the ADAM optimizer used for updating `params`.
     adam: AdamConfig = AdamConfig()
     # All gradients values are clipped to [-clip_gradient, clip_gradient].

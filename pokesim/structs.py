@@ -10,17 +10,24 @@ from typing import List, Dict, NamedTuple, Sequence, Tuple
 from pokesim.data import (
     HEURISTIC_OFFSET,
     HISTORY_BOOSTS_OFFSET,
-    HISTORY_FIELD_OFFSET,
+    HISTORY_PSEUDOWEATHER_OFFSET,
     HISTORY_SIDE_CONDITION_OFFSET,
+    HISTORY_TERRAIN_OFFSET,
     HISTORY_VOLATILE_STATUS_OFFSET,
+    HISTORY_WEATHER_OFFSET,
+    PSEUDOWEATHER_OFFSET,
+    PSEUDOWEATHER_SIZE,
     TEAM_OFFSET,
-    FIELD_OFFSET,
     BOOSTS_OFFSET,
     HISTORY_OFFSET,
     SIDE_CONDITION_OFFSET,
+    TERRAIN_OFFSET,
+    TERRAIN_SIZE,
     TURN_MAX,
     TURN_OFFSET,
     VOLATILE_STATUS_OFFSET,
+    WEATHER_OFFSET,
+    WEATHER_SIZE,
 )
 
 
@@ -207,52 +214,77 @@ class State(NamedTuple):
     def get_volatile_status(self, leading_dims: Sequence[int]):
         return (
             self.raw[..., VOLATILE_STATUS_OFFSET:BOOSTS_OFFSET]
-            .reshape(*leading_dims, 2, -1, 2)
+            .reshape(*leading_dims, 2, -1)
             .astype(int)
         )
 
     def get_boosts(self, leading_dims: Sequence[int]):
         return (
-            self.raw[..., BOOSTS_OFFSET:FIELD_OFFSET]
+            self.raw[..., BOOSTS_OFFSET:PSEUDOWEATHER_OFFSET]
             .reshape(*leading_dims, 2, -1)
             .astype(int)
         )
 
-    def get_field(self, leading_dims: Sequence[int]):
+    def get_pseudoweather(self, leading_dims: Sequence[int]):
         return (
-            self.raw[..., FIELD_OFFSET:HISTORY_OFFSET]
-            .reshape(*leading_dims, 5, 3)
+            self.raw[..., PSEUDOWEATHER_OFFSET:WEATHER_OFFSET]
+            .reshape(*leading_dims, -1, 3)
+            .astype(int)
+        )
+
+    def get_weather(self, leading_dims: Sequence[int]):
+        return (
+            self.raw[..., WEATHER_OFFSET:TERRAIN_OFFSET]
+            .reshape(*leading_dims, WEATHER_SIZE)
+            .astype(int)
+        )
+
+    def get_terrain(self, leading_dims: Sequence[int]):
+        return (
+            self.raw[..., TERRAIN_OFFSET:HISTORY_OFFSET]
+            .reshape(*leading_dims, TERRAIN_SIZE)
             .astype(int)
         )
 
     def _get_history(self, leading_dims: Sequence[int]):
         history = self.raw[..., HISTORY_OFFSET:].view(np.int8)
-        history = history.reshape(*leading_dims, -1, 215)
-        history_right = history[..., 99:].view(np.int16)
-        return history[..., :99], history_right[..., :-10], history_right[..., -10:]
+        history = history.reshape(*leading_dims, -1, 411)
+        history_right = history[..., 295:].view(np.int16)
+        return history[..., :295], history_right[..., :-10], history_right[..., -10:]
 
     def get_history(self, leading_dims: Sequence[int]):
         history_context, history_entities, history_stats = self._get_history(
             leading_dims
         )
+        num_history = 20
         return {
             "history_side_conditions": history_context[
                 ..., HISTORY_SIDE_CONDITION_OFFSET:HISTORY_VOLATILE_STATUS_OFFSET
             ]
-            .reshape(*leading_dims, 20, 2, -1)
+            .reshape(*leading_dims, num_history, 2, -1)
             .astype(int),
             "history_volatile_status": history_context[
                 ..., HISTORY_VOLATILE_STATUS_OFFSET:HISTORY_BOOSTS_OFFSET
             ]
-            .reshape(*leading_dims, 20, 2, -1, 2)
+            .reshape(*leading_dims, num_history, 2, -1)
             .astype(int),
             "history_boosts": history_context[
-                ..., HISTORY_BOOSTS_OFFSET:HISTORY_FIELD_OFFSET
+                ..., HISTORY_BOOSTS_OFFSET:HISTORY_PSEUDOWEATHER_OFFSET
             ]
-            .reshape(*leading_dims, 20, 2, -1)
+            .reshape(*leading_dims, num_history, 2, -1)
             .astype(int),
-            "history_field": history_context[..., HISTORY_FIELD_OFFSET:]
-            .reshape(*leading_dims, 20, 5, 3)
+            "history_pseudoweather": history_context[
+                ..., HISTORY_PSEUDOWEATHER_OFFSET:HISTORY_WEATHER_OFFSET
+            ]
+            .reshape(*leading_dims, num_history, -1, 3)
+            .astype(int),
+            "history_weather": history_context[
+                ..., HISTORY_WEATHER_OFFSET:HISTORY_TERRAIN_OFFSET
+            ]
+            .reshape(*leading_dims, num_history, WEATHER_SIZE)
+            .astype(int),
+            "history_terrain": history_context[..., HISTORY_TERRAIN_OFFSET:]
+            .reshape(*leading_dims, num_history, TERRAIN_SIZE)
             .astype(int),
             "history_entities": history_entities.reshape(
                 *history_entities.shape[:-1], 2, -1
@@ -271,7 +303,9 @@ class State(NamedTuple):
         side_conditions_enc = self.get_side_conditions(leading_dims)
         volatile_status_enc = self.get_volatile_status(leading_dims)
         boosts_enc = self.get_boosts(leading_dims)
-        field_enc = self.get_field(leading_dims)
+        pseudoweather_enc = self.get_pseudoweather(leading_dims)
+        weather_enc = self.get_weather(leading_dims)
+        terrain_enc = self.get_terrain(leading_dims)
         history_enc = self.get_history(leading_dims)
         return {
             "raw": self.raw,
@@ -281,7 +315,9 @@ class State(NamedTuple):
             "side_conditions": side_conditions_enc,
             "volatile_status": volatile_status_enc,
             "boosts": boosts_enc,
-            "field": field_enc,
+            "pseudoweather": pseudoweather_enc,
+            "weather": weather_enc,
+            "terrain": terrain_enc,
             **history_enc,
         }
 

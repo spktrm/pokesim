@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 from pokesim.data import (
+    MOVES_STOI,
     NUM_ABILITIES,
     NUM_BOOSTS,
     NUM_ITEMS,
@@ -13,9 +14,11 @@ from pokesim.data import (
     NUM_TERRAIN,
     NUM_VOLATILE_STATUS,
     NUM_WEATHER,
+    SPECIES_STOI,
 )
 
 from typing import Tuple
+from pokesim.embeddings.species import construct_species_encoding
 
 from pokesim.structs import ModelOutput
 from pokesim.utils import _legal_log_policy, _legal_policy
@@ -33,9 +36,17 @@ from pokesim.nn.modules import (
 # from pokemb.mod import ComponentEmbedding
 
 
-PADDING_TOKEN = -1
-UNKNOWN_TOKEN = -2
-SWITCH_TOKEN = -3
+PADDING_TOKEN = SPECIES_STOI["<PAD>"]
+UNKNOWN_TOKEN = SPECIES_STOI["<UNK>"]
+SWITCH_TOKEN = MOVES_STOI["<SWITCH>"]
+
+
+def get_onehot_encoding(num_embeddings: int):
+    return nn.Embedding.from_pretrained(torch.eye(num_embeddings))
+
+
+def get_species_encodng():
+    return nn.Embedding.from_pretrained(torch.from_numpy(construct_species_encoding(3)))
 
 
 class Encoder(nn.Module):
@@ -48,18 +59,18 @@ class Encoder(nn.Module):
     ):
         super().__init__()
 
-        self.species_onehot = nn.Embedding.from_pretrained(torch.eye(NUM_SPECIES + 2))
-        self.item_onehot = nn.Embedding.from_pretrained(torch.eye(NUM_ITEMS + 2))
-        self.ability_onehot = nn.Embedding.from_pretrained(torch.eye(NUM_ABILITIES + 2))
-        self.moves_onehot = nn.Embedding.from_pretrained(torch.eye(NUM_MOVES + 3))
-        self.hp_onehot = nn.Embedding.from_pretrained(torch.eye(65))
-        self.status_onehot = nn.Embedding.from_pretrained(torch.eye(NUM_STATUS + 1))
-        self.active_onehot = nn.Embedding.from_pretrained(torch.eye(2))
-        self.fainted_onehot = nn.Embedding.from_pretrained(torch.eye(2))
-        self.side_onehot = nn.Embedding.from_pretrained(torch.eye(2))
-        self.public_onehot = nn.Embedding.from_pretrained(torch.eye(2))
-        self.sleep_turns_onehot = nn.Embedding.from_pretrained(torch.eye(4))
-        self.toxic_turns_onehot = nn.Embedding.from_pretrained(torch.eye(6))
+        self.species_onehot = get_species_encodng()
+        self.item_onehot = get_onehot_encoding(NUM_ITEMS)
+        self.ability_onehot = get_onehot_encoding(NUM_ABILITIES)
+        self.moves_onehot = get_onehot_encoding(NUM_MOVES)
+        self.hp_onehot = get_onehot_encoding(65)
+        self.status_onehot = get_onehot_encoding(NUM_STATUS)
+        self.active_onehot = get_onehot_encoding(2)
+        self.fainted_onehot = get_onehot_encoding(2)
+        self.side_onehot = get_onehot_encoding(2)
+        self.public_onehot = get_onehot_encoding(2)
+        self.sleep_turns_onehot = get_onehot_encoding(4)
+        self.toxic_turns_onehot = get_onehot_encoding(6)
 
         self.entity_cls = _layer_init(nn.Parameter(torch.randn(1, 1, 4, entity_size)))
         self.history_cls = _layer_init(nn.Parameter(torch.randn(1, 1, 4, entity_size)))
@@ -84,35 +95,46 @@ class Encoder(nn.Module):
             MLP([entity_size, entity_size, entity_size]),
         )
 
-        self.is_critical_onehot = nn.Embedding.from_pretrained(torch.eye(2))
-        self.effectiveness_onehot = nn.Embedding.from_pretrained(torch.eye(5))
-        self.missed_onehot = nn.Embedding.from_pretrained(torch.eye(2))
-        self.target_fainted_onehot = nn.Embedding.from_pretrained(torch.eye(2))
-        self.damage_value_onehot = nn.Embedding.from_pretrained(torch.eye(64))
-        self.action_counter_onehot = nn.Embedding.from_pretrained(torch.eye(4))
-        self.order_onehot = nn.Embedding.from_pretrained(torch.eye(20))
+        self.is_critical_onehot = get_onehot_encoding(2)
+        self.effectiveness_onehot = get_onehot_encoding(5)
+        self.missed_onehot = get_onehot_encoding(2)
+        self.target_fainted_onehot = get_onehot_encoding(2)
+        self.damage_value_onehot = get_onehot_encoding(64)
+        self.action_counter_onehot = get_onehot_encoding(4)
+        self.order_onehot = get_onehot_encoding(20)
 
-        self.boosts_onehot = nn.Embedding.from_pretrained(torch.eye(13))
+        self.boosts_onehot = get_onehot_encoding(13)
 
-        self.spikes_onehot = nn.Embedding.from_pretrained(torch.eye(4)[..., 1:])
-        self.tspikes_onehot = nn.Embedding.from_pretrained(torch.eye(3)[..., 1:])
-        self.volatile_status_onehot = nn.Embedding.from_pretrained(
-            torch.eye(NUM_VOLATILE_STATUS + 1)[..., 1:]
-        )
+        self.spikes_onehot = get_onehot_encoding(4)
+        self.tspikes_onehot = get_onehot_encoding(3)
+        # self.volatile_status_onehot = get_onehot_embedding(NUM_VOLATILE_STATUS)
 
-        self.pseudoweathers_onehot = nn.Embedding.from_pretrained(
-            torch.eye(NUM_PSEUDOWEATHER + 1)[..., 1:]
+        # self.pseudoweathers_onehot = get_onehot_embedding(NUM_PSEUDOWEATHER)
+        self.weathers_onehot = get_onehot_encoding(NUM_WEATHER)
+        self.terrain_onehot = get_onehot_encoding(NUM_TERRAIN)
+        self.min_max_duration_onehot = get_onehot_encoding(10)
+
+        field_size = (
+            NUM_PSEUDOWEATHER
+            + (
+                self.weathers_onehot.weight.shape[-1]
+                + 2 * self.min_max_duration_onehot.weight.shape[-1]
+            )
+            + (
+                self.terrain_onehot.weight.shape[-1]
+                + 2 * self.min_max_duration_onehot.weight.shape[-1]
+            )
         )
-        self.weathers_onehot = nn.Embedding.from_pretrained(
-            torch.eye(NUM_WEATHER + 1)[..., 1:]
-        )
-        self.terrain_onehot = nn.Embedding.from_pretrained(
-            torch.eye(NUM_TERRAIN + 1)[..., 1:]
-        )
-        field_size = NUM_PSEUDOWEATHER + NUM_WEATHER + NUM_TERRAIN
 
         context_size = (
-            2 * (12 * NUM_BOOSTS + NUM_VOLATILE_STATUS + NUM_SIDE_CONDITIONS + 2 + 3)
+            2
+            * (
+                NUM_BOOSTS * self.boosts_onehot.weight.shape[-1]
+                + NUM_VOLATILE_STATUS
+                + NUM_SIDE_CONDITIONS
+                + self.spikes_onehot.weight.shape[-1]
+                + self.tspikes_onehot.weight.shape[-1]
+            )
             + field_size
         )
         stats_size = (
@@ -164,26 +186,22 @@ class Encoder(nn.Module):
         self.history_context_mlp = MLP([2 * entity_size, entity_size])
 
     def forward_entities(self, entities: torch.Tensor) -> torch.Tensor:
-        entitiesp1 = entities + 1
-        entitiesp2 = entities + 2
-        entitiesp3 = entities + 3
-
-        species_token = entitiesp2[..., 0]
-        item_token = entitiesp2[..., 1]
-        ability_token = entitiesp2[..., 2]
+        species_token = entities[..., 0]
+        item_token = entities[..., 1]
+        ability_token = entities[..., 2]
         hp = entities[..., 3].clamp(0, 1024)
         hp_bucket = torch.floor(hp * 64 / 1024).to(torch.long)
         active_token = entities[..., 4]
         fainted_token = entities[..., 5]
-        status_token = entitiesp1[..., 6]
-        last_move_token = entitiesp3[..., 7]
+        status_token = entities[..., 6]
+        last_move_token = entities[..., 7]
         public_token = entities[..., 8]
         side_token = entities[..., 9]
         sleep_turns_token = entities[..., 10].clamp(min=0, max=3)
         toxic_turns_token = entities[..., 11].clamp(min=0, max=5)
         move_pp_left = entities[..., 12:16]
         move_pp_max = entities[..., 16:20]
-        move_tokens = entitiesp3[..., 20:]
+        move_tokens = entities[..., 20:]
 
         species_onehot = self.species_onehot(species_token)
         item_onehot = self.item_onehot(item_token)
@@ -227,8 +245,6 @@ class Encoder(nn.Module):
         return torch.cat((expanded_cls, embeddings), dim=-2)
 
     def forward_history_stats(self, stats: torch.Tensor) -> torch.Tensor:
-        statsp3 = stats + 3
-
         is_critical_token = stats[..., 0].clamp(min=0)
         effectiveness_token = stats[..., 1].clamp(min=0)
         missed_token = stats[..., 2].clamp(min=0)
@@ -239,7 +255,7 @@ class Encoder(nn.Module):
         )
         move_counter = stats[..., 5].clamp(min=0, max=3)
         switch_counter = stats[..., 6].clamp(min=0, max=3)
-        move_token = statsp3[..., 7]
+        move_token = stats[..., 7]
         order = stats[..., 8].max(-1, keepdim=True).values - stats[..., 8]
 
         is_critical_onehot = self.is_critical_onehot(is_critical_token)
@@ -273,69 +289,75 @@ class Encoder(nn.Module):
         return self.history_stats_lin(onehot)
 
     def encode_side_conditions(self, side_conditions: torch.Tensor) -> torch.Tensor:
-        spikes_token = side_conditions[..., 9].clamp(
-            min=0, max=self.spikes_onehot.weight.shape[-1] - 1
-        )
-        tspikes_token = side_conditions[..., 13].clamp(
-            min=0, max=self.tspikes_onehot.weight.shape[-1] - 1
-        )
+        spikes_token = side_conditions[..., 9]
+        tspikes_token = side_conditions[..., 13]
         other = side_conditions > 0
         spikes = self.spikes_onehot(spikes_token)
         tspikes = self.tspikes_onehot(tspikes_token)
         return torch.cat((other, spikes, tspikes), -1)
 
     def encode_volatile_status(self, volatile_status: torch.Tensor) -> torch.Tensor:
-        volatile_status_id = volatile_status[..., 0]
-        volatile_status_level = volatile_status[..., 1]
-        return self.volatile_status_onehot(volatile_status_id + 1).sum(-2)
+        encoding = (volatile_status > 0).to(torch.long)
+        return encoding
 
     def encode_boosts(self, boosts: torch.Tensor) -> torch.Tensor:
-        boost_token = (boosts + 6).clamp(
-            min=0, max=self.boosts_onehot.weight.shape[-1] - 1
-        )
-        boosts_onehot = self.boosts_onehot(boost_token)
-        return torch.cat((boosts_onehot[..., :6], boosts_onehot[..., 7:]), -1)
+        return self.boosts_onehot(boosts + 6)
 
-    def encode_field(self, field: torch.Tensor) -> torch.Tensor:
-        field_id = field[..., 0]
-        field_id_p1 = field_id + 1
+    def encode_pseudoweather(self, pseudoweather: torch.Tensor) -> torch.Tensor:
+        id = pseudoweather[..., 0]
+        min_durr = pseudoweather[..., 1]
+        max_durr = pseudoweather[..., 2]
 
-        field_min_durr = field[..., 1]
-        field_max_durr = field[..., 2]
+        min_durr_onehot = self.min_max_duration_onehot(min_durr)
+        max_durr_onehot = self.min_max_duration_onehot(max_durr)
 
-        pseudoweathers = field_id_p1[..., :3].clamp(
-            min=0, max=self.pseudoweathers_onehot.weight.shape[-1] - 1
-        )
-        weather = field_id_p1[..., 3].clamp(
-            min=0, max=self.weathers_onehot.weight.shape[-1] - 1
-        )
-        terrain = field_id_p1[..., 4].clamp(
-            min=0, max=self.terrain_onehot.weight.shape[-1] - 1
-        )
+        return id  # torch.cat((id, min_durr_onehot, max_durr_onehot), -1)
 
-        pseudoweathers_onehot = self.pseudoweathers_onehot(pseudoweathers).sum(-2)
-        weather_onehot = self.weathers_onehot(weather)
-        terrain_onehot = self.terrain_onehot(terrain)
+    def encode_weather(self, weather: torch.Tensor) -> torch.Tensor:
+        id = weather[..., 0]
+        min_durr = weather[..., 1]
+        max_durr = weather[..., 2]
 
-        return torch.cat((pseudoweathers_onehot, weather_onehot, terrain_onehot), -1)
+        id_onehot = self.weathers_onehot(id)
+        min_durr_onehot = self.min_max_duration_onehot(min_durr)
+        max_durr_onehot = self.min_max_duration_onehot(max_durr)
+
+        return torch.cat((id_onehot, min_durr_onehot, max_durr_onehot), -1)
+
+    def encode_terrain(self, terrain: torch.Tensor) -> torch.Tensor:
+        id = terrain[..., 0]
+        min_durr = terrain[..., 1]
+        max_durr = terrain[..., 2]
+
+        id_onehot = self.terrain_onehot(id)
+        min_durr_onehot = self.min_max_duration_onehot(min_durr)
+        max_durr_onehot = self.min_max_duration_onehot(max_durr)
+
+        return torch.cat((id_onehot, min_durr_onehot, max_durr_onehot), -1)
 
     def embed_context(
         self,
         side_conditions: torch.Tensor,
         volatile_status: torch.Tensor,
         boosts: torch.Tensor,
-        field: torch.Tensor,
+        pseudoweather: torch.Tensor,
+        weather: torch.Tensor,
+        terrain: torch.Tensor,
     ) -> torch.Tensor:
         side_conditions_encoding = self.encode_side_conditions(side_conditions)
         volatile_status_encoding = self.encode_volatile_status(volatile_status)
         boosts_encoding = self.encode_boosts(boosts)
-        field_encoding = self.encode_field(field)
+        pseudoweather_encoding = self.encode_pseudoweather(pseudoweather)
+        weather_encoding = self.encode_weather(weather)
+        terrain_encoding = self.encode_terrain(terrain)
         context_encoding = torch.cat(
             (
                 side_conditions_encoding.flatten(-2),
                 volatile_status_encoding.flatten(-2),
                 boosts_encoding.flatten(-3),
-                field_encoding,
+                pseudoweather_encoding,
+                weather_encoding,
+                terrain_encoding,
             ),
             dim=-1,
         )
@@ -366,6 +388,10 @@ class Encoder(nn.Module):
         )
         return self.history_mlp(history_embeddings)
 
+    def get_entity_mask(self, teams: torch.Tensor) -> torch.Tensor:
+        padding = (teams[..., -1, :, :, 0] != PADDING_TOKEN).flatten(-2)
+        return torch.cat((torch.ones_like(padding[..., :4]), padding), dim=-1)
+
     def get_history_mask(self, history_stats: torch.Tensor) -> torch.Tensor:
         history_mask = history_stats[:, :, -1, ..., 0].to(torch.bool)
         return torch.cat((torch.ones_like(history_mask[..., :4]), history_mask), dim=-1)
@@ -376,28 +402,32 @@ class Encoder(nn.Module):
         side_conditions: torch.Tensor,
         volatile_status: torch.Tensor,
         boosts: torch.Tensor,
-        field: torch.Tensor,
+        pseudoweather: torch.Tensor,
+        weather: torch.Tensor,
+        terrain: torch.Tensor,
         history_side_conditions: torch.Tensor,
         history_volatile_status: torch.Tensor,
         history_boosts: torch.Tensor,
-        history_field: torch.Tensor,
+        history_pseudoweather: torch.Tensor,
+        history_weather: torch.Tensor,
+        history_terrain: torch.Tensor,
         history_entities: torch.Tensor,
         history_stats: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        # mask = teams[..., -1, :, :, 0] != PADDING_TOKEN
 
         raw_embeddings = self.forward_entities(teams[:, :, -1]).flatten(2, 3)
         entity_embeddings = self.concat_cls_entities(raw_embeddings)
 
-        entity_mask = torch.ones_like(entity_embeddings[..., 0], dtype=torch.bool)
-
+        entity_mask = self.get_entity_mask(teams)
         active_token = teams[..., -1, :, :, 4]
 
         history_context_embeddings = self.embed_context(
             history_side_conditions[:, :, -1],
             history_volatile_status[:, :, -1],
             history_boosts[:, :, -1],
-            history_field[:, :, -1],
+            history_pseudoweather[:, :, -1],
+            history_weather[:, :, -1],
+            history_terrain[:, :, -1],
         )
         history_context_embeddings = self.history_context_mlp(
             history_context_embeddings
@@ -433,7 +463,9 @@ class Encoder(nn.Module):
             side_conditions[:, :, -1],
             volatile_status[:, :, -1],
             boosts[:, :, -1],
-            field[:, :, -1],
+            pseudoweather[:, :, -1],
+            weather[:, :, -1],
+            terrain[:, :, -1],
         )
         context_embedding = self.context_mlp(context_encoding)
 
@@ -550,7 +582,6 @@ class PolicyHead(nn.Module):
             *active_movesets.shape[:2], 6
         )
         action_tokens = torch.cat((moveset_tokens, expanded_switch_tokens), dim=-1)
-        action_tokens = action_tokens - SWITCH_TOKEN
 
         actions_onehot = torch.cat(
             (
@@ -674,14 +705,18 @@ class Model(nn.Module):
         side_conditions: torch.Tensor,
         volatile_status: torch.Tensor,
         boosts: torch.Tensor,
-        field: torch.Tensor,
-        legal: torch.Tensor,
+        pseudoweather: torch.Tensor,
+        weather: torch.Tensor,
+        terrain: torch.Tensor,
         history_side_conditions: torch.Tensor,
         history_volatile_status: torch.Tensor,
         history_boosts: torch.Tensor,
-        history_field: torch.Tensor,
+        history_pseudoweather: torch.Tensor,
+        history_weather: torch.Tensor,
+        history_terrain: torch.Tensor,
         history_entities: torch.Tensor,
         history_stats: torch.Tensor,
+        legal: torch.Tensor,
     ):
         (
             active_weight,
@@ -694,11 +729,15 @@ class Model(nn.Module):
             side_conditions=side_conditions,
             volatile_status=volatile_status,
             boosts=boosts,
-            field=field,
+            pseudoweather=pseudoweather,
+            weather=weather,
+            terrain=terrain,
             history_side_conditions=history_side_conditions,
             history_volatile_status=history_volatile_status,
             history_boosts=history_boosts,
-            history_field=history_field,
+            history_pseudoweather=history_pseudoweather,
+            history_weather=history_weather,
+            history_terrain=history_terrain,
             history_entities=history_entities,
             history_stats=history_stats,
         )
