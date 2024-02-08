@@ -8,11 +8,13 @@ import msgpack_numpy as m
 from typing import List, Dict, NamedTuple, Sequence, Tuple
 
 from pokesim.data import (
+    CONTEXT_VECTOR_SIZE,
     HEURISTIC_OFFSET,
     HISTORY_BOOSTS_OFFSET,
     HISTORY_PSEUDOWEATHER_OFFSET,
     HISTORY_SIDE_CONDITION_OFFSET,
     HISTORY_TERRAIN_OFFSET,
+    HISTORY_VECTOR_SIZE,
     HISTORY_VOLATILE_STATUS_OFFSET,
     HISTORY_WEATHER_OFFSET,
     PSEUDOWEATHER_OFFSET,
@@ -248,9 +250,13 @@ class State(NamedTuple):
 
     def _get_history(self, leading_dims: Sequence[int]):
         history = self.raw[..., HISTORY_OFFSET:].view(np.int8)
-        history = history.reshape(*leading_dims, -1, 411)
-        history_right = history[..., 295:].view(np.int16)
-        return history[..., :295], history_right[..., :-10], history_right[..., -10:]
+        history = history.reshape(*leading_dims, -1, HISTORY_VECTOR_SIZE)
+        history_right = history[..., CONTEXT_VECTOR_SIZE:].view(np.int16)
+        return (
+            history[..., :CONTEXT_VECTOR_SIZE],
+            history_right[..., :-10],
+            history_right[..., -10:],
+        )
 
     def get_history(self, leading_dims: Sequence[int]):
         history_context, history_entities, history_stats = self._get_history(

@@ -84,6 +84,9 @@ function createWorker(
                 break;
         }
 
+        clientSocket.write(
+            Buffer.from(Int32Array.from([buffer.length]).buffer),
+        );
         const write = clientSocket.write(buffer);
         if (!write) {
             console.error(`Worker ${workerIndex} queued in memory`);

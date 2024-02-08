@@ -7,11 +7,14 @@ import {
     moveMapping,
     pokemonMapping,
     pseudoWeatherMapping,
+    pseudoWeatherVectorSize,
     sideConditionsMapping,
     statusMapping,
     terrainMapping,
+    terrainVectorSize,
     volatileStatusMapping,
     weatherMapping,
+    weatherVectorSize,
 } from "./data";
 import { SideConditions } from "./types";
 import { BoostID } from "@pkmn/dex";
@@ -26,7 +29,7 @@ function formatKey(key: string): string {
 function getMappingValue(
     pokemon: AnyObject,
     mapping: AnyObject,
-    key: string,
+    key: string
 ): number {
     let suffix: string = "";
     if (key === "asone") {
@@ -43,12 +46,12 @@ function getMappingValue(
 function getMappingValueWrapper(
     pokemon: AnyObject,
     mapping: AnyObject,
-    key: string,
+    key: string
 ): number {
     const mappedValue = getMappingValue(pokemon, mapping, key);
     if (mappedValue === undefined) {
         throw new Error(
-            `${key} not in ${JSON.stringify(mapping).slice(0, 20)}`,
+            `${key} not in ${JSON.stringify(mapping).slice(0, 20)}`
         );
     }
 
@@ -60,7 +63,7 @@ export function getPublicPokemon(
     pokemon: AnyObject,
     active: boolean,
     sideToken: number,
-    buckets: number = 1024,
+    buckets: number = 1024
 ): Int8Array {
     let moveTokens = [];
     let movePpLeft = [];
@@ -72,7 +75,7 @@ export function getPublicPokemon(
 
     for (let i = 0; i < 4; i++) {
         moveTokens.push(
-            getMappingValueWrapper(pokemon, moveMapping, moves[i] ?? "<UNK>"),
+            getMappingValueWrapper(pokemon, moveMapping, moves[i] ?? "<UNK>")
         );
         const ppUsed = (moveSlots[i] ?? {})?.ppUsed ?? 0;
         movePpLeft.push(ppUsed);
@@ -86,12 +89,12 @@ export function getPublicPokemon(
         pokemon.lastMove === "switch-in"
             ? "<SWITCH>"
             : pokemon.lastMove === "" || pokemon.lastMove === undefined
-              ? "<NONE>"
-              : pokemon.lastMove;
+            ? "<NONE>"
+            : pokemon.lastMove;
     const lastMoveToken = getMappingValueWrapper(
         pokemon,
         moveMapping,
-        lastMove,
+        lastMove
     );
 
     const formatedPokemonName =
@@ -99,7 +102,7 @@ export function getPublicPokemon(
     const speciesToken = getMappingValueWrapper(
         pokemon,
         pokemonMapping,
-        formatedPokemonName,
+        formatedPokemonName
     );
 
     const item =
@@ -115,7 +118,7 @@ export function getPublicPokemon(
     const abilityToken = getMappingValueWrapper(
         pokemon,
         abilityMapping,
-        ability,
+        ability
     );
 
     const hpToken =
@@ -146,7 +149,7 @@ export function getPublicPokemon(
 export function getPrivatePokemon(
     battle: Battle | undefined,
     pokemon: AnyObject,
-    buckets: number = 1024,
+    buckets: number = 1024
 ): Int8Array {
     let moveTokens = [];
     let movePpLeft = [];
@@ -158,7 +161,7 @@ export function getPrivatePokemon(
 
     for (let i = 0; i < 4; i++) {
         moveTokens.push(
-            getMappingValueWrapper(pokemon, moveMapping, moves[i] ?? "<PAD>"),
+            getMappingValueWrapper(pokemon, moveMapping, moves[i] ?? "<PAD>")
         );
         const ppUsed = (moveSlots[i] ?? {})?.ppUsed ?? 0;
         movePpLeft.push(ppUsed);
@@ -172,12 +175,12 @@ export function getPrivatePokemon(
         pokemon.lastMove === "switch-in"
             ? "<SWITCH>"
             : pokemon.lastMove === "" || pokemon.lastMove === undefined
-              ? "<NONE>"
-              : pokemon.lastMove;
+            ? "<NONE>"
+            : pokemon.lastMove;
     const lastMoveToken = getMappingValueWrapper(
         pokemon,
         moveMapping,
-        lastMove,
+        lastMove
     );
 
     const formatedPokemonName =
@@ -185,7 +188,7 @@ export function getPrivatePokemon(
     const speciesToken = getMappingValueWrapper(
         pokemon,
         pokemonMapping,
-        formatedPokemonName,
+        formatedPokemonName
     );
 
     const item =
@@ -201,7 +204,7 @@ export function getPrivatePokemon(
     const abilityToken = getMappingValueWrapper(
         pokemon,
         abilityMapping,
-        ability,
+        ability
     );
 
     const hpToken =
@@ -241,7 +244,7 @@ const paddedPokemonArray = getPublicPokemon(
     undefined,
     paddedPokemonObj,
     false,
-    1,
+    1
 );
 
 const unknownPokemonObj = {
@@ -256,25 +259,22 @@ const unknownPokemonArray0 = getPublicPokemon(
     undefined,
     unknownPokemonObj,
     false,
-    0,
+    0
 );
 const unknownPokemonArray1 = getPublicPokemon(
     undefined,
     unknownPokemonObj,
     false,
-    1,
+    1
 );
 
 const boostsEntries = Object.entries(boostsMapping);
 
 const pseudoWeatherOffset = 0;
-const pseudoWeatherVectorSize = 3 * Object.values(pseudoWeatherMapping).length;
 
 const weatherOffset = pseudoWeatherOffset + pseudoWeatherVectorSize;
-const weatherVectorSize = 3;
 
 const terrainOffset = weatherOffset + weatherVectorSize;
-const terrainVectorSize = 3;
 
 const fieldVectorLength =
     pseudoWeatherVectorSize + weatherVectorSize + terrainVectorSize;
@@ -311,14 +311,14 @@ export class Int8State {
 
     getBoosts(actives: (Pokemon | null)[]): Int8Array {
         const boostsVector = new Int8Array(
-            actives.length * boostsEntries.length,
+            actives.length * boostsEntries.length
         );
         boostsVector.fill(0);
 
         for (const [activeIndex, activePokemon] of actives.entries()) {
             if (activePokemon !== null) {
                 for (const [boost, value] of Object.entries(
-                    activePokemon.boosts,
+                    activePokemon.boosts
                 )) {
                     boostsVector[
                         activeIndex + boostsMapping[boost as BoostID]
@@ -393,17 +393,20 @@ export class Int8State {
 
     getVolatileStatus(actives: (Pokemon | null)[]): Int8Array {
         const volatileStatusVector = new Int8Array(
-            actives.length * Object.values(volatileStatusMapping).length,
+            actives.length * Object.values(volatileStatusMapping).length
         );
         volatileStatusVector.fill(0);
         for (const [activeIndex, activePokemon] of actives.entries()) {
             if (activePokemon !== null) {
                 if (Object.keys(activePokemon.volatiles).length > 0) {
                     for (const volatileStatus of Object.values(
-                        activePokemon.volatiles,
+                        activePokemon.volatiles
                     )) {
                         const vectorIndex =
                             volatileStatusMapping[volatileStatus.id];
+                        if (vectorIndex === undefined) {
+                            throw new Error(`${volatileStatus.id} not found`);
+                        }
                         volatileStatusVector[activeIndex + vectorIndex] =
                             volatileStatus.level ?? 0;
                     }
@@ -427,14 +430,17 @@ export class Int8State {
 
     getSideConditions(sideConditions: SideConditions): Int8Array {
         const sideConditionVector = new Int8Array(
-            Object.keys(sideConditionsMapping).length,
+            Object.keys(sideConditionsMapping).length
         );
         sideConditionVector.fill(0);
         if (Object.keys(sideConditions).length > 0) {
             for (const [name, sideCondition] of Object.entries(
-                sideConditions,
+                sideConditions
             )) {
                 const vectorIndex = sideConditionsMapping[name];
+                if (vectorIndex === undefined) {
+                    throw new Error(`${name} not found`);
+                }
                 sideConditionVector[vectorIndex] = sideCondition.level;
             }
         } else {
@@ -492,18 +498,18 @@ export class Int8State {
                     if (isMe) {
                         teamArray.set(
                             unknownPokemonArray1,
-                            i * paddedPokemonArray.length,
+                            i * paddedPokemonArray.length
                         );
                     } else {
                         teamArray.set(
                             unknownPokemonArray0,
-                            i * paddedPokemonArray.length,
+                            i * paddedPokemonArray.length
                         );
                     }
                 } else {
                     teamArray.set(
                         paddedPokemonArray,
-                        i * paddedPokemonArray.length,
+                        i * paddedPokemonArray.length
                     );
                 }
             } else {
@@ -513,9 +519,9 @@ export class Int8State {
                         this.handler.getMyBattle(),
                         team[i],
                         activeIdents.includes(ident),
-                        isMe,
+                        isMe
                     ),
-                    i * paddedPokemonArray.length,
+                    i * paddedPokemonArray.length
                 );
             }
         }
@@ -539,7 +545,7 @@ export class Int8State {
             };
             teamArray.set(
                 getPrivatePokemon(this.handler.getMyBattle(), amalgam),
-                i * paddedPokemonArray.length,
+                i * paddedPokemonArray.length
             );
         }
         return teamArray;
@@ -625,7 +631,7 @@ export class Int8State {
         // let offset = 0;
 
         for (const [key, moveStore] of Object.entries(
-            this.handler.damageInfos,
+            this.handler.damageInfos
         )) {
             if (moveStore.hasVector) {
                 continue;
@@ -666,7 +672,7 @@ export class Int8State {
                     switchCounter,
                     moveMapping[action],
                     order,
-                ]).buffer,
+                ]).buffer
             );
             // const history: Array<Int8Array> = [
             //     contextVector,
@@ -705,12 +711,12 @@ export class Int8State {
         const turn = this.handler.getBattleTurn();
         this.handler.getAggregatedTurnLines();
 
-        // const heuristicAction = this.done
-        //     ? -1
-        //     : this.handler.getHeuristicActionIndex(
-        //           this.playerIndex,
-        //           this.workerIndex
-        //       );
+        const heuristicAction = this.done
+            ? -1
+            : this.handler.getHeuristicActionIndex(
+                  this.playerIndex,
+                  this.workerIndex
+              );
         const legalMask = this.getLegalMask();
 
         const contextVectors = this.getContextVectors();
@@ -725,7 +731,7 @@ export class Int8State {
                 ? damageInfos.map(({ vector }) => vector)
                 : [];
         const historyPadding = new Int8Array(
-            historyVectorSize * (20 - historyVectors.length),
+            historyVectorSize * (20 - historyVectors.length)
         );
         historyPadding.fill(0);
 
@@ -736,7 +742,7 @@ export class Int8State {
                 this.done,
                 this.reward,
                 turn,
-                0, //heuristicAction,
+                heuristicAction,
             ]),
             this.getMyPrivateTeam(),
             this.getMyPublicTeam(),
@@ -746,18 +752,18 @@ export class Int8State {
             historyPadding,
             legalMask,
         ];
-        // if (heuristicAction >= 0) {
-        //     for (const [actionIndex, legalMaskValue] of legalMask.entries()) {
-        //         if (actionIndex === heuristicAction && legalMaskValue === 0) {
-        //             console.error("bad action");
-        //         }
-        //     }
-        // }
+        if (heuristicAction >= 0) {
+            for (const [actionIndex, legalMaskValue] of legalMask.entries()) {
+                if (actionIndex === heuristicAction && legalMaskValue === 0) {
+                    console.error("bad action");
+                }
+            }
+        }
         if (stateSize === undefined) {
             stateSize = data.reduce(
                 (accumulator, currentValue) =>
                     accumulator + currentValue.length,
-                0,
+                0
             );
         }
         const state = new Int8Array(stateSize);

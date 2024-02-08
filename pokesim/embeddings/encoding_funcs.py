@@ -6,7 +6,7 @@ import pandas as pd
 def onehot_encode(series: pd.Series) -> pd.DataFrame:
     series = series.astype(str)
     unique_categories = [
-        category for category in sorted(series.unique()) if category not in ["nan"]
+        category for category in sorted(series.unique())  # if category not in ["nan"]
     ]
     records = series.map(
         lambda category: {

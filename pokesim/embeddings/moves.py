@@ -1,6 +1,9 @@
 import numpy as np
+import pandas as pd
 
-from pokesim.data import MOVES_STOI, SPECIES_STOI, load_gendata
+from typing import List
+
+from pokesim.data import MOVES_STOI, load_gendata
 from pokesim.embeddings.encoding_funcs import (
     concat_encodings,
     multihot_encode,
@@ -8,7 +11,7 @@ from pokesim.embeddings.encoding_funcs import (
     sqrt_onehot_encode,
     z_score_scale,
 )
-from pokesim.embeddings.helpers import get_df, to_id
+from pokesim.embeddings.helpers import Protocol, get_df, to_id
 
 
 ONEHOT_FEATURES = [
@@ -42,7 +45,7 @@ ONEHOT_FEATURES = [
 
 MULTIHOT_FEATURES = []
 
-MOVES_PROTOCOLS = [
+MOVES_PROTOCOLS: List[Protocol] = [
     *[
         {"feature": stat_feature, "func": onehot_encode}
         for stat_feature in ONEHOT_FEATURES
@@ -59,7 +62,7 @@ MOVES_PROTOCOLS = [
     {"feature_fn": lambda x: x.startswith("selfBoost."), "func": onehot_encode},
     {"feature_fn": lambda x: x.startswith("ignore"), "func": onehot_encode},
     {"feature": "basePower", "func": z_score_scale},
-    {"feature": "basePower", "func": sqrt_onehot_encode},
+    # {"feature": "basePower", "func": sqrt_onehot_encode},
     {
         "feature": "accuracy",
         "func": lambda x: (x.map(lambda v: 100 if isinstance(v, bool) else v) / 100),
@@ -80,10 +83,41 @@ def get_moves_df(gen: int):
     return df
 
 
+def get_typechart_df(gen: int):
+    data = load_gendata(gen, "typechart")
+    df = get_df(data)
+
+    effectiveness = concat_encodings(
+        [
+            onehot_encode(df[feature])
+            for feature in df.columns
+            if feature.startswith("damageTaken.")
+        ]
+    )
+    effectiveness.index = df.index
+    return effectiveness
+
+
 def construct_moves_encoding(gen: int):
+    typechart_df = get_typechart_df(gen)
     moves_df = get_moves_df(gen)
 
-    feature_vector_dfs = []
+    typechart_df = pd.DataFrame(
+        data=np.stack(
+            moves_df["type"]
+            .map(to_id)
+            .map(
+                lambda x: (
+                    np.zeros_like(typechart_df.loc["normal"].values)
+                    if x == ""
+                    else typechart_df.loc[x].values
+                )
+            )
+            .values
+        )
+    )
+
+    feature_vector_dfs = []  # [typechart_df]
 
     for protoc in MOVES_PROTOCOLS:
         func = protoc["func"]
@@ -91,13 +125,22 @@ def construct_moves_encoding(gen: int):
         feature_fn = protoc.get("feature_fn")
 
         if feature_fn is None:
-            feature_df = func(moves_df[feature])
+
+            if feature not in moves_df.columns:
+                print(f"{feature} not in df")
+                continue
+            series = moves_df[feature]
+            feature_df = func(series)
             if not feature_df.empty:
                 feature_vector_dfs.append(feature_df)
         else:
-            for column in moves_df.columns:
-                if feature_fn(column):
-                    feature_df = func(moves_df[column])
+            for feature in moves_df.columns:
+                if feature not in moves_df.columns:
+                    print(f"{feature} not in df")
+                    continue
+                if feature_fn(feature):
+                    series = moves_df[feature]
+                    feature_df = func(series)
                     if not feature_df.empty:
                         feature_vector_dfs.append(feature_df)
 
@@ -110,8 +153,10 @@ def construct_moves_encoding(gen: int):
         row_index = MOVES_STOI[name]
         placeholder[row_index, 1:] = row
 
+    placeholder[row_index, 1:] = placeholder[MOVES_STOI["return102"], 1:]
+
     row_index = MOVES_STOI["<UNK>"]
-    placeholder[row_index, 1:] = concat_df.mean(0)
+    placeholder[row_index, 1:] = concat_df.mean(0).values
 
     row_index = MOVES_STOI["<SWITCH>"]
     placeholder[row_index, 0] = 1

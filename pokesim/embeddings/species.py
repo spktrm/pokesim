@@ -1,15 +1,17 @@
 import math
-
 import numpy as np
+
+from typing import List
 
 from pokesim.data import SPECIES_STOI, load_gendata
 from pokesim.embeddings.encoding_funcs import (
     concat_encodings,
     multihot_encode,
     onehot_encode,
+    sqrt_onehot_encode,
     z_score_scale,
 )
-from pokesim.embeddings.helpers import to_id
+from pokesim.embeddings.helpers import Protocol, to_id
 from pokesim.embeddings.moves import get_df
 
 
@@ -19,7 +21,7 @@ ONEHOT_FEATURES = [
 ]
 
 MULTIHOT_FEATURES = [
-    "abilities",
+    # "abilities",
     "types",
 ]
 
@@ -33,7 +35,7 @@ STAT_FEATURES = [
     "baseStats.spe",
 ]
 
-SPECIES_PROTOCOLS = [
+SPECIES_PROTOCOLS: List[Protocol] = [
     # *[
     #     {"feature": stat_feature, "func": sqrt_onehot_encode}
     #     for stat_feature in STAT_FEATURES
@@ -101,7 +103,7 @@ def construct_species_encoding(gen: int):
         placeholder[row_index] = row
 
     row_index = SPECIES_STOI["<UNK>"]
-    placeholder[row_index] = concat_df.mean(0)
+    placeholder[row_index] = concat_df.mean(0).values
 
     return placeholder.astype(np.float32)
 

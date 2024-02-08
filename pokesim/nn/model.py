@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -5,24 +6,20 @@ from pokesim.data import (
     MOVES_STOI,
     NUM_ABILITIES,
     NUM_BOOSTS,
-    NUM_ITEMS,
-    NUM_MOVES,
     NUM_PSEUDOWEATHER,
     NUM_SIDE_CONDITIONS,
-    NUM_SPECIES,
     NUM_STATUS,
     NUM_TERRAIN,
     NUM_VOLATILE_STATUS,
     NUM_WEATHER,
+    SIDE_CONDITIONS_STOI,
     SPECIES_STOI,
 )
 
 from typing import Tuple
-from pokesim.embeddings.moves import construct_moves_encoding
-from pokesim.embeddings.species import construct_species_encoding
 
 from pokesim.structs import ModelOutput
-from pokesim.utils import _legal_log_policy, _legal_policy
+from pokesim.utils import _legal_log_policy, _legal_policy, _print_params
 
 from pokesim.nn.helpers import _layer_init
 from pokesim.nn.modules import (
@@ -46,12 +43,24 @@ def get_onehot_encoding(num_embeddings: int):
     return nn.Embedding.from_pretrained(torch.eye(num_embeddings))
 
 
-def get_species_encodng():
-    return nn.Embedding.from_pretrained(torch.from_numpy(construct_species_encoding(3)))
+def get_species_encodng(gen: int):
+    npy_arr = np.load(f"src/data/gen{gen}/species.npy")
+    return nn.Embedding.from_pretrained(torch.from_numpy(npy_arr).to(torch.float32))
 
 
-def get_moves_encoding():
-    return nn.Embedding.from_pretrained(torch.from_numpy(construct_moves_encoding(3)))
+def get_moves_encoding(gen: int):
+    npy_arr = np.load(f"src/data/gen{gen}/moves.npy")
+    return nn.Embedding.from_pretrained(torch.from_numpy(npy_arr).to(torch.float32))
+
+
+def get_abilities_encoding(gen: int):
+    npy_arr = np.load(f"src/data/gen{gen}/abilities.npy")
+    return nn.Embedding.from_pretrained(torch.from_numpy(npy_arr).to(torch.float32))
+
+
+def get_items_encoding(gen: int):
+    npy_arr = np.load(f"src/data/gen{gen}/items.npy")
+    return nn.Embedding.from_pretrained(torch.from_numpy(npy_arr).to(torch.float32))
 
 
 class Encoder(nn.Module):
@@ -61,60 +70,58 @@ class Encoder(nn.Module):
         stream_size: int,
         use_layer_norm: bool,
         affine_layer_norm: bool,
+        gen: int = 3,
     ):
         super().__init__()
 
-        self.species_onehot = get_species_encodng()
-        self.item_onehot = get_onehot_encoding(NUM_ITEMS)
-        self.ability_onehot = get_onehot_encoding(NUM_ABILITIES)
-        self.moves_onehot = get_moves_encoding()
-        self.moves_lin = _layer_init(
-            nn.Linear(self.moves_onehot.weight.shape[-1], 2 * entity_size)
-        )
+        self.species_onehot = get_species_encodng(gen)
+        self.item_onehot = get_items_encoding(gen)
+        self.ability_onehot = get_abilities_encoding(gen)
+        self.moves_onehot = get_moves_encoding(gen)
+
         self.hp_onehot = get_onehot_encoding(65)
         self.status_onehot = get_onehot_encoding(NUM_STATUS)
-        self.active_onehot = get_onehot_encoding(2)
-        self.fainted_onehot = get_onehot_encoding(2)
-        self.side_onehot = get_onehot_encoding(2)
-        self.public_onehot = get_onehot_encoding(2)
-        self.sleep_turns_onehot = get_onehot_encoding(4)
+        self.onehot2 = get_onehot_encoding(2)
+        self.onehot4 = get_onehot_encoding(4)
         self.toxic_turns_onehot = get_onehot_encoding(6)
 
         self.entity_cls = _layer_init(nn.Parameter(torch.randn(1, 1, 4, entity_size)))
         self.history_cls = _layer_init(nn.Parameter(torch.randn(1, 1, 4, entity_size)))
-        self.entity_lin = nn.Sequential(
-            _layer_init(
-                nn.Linear(
-                    self.species_onehot.weight.shape[-1]
-                    + self.item_onehot.weight.shape[-1]
-                    + self.ability_onehot.weight.shape[-1]
-                    + 1 * self.moves_onehot.weight.shape[-1]
-                    + self.moves_lin.out_features
-                    + 1 * self.hp_onehot.weight.shape[-1]
-                    + self.status_onehot.weight.shape[-1]
-                    + self.active_onehot.weight.shape[-1]
-                    + self.fainted_onehot.weight.shape[-1]
-                    + self.side_onehot.weight.shape[-1]
-                    + self.public_onehot.weight.shape[-1]
-                    + self.sleep_turns_onehot.weight.shape[-1]
-                    + self.toxic_turns_onehot.weight.shape[-1],
-                    entity_size,
-                )
-            ),
-            MLP([entity_size, entity_size, entity_size]),
+
+        rest_size = (
+            self.moves_onehot.weight.shape[-1]
+            + self.hp_onehot.weight.shape[-1]
+            + self.status_onehot.weight.shape[-1]
+            + self.onehot2.weight.shape[-1]
+            + self.onehot2.weight.shape[-1]
+            + self.onehot2.weight.shape[-1]
+            + self.onehot2.weight.shape[-1]
+            + self.onehot4.weight.shape[-1]
+            + self.toxic_turns_onehot.weight.shape[-1]
+        )
+        self.rest_lin = _layer_init(
+            nn.Linear(rest_size, self.species_onehot.weight.shape[-1])
+        )
+        self.entity_merge = VectorMerge(
+            input_sizes={
+                "species": self.species_onehot.weight.shape[-1],
+                "ability": self.ability_onehot.weight.shape[-1],
+                "item": self.item_onehot.weight.shape[-1],
+                "moveset": self.moves_onehot.weight.shape[-1],
+                "rest": self.species_onehot.weight.shape[-1],
+            },
+            output_size=entity_size,
+            gating_type=GatingType.GLOBAL,
+            use_layer_norm=use_layer_norm,
+            affine_layer_norm=affine_layer_norm,
         )
 
-        self.is_critical_onehot = get_onehot_encoding(2)
         self.effectiveness_onehot = get_onehot_encoding(5)
-        self.missed_onehot = get_onehot_encoding(2)
-        self.target_fainted_onehot = get_onehot_encoding(2)
         self.damage_value_onehot = get_onehot_encoding(64)
-        self.action_counter_onehot = get_onehot_encoding(4)
         self.order_onehot = get_onehot_encoding(20)
 
         self.boosts_onehot = get_onehot_encoding(13)
 
-        self.spikes_onehot = get_onehot_encoding(4)
         self.tspikes_onehot = get_onehot_encoding(3)
         # self.volatile_status_onehot = get_onehot_embedding(NUM_VOLATILE_STATUS)
 
@@ -123,17 +130,15 @@ class Encoder(nn.Module):
         self.terrain_onehot = get_onehot_encoding(NUM_TERRAIN)
         self.min_max_duration_onehot = get_onehot_encoding(10)
 
-        field_size = (
-            NUM_PSEUDOWEATHER
-            + (
-                self.weathers_onehot.weight.shape[-1]
-                + 2 * self.min_max_duration_onehot.weight.shape[-1]
-            )
-            + (
-                self.terrain_onehot.weight.shape[-1]
-                + 2 * self.min_max_duration_onehot.weight.shape[-1]
-            )
+        weather_size = (
+            self.weathers_onehot.weight.shape[-1]
+            + 2 * self.min_max_duration_onehot.weight.shape[-1]
         )
+        terrain_size = (
+            self.terrain_onehot.weight.shape[-1]
+            + 2 * self.min_max_duration_onehot.weight.shape[-1]
+        )
+        field_size = NUM_PSEUDOWEATHER + weather_size + terrain_size
 
         context_size = (
             2
@@ -141,19 +146,19 @@ class Encoder(nn.Module):
                 NUM_BOOSTS * self.boosts_onehot.weight.shape[-1]
                 + NUM_VOLATILE_STATUS
                 + NUM_SIDE_CONDITIONS
-                + self.spikes_onehot.weight.shape[-1]
+                + self.onehot4.weight.shape[-1]
                 + self.tspikes_onehot.weight.shape[-1]
             )
             + field_size
         )
         stats_size = (
-            self.is_critical_onehot.weight.shape[-1]
+            self.onehot2.weight.shape[-1]
             + self.effectiveness_onehot.weight.shape[-1]
-            + self.missed_onehot.weight.shape[-1]
-            + self.target_fainted_onehot.weight.shape[-1]
+            + self.onehot2.weight.shape[-1]
+            + self.onehot2.weight.shape[-1]
             + self.damage_value_onehot.weight.shape[-1]
             + 1
-            + 2 * self.action_counter_onehot.weight.shape[-1]
+            + 2 * self.onehot4.weight.shape[-1]
             + self.moves_onehot.weight.shape[-1]
             + self.order_onehot.weight.shape[-1]
         )
@@ -170,7 +175,7 @@ class Encoder(nn.Module):
                 "stats": entity_size,
             },
             output_size=entity_size,
-            gating_type=GatingType.NONE,
+            gating_type=GatingType.GLOBAL,
             use_layer_norm=use_layer_norm,
             affine_layer_norm=affine_layer_norm,
         )
@@ -216,21 +221,21 @@ class Encoder(nn.Module):
         item_onehot = self.item_onehot(item_token)
         ability_onehot = self.ability_onehot(ability_token)
         hp_onehot = self.hp_onehot(hp_bucket)
-        active_onehot = self.active_onehot(active_token)
-        fainted_onehot = self.fainted_onehot(fainted_token)
+        active_onehot = self.onehot2(active_token)
+        fainted_onehot = self.onehot2(fainted_token)
         status_onehot = self.status_onehot(status_token)
         last_move_onehot = self.moves_onehot(last_move_token)
-        side_onehot = self.side_onehot(side_token)
-        public_onehot = self.public_onehot(public_token)
-        sleep_turns_onehot = self.sleep_turns_onehot(sleep_turns_token)
+        side_onehot = self.onehot2(side_token)
+        public_onehot = self.onehot2(public_token)
+        sleep_turns_onehot = self.onehot4(sleep_turns_token)
         toxic_turns_onehot = self.toxic_turns_onehot(toxic_turns_token)
-        moveset_onehot = (self.moves_lin(self.moves_onehot(move_tokens)) / 4).sum(-2)
+        moveset_onehot = self.moves_onehot(move_tokens).mean(-2)
 
-        onehot = torch.cat(
+        rest_onehot = torch.cat(
             (
-                species_onehot,
-                item_onehot,
-                ability_onehot,
+                # species_onehot,
+                # item_onehot,
+                # ability_onehot,
                 last_move_onehot,
                 hp_onehot,
                 # prev_hp_onehot,
@@ -241,11 +246,19 @@ class Encoder(nn.Module):
                 public_onehot,
                 sleep_turns_onehot,
                 toxic_turns_onehot,
-                moveset_onehot,
+                # moveset_onehot,
             ),
             dim=-1,
         )
-        raw_embeddings = self.entity_lin(onehot)
+        raw_embeddings = self.entity_merge(
+            {
+                "species": species_onehot,
+                "ability": ability_onehot,
+                "item": item_onehot,
+                "moveset": moveset_onehot,
+                "rest": self.rest_lin(rest_onehot),
+            }
+        )
 
         return raw_embeddings
 
@@ -267,13 +280,13 @@ class Encoder(nn.Module):
         move_token = stats[..., 7]
         order = stats[..., 8].max(-1, keepdim=True).values - stats[..., 8]
 
-        is_critical_onehot = self.is_critical_onehot(is_critical_token)
+        is_critical_onehot = self.onehot2(is_critical_token)
         effectivesness_onehot = self.effectiveness_onehot(effectiveness_token)
-        missed_onehot = self.missed_onehot(missed_token)
-        target_fainted_onehot = self.target_fainted_onehot(target_fainted_token)
+        missed_onehot = self.onehot2(missed_token)
+        target_fainted_onehot = self.onehot2(target_fainted_token)
         damage_value_onehot = self.damage_value_onehot(damage_value_token)
-        move_counter_onehot = self.action_counter_onehot(move_counter)
-        switch_counter_onehot = self.action_counter_onehot(switch_counter)
+        move_counter_onehot = self.onehot4(move_counter)
+        switch_counter_onehot = self.onehot4(switch_counter)
         move_token_onehot = self.moves_onehot(move_token)
         order_onehot = self.order_onehot(
             order.clamp(min=0, max=self.order_onehot.weight.shape[-1] - 1)
@@ -298,10 +311,10 @@ class Encoder(nn.Module):
         return self.history_stats_lin(onehot)
 
     def encode_side_conditions(self, side_conditions: torch.Tensor) -> torch.Tensor:
-        spikes_token = side_conditions[..., 9]
-        tspikes_token = side_conditions[..., 13]
+        spikes_token = side_conditions[..., SIDE_CONDITIONS_STOI["spikes"]]
+        tspikes_token = side_conditions[..., SIDE_CONDITIONS_STOI["toxicspikes"]]
         other = side_conditions > 0
-        spikes = self.spikes_onehot(spikes_token)
+        spikes = self.onehot4(spikes_token)
         tspikes = self.tspikes_onehot(tspikes_token)
         return torch.cat((other, spikes, tspikes), -1)
 
@@ -498,7 +511,7 @@ class Torso(nn.Module):
         self.torso_merge = VectorMerge(
             input_sizes={"entities": stream_size, "context": stream_size},
             output_size=stream_size,
-            gating_type=GatingType.NONE,
+            gating_type=GatingType.GLOBAL,
             use_layer_norm=use_layer_norm,
             affine_layer_norm=affine_layer_norm,
         )
@@ -526,29 +539,24 @@ class PolicyHead(nn.Module):
         stream_size: int,
         use_layer_norm: bool,
         affine_layer_norm: bool,
+        gen: int = 3,
     ):
         super().__init__()
 
         switch_tokens = SWITCH_TOKEN * torch.ones(6, dtype=torch.long)
         self.register_buffer("switch_tokens", switch_tokens)
 
-        self.moves_onehot = get_moves_encoding()
-        self.legal_onehot = nn.Embedding.from_pretrained(torch.eye(2))
-
-        self.legal_embedding = nn.Embedding.from_pretrained(torch.eye(2))
-
-        self.actions_lin = _layer_init(
-            nn.Linear(
-                self.moves_onehot.weight.shape[-1]
-                + self.legal_embedding.weight.shape[-1],
-                entity_size,
-            )
-        )
+        self.moves_onehot = get_moves_encoding(gen)
+        self.legal_embedding = nn.Embedding(2, entity_size)
 
         self.action_merge = VectorMerge(
-            {"action": entity_size, "user": entity_size},
+            {
+                "action": self.moves_onehot.weight.shape[-1],
+                "user": entity_size,
+                "legal": entity_size,
+            },
             output_size=entity_size,
-            gating_type=GatingType.NONE,
+            gating_type=GatingType.GLOBAL,
             use_layer_norm=use_layer_norm,
             affine_layer_norm=affine_layer_norm,
         )
@@ -579,9 +587,7 @@ class PolicyHead(nn.Module):
             .long()
         )
 
-    def embed_actions(
-        self, active_movesets: torch.Tensor, legal: torch.Tensor
-    ) -> torch.Tensor:
+    def embed_actions(self, active_movesets: torch.Tensor) -> torch.Tensor:
         moveset_pp_left = active_movesets[..., :4]
         moveset_pp_max = active_movesets[..., 4:8]
         moveset_tokens = active_movesets[..., 8:]
@@ -591,15 +597,7 @@ class PolicyHead(nn.Module):
         )
         action_tokens = torch.cat((moveset_tokens, expanded_switch_tokens), dim=-1)
 
-        actions_onehot = torch.cat(
-            (
-                self.moves_onehot(action_tokens),
-                self.legal_onehot(legal.to(torch.long)),
-            ),
-            dim=-1,
-        )
-
-        return self.actions_lin(actions_onehot)
+        return self.moves_onehot(action_tokens)
 
     def forward(
         self,
@@ -615,15 +613,21 @@ class PolicyHead(nn.Module):
         torch.Tensor,
     ]:
         action_tokens = self.get_action_tokens(active_weight, teams)
-        action_embeddings = self.embed_actions(action_tokens, legal)
+        action_embeddings = self.embed_actions(action_tokens)
 
         user_embeddings = torch.cat(
             (active_embedding.expand(-1, -1, 4, -1), entity_embeddings), dim=-2
         )
 
+        legal_embedding = self.legal_embedding(legal.to(torch.long))
+
         # action_query = self.action_query_resnet(action_query)
         action_embeddings = self.action_merge(
-            {"action": action_embeddings, "user": user_embeddings}
+            {
+                "action": action_embeddings,
+                "user": user_embeddings,
+                "legal": legal_embedding,
+            }
         )
         # action_embeddings = self.action_keys_resnet(action_embeddings)
         action_embeddings = self.action_self_attn(
@@ -668,7 +672,7 @@ class Model(nn.Module):
         self,
         entity_size: int = 32,
         stream_size: int = 128,
-        scale: int = 8,
+        scale: int = 4,
         use_layer_norm: bool = True,
         affine_layer_norm: bool = False,
     ):
@@ -772,3 +776,8 @@ class Model(nn.Module):
             logits=logits,
             value=value,
         )
+
+
+if __name__ == "__main__":
+    model = Model()
+    _print_params(model)

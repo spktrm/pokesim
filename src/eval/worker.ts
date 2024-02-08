@@ -120,12 +120,12 @@ class PokemonShowdownBot {
                     console.error(line);
                 }
                 // if (isAction(line)) {
-                try {
-                    this.clientBattle.add(line);
-                } catch (err) {}
                 if (this.started) {
                     this.handler.appendTurnLine(this.playerIndex ?? 0, 0, line);
                 }
+                try {
+                    this.clientBattle.add(line);
+                } catch (err) {}
                 if (line.startsWith("|start")) {
                     this.started = true;
 

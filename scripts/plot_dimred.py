@@ -4,8 +4,10 @@ import plotly.graph_objects as go
 from sklearn.decomposition import PCA
 
 from sklearn.manifold import TSNE
-from pokesim.data import MOVES_STOI, SPECIES_STOI
+from pokesim.data import ABILITIES_STOI, ITEMS_STOI, MOVES_STOI, SPECIES_STOI
+from pokesim.embeddings.helpers import Encoder, pred
 
+from pokesim.embeddings.abilities import construct_abilities_encoding
 from pokesim.embeddings.species import construct_species_encoding
 from pokesim.embeddings.moves import construct_moves_encoding
 
@@ -78,20 +80,22 @@ def plot_pca_3d(data: np.ndarray, title: str = "3D PCA Plot", **kwargs) -> None:
     fig.show()
 
 
-def main(gen: int = 4, ndims: int = 2):
+def main(gen: int = 3, ndims: int = 2):
 
-    data = construct_moves_encoding(gen)
+    data = np.load(f"src/data/gen{gen}/species.npy")
 
     indices = []
     names = []
 
-    for key, value in MOVES_STOI.items():
+    for key, value in SPECIES_STOI.items():
         if data[value].sum() != 0:
             names.append(key)
             indices.append(value)
 
-    data = data[np.array(indices)]
-    transformed_data = perform_pca(data, n_components=min(data.shape[-1], 3))
+    transformed_data = data[np.array(indices)]
+
+    # transformed_data = perform_pca(transformed_data, n_components=min(data.shape[-1], 3))
+
     transformed_data = transformed_data[..., :ndims]
 
     if ndims == 2:

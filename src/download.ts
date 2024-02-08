@@ -204,7 +204,14 @@ async function main(): Promise<void> {
     });
 
     // Convert the Set to an array and reduce it to unique, sorted identifiers
-    let volatileStatus = reduce(Array.from(volatileStatusSet));
+    let volatileStatus = [
+        "itemremoved",
+        "typechange",
+        "wrap",
+        "formechange",
+        "transform",
+        ...reduce(Array.from(volatileStatusSet)),
+    ];
 
     let weathers = extractPatterns(src, weathersPattern);
     weathers = reduce(weathers).map((t) => t.replace("raindance", "rain"));
@@ -222,11 +229,11 @@ async function main(): Promise<void> {
 
     // Create the data object
     const data = {
-        pseudoWeather: enumerate([nullToken, ...pseudoweather]),
-        volatileStatus: enumerate([nullToken, ...volatileStatus]),
-        weathers: enumerate([nullToken, ...weathers]),
-        terrain: enumerate([nullToken, ...terrain]),
-        sideConditions: enumerate([nullToken, ...sideConditions]),
+        pseudoWeather: enumerate([nullToken, ...pseudoweather.sort()]),
+        volatileStatus: enumerate([nullToken, ...volatileStatus.sort()]),
+        weathers: enumerate([nullToken, ...weathers.sort()]),
+        terrain: enumerate([nullToken, ...terrain.sort()]),
+        sideConditions: enumerate([nullToken, ...sideConditions.sort()]),
         ...formatData(genData),
         statuses: enumerate([
             nullToken,

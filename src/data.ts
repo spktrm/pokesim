@@ -42,6 +42,17 @@ const {
     boosts: boostsMapping,
 } = JSON.parse(data.toString());
 
+const pseudoWeatherVectorSize = 3 * Object.values(pseudoWeatherMapping).length;
+const weatherVectorSize = 3;
+const terrainVectorSize = 3;
+
+const contextVectorSize =
+    2 *
+        (Object.values(volatileStatusMapping).length +
+            Object.keys(sideConditionsMapping).length +
+            Object.keys(boostsMapping).length) +
+    (pseudoWeatherVectorSize + weatherVectorSize + terrainVectorSize);
+
 export {
     pokemonMapping,
     abilityMapping,
@@ -55,4 +66,8 @@ export {
     statusMapping,
     boostsMapping,
     maxPP,
+    contextVectorSize,
+    pseudoWeatherVectorSize,
+    weatherVectorSize,
+    terrainVectorSize,
 };

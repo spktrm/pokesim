@@ -107,6 +107,14 @@ class MLP(nn.Module):
             self.layers.append(nn.ReLU())
             self.layers.append(_layer_init(nn.Linear(input_size, output_size)))
 
+    @property
+    def in_features(self):
+        return self.layer_sizes[0]
+
+    @property
+    def out_features(self):
+        return self.layer_sizes[-1]
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         for layer in self.layers:
             x = layer(x)
@@ -570,7 +578,7 @@ class VectorMerge(nn.Module):
         self,
         input_sizes: Dict[str, Optional[int]],
         output_size: int,
-        gating_type: GatingType = GatingType.NONE,
+        gating_type: GatingType = GatingType.GLOBAL,
         use_layer_norm: bool = True,
         affine_layer_norm: bool = False,
     ):
@@ -649,7 +657,7 @@ class VectorMerge(nn.Module):
         if len(outputs) == 1:
             # Special case of 1-D inputs that do not need any gating.
             output = outputs[0]
-        elif self._gating_type is GatingType.NONE:
+        elif self._gating_type == GatingType.NONE:
             output = torch.stack(outputs).sum(dim=0)
         else:
             gate = self._compute_gate(outputs, gates)

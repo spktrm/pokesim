@@ -9,6 +9,12 @@ import {
 } from "./random";
 import { BoostID } from "@pkmn/data";
 import { createHash } from "node:crypto";
+import {
+    boostsMapping,
+    contextVectorSize,
+    sideConditionsMapping,
+    volatileStatusMapping,
+} from "./data";
 
 const zeroAsciiCode = "0".charCodeAt(0);
 const d_AsciiCode = "d".charCodeAt(0);
@@ -491,7 +497,7 @@ class moveInfo {
     }
 }
 
-export const historyVectorSize = 295 + 48 + 48 + 20;
+export const historyVectorSize = contextVectorSize + 2 * 48 + 20;
 export class BattlesHandler {
     playerIndex: number;
     battles: clientBattle[];

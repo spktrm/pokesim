@@ -108,6 +108,8 @@ async function runPlayer(
     //     p1battle.request = undefined;
     // }
 
+    let started = false;
+
     for await (const chunk of stream) {
         const turn = p1battle.turn ?? 0;
         if (turn > 200) {
@@ -119,10 +121,15 @@ async function runPlayer(
             if (line.startsWith("|error")) {
                 console.error(line);
             }
+            if (started) {
+                handler.appendTurnLine(playerIndex, workerIndex, line);
+            }
             p1battle.add(line);
-            handler.appendTurnLine(playerIndex, workerIndex, line);
             if (line.startsWith("|win")) {
                 winner = line.split("|")[2];
+            }
+            if (line.startsWith("|start")) {
+                started = true;
             }
             if (workerData.debug) {
                 console.log(line);
