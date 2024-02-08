@@ -81,7 +81,6 @@ def plot_pca_3d(data: np.ndarray, title: str = "3D PCA Plot", **kwargs) -> None:
 
 
 def main(gen: int = 3, ndims: int = 2):
-
     data = np.load(f"src/data/gen{gen}/species.npy")
 
     indices = []

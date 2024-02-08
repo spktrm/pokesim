@@ -125,7 +125,6 @@ def construct_moves_encoding(gen: int):
         feature_fn = protoc.get("feature_fn")
 
         if feature_fn is None:
-
             if feature not in moves_df.columns:
                 print(f"{feature} not in df")
                 continue

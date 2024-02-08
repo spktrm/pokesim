@@ -1,5 +1,6 @@
 import math
 import numpy as np
+import pandas as pd
 
 from typing import List
 
@@ -77,6 +78,23 @@ def get_species_df(gen: int):
     return df
 
 
+def get_learnset_df(gen: int, species_df: pd.DataFrame):
+    data = load_gendata(gen, "learnsets")
+    for pokemon in data:
+        moves_to_pop = []
+
+        for move, learnset in pokemon.get("learnset", {}).items():
+            if not any([option.startswith(f"{gen}") for option in learnset]):
+                moves_to_pop.append(move)
+            else:
+                pokemon["learnset"][move] = True
+        
+        for move in moves_to_pop:
+            pokemon["learnset"].pop(move)
+
+    return get_df(data)
+
+
 def get_typechart_df(gen: int):
     data = load_gendata(gen, "typechart")
     return get_df(data)
@@ -85,6 +103,7 @@ def get_typechart_df(gen: int):
 def construct_species_encoding(gen: int):
     typechart_df = get_typechart_df(gen)
     species_df = get_species_df(gen)
+    learnset_df = get_learnset_df(gen, species_df)
 
     feature_vector_dfs = []
 

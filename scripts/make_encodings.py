@@ -23,7 +23,6 @@ NPC = 64
 
 
 def main():
-
     bar1 = tqdm(range(3, 10), position=0)
     for gen in bar1:
         bar1.set_description(f"gen{gen}")

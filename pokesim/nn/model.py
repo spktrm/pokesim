@@ -607,11 +607,7 @@ class PolicyHead(nn.Module):
         active_embedding: torch.Tensor,
         entity_embeddings: torch.Tensor,
         state_embedding: torch.Tensor,
-    ) -> Tuple[
-        torch.Tensor,
-        torch.Tensor,
-        torch.Tensor,
-    ]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor,]:
         action_tokens = self.get_action_tokens(active_weight, teams)
         action_embeddings = self.embed_actions(action_tokens)
 

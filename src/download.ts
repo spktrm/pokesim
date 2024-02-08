@@ -7,8 +7,13 @@ import {
     ModdedDex,
     Move,
     Species,
+    SpeciesName,
     Type,
 } from "@pkmn/dex";
+import { Generations } from "@pkmn/data";
+import { TeamValidator } from "@pkmn/sim";
+import { Move as DexMove } from "@pkmn/sim/build/cjs/sim/dex-moves";
+import { Species as DexSpecies } from "@pkmn/sim/build/cjs/sim/dex-species";
 
 // Define the base URL and the paths to download
 const BASE_URL = "https://raw.githubusercontent.com/pkmn/ps/main/sim/{}.ts";
@@ -101,31 +106,56 @@ function extractPatterns(src: string, pattern: RegExp): string[] {
     return [...src.matchAll(pattern)].map((match) => match[1]);
 }
 
-async function getGenData(gen: number) {
-    const format = `gen${gen}` as ID;
-    const dex = new ModdedDex(format);
-    const species = dex.species.all();
-    const promises = species.map((species) => dex.learnsets.get(species.id));
-    const learnsets = await Promise.all(promises);
-    const data = {
-        species: [...species],
-        moves: [...dex.moves.all()],
-        abilities: [...dex.abilities.all()],
-        items: [...dex.items.all()],
-        typechart: [...dex.types.all()],
-        learnsets: [...learnsets],
-    };
-    return data;
-}
-
 type GenData = {
     species: Species[];
     moves: Move[];
     abilities: Ability[];
     items: Item[];
     typechart: Type[];
-    learnsets: Learnset[];
+    learnsets: {
+        species: SpeciesName;
+        [k: string]: any;
+    }[];
 };
+
+async function getGenData(gen: number): Promise<GenData> {
+    const format = `gen${gen}` as ID;
+    const dex = new ModdedDex(format);
+    const species = [...dex.species.all()];
+    const allMoves = [...dex.moves.all()];
+    const promises: any[] = [];
+    const validator = new TeamValidator(format);
+    species.map((species) =>
+        allMoves.map((move) =>
+            promises.push(
+                validator.omCheckCanLearn(
+                    move as unknown as DexMove,
+                    species as unknown as DexSpecies,
+                ),
+            ),
+        ),
+    );
+    const learnsets = species.map((_, speciesIndex) => {
+        const datum: { [k: string]: any } = {};
+        allMoves.map((move, moveIndex) => {
+            datum[move.id] =
+                promises[speciesIndex * species.length + moveIndex] === null;
+        });
+        return datum;
+    });
+    const data = {
+        species: species,
+        moves: [...dex.moves.all()],
+        abilities: [...dex.abilities.all()],
+        items: [...dex.items.all()],
+        typechart: [...dex.types.all()],
+        learnsets: species.map((species, index) => ({
+            species: species.name,
+            learnset: learnsets[index],
+        })),
+    };
+    return data;
+}
 
 function mapId<T extends { id: string; [key: string]: any }>(
     arr: T[],
@@ -274,10 +304,9 @@ async function main(): Promise<void> {
         }
         const genData = await getGenData(genNo);
         for (const [key, value] of Object.entries(genData)) {
-            fs.writeFileSync(
-                `${parentDir}/${key}.json`,
-                JSON.stringify(value, null, 2),
-            );
+            const ourPath = `${parentDir}/${key}.json`;
+            console.log(`writing ${ourPath}`);
+            fs.writeFileSync(ourPath, JSON.stringify(value, null, 2));
         }
     }
 }

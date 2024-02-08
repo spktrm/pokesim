@@ -53,7 +53,6 @@ def construct_items_encoding(gen: int):
         feature_fn = protoc.get("feature_fn")
 
         if feature_fn is None:
-
             if feature not in df.columns:
                 print(f"{feature} not in df")
                 continue

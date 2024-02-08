@@ -47,7 +47,10 @@ def get_df(data: List[Dict[str, Any]]):
         if len(df[column].map(lambda x: json.dumps(x)).unique()) <= 1:
             cols_to_drop.append(column)
     df = df.drop(cols_to_drop, axis=1)
-    df.index = df["id"]
+    try:
+        df.index = df["id"]
+    except:
+        pass
     return df
 
 
