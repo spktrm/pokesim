@@ -23,7 +23,7 @@ import { formatId } from "../data";
 
 type Config = { [k: string]: any };
 const config = yaml.load(
-    fs.readFileSync(path.resolve("config.yml"), "utf-8"),
+    fs.readFileSync(path.resolve("config.yml"), "utf-8")
 ) as Config;
 console.log(config);
 
@@ -44,15 +44,15 @@ function logRequest(request: AnyObject) {
     try {
         actions.push(
             ...((request ?? {}).active ?? [])[0].moves.map(
-                (x: { [k: string]: any }) => x.id,
-            ),
+                (x: { [k: string]: any }) => x.id
+            )
         );
     } catch {}
     try {
         actions.push(
             ...(((request ?? {}).side ?? {}).pokemon ?? []).map(
-                (x: { [k: string]: any }) => x.ident,
-            ),
+                (x: { [k: string]: any }) => x.ident
+            )
         );
     } catch {}
 
@@ -159,7 +159,7 @@ class PokemonShowdownBot {
                             parseInt(
                                 (
                                     this.clientBattle.request as AnyObject
-                                ).side.id.slice(1),
+                                ).side.id.slice(1)
                             ) - 1;
                         this.playerIndexIsSet = true;
                         this.handler.playerIndex = this.playerIndex;
@@ -174,12 +174,15 @@ class PokemonShowdownBot {
                     done: 0,
                     playerIndex: this.playerIndex ?? 0,
                 });
+                this.clientSocket.write(
+                    Buffer.from(Int32Array.from([state.length]).buffer)
+                );
                 this.clientSocket.write(state);
                 const actionChar = await this.msgQueue.dequeue();
                 const action = actionCharToString(actionChar);
                 this.sendMessage(
                     this.battleId ?? "",
-                    `/choose ${action}|${rqid}`,
+                    `/choose ${action}|${rqid}`
                 );
             }
         }
@@ -201,7 +204,7 @@ class PokemonShowdownBot {
 
                 const response = await fetch(
                     "https://play.pokemonshowdown.com/api/login",
-                    { method: "POST", body: JSON.stringify(params) },
+                    { method: "POST", body: JSON.stringify(params) }
                 );
                 const assertion: string = await response.text();
                 const json = JSON.parse(assertion.slice(1));
@@ -220,7 +223,7 @@ class PokemonShowdownBot {
 
                 const response = await fetch(
                     "https://play.pokemonshowdown.com/api/login",
-                    { method: "POST", body: JSON.stringify(params) },
+                    { method: "POST", body: JSON.stringify(params) }
                 );
                 const assertion: string = await response.text();
 

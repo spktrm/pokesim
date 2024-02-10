@@ -1,6 +1,12 @@
-from typing import Callable, List, TypedDict
 import numpy as np
+import pandas as pd
 
+from sentence_transformers import SentenceTransformer
+
+from typing import List
+
+from sklearn.decomposition import PCA
+from sklearn.discriminant_analysis import StandardScaler
 from pokesim.data import ITEMS_STOI, load_gendata
 from pokesim.embeddings.encoding_funcs import (
     concat_encodings,
@@ -12,24 +18,29 @@ from pokesim.embeddings.helpers import to_id, Protocol
 from pokesim.embeddings.moves import get_df
 
 
-ONEHOT_FEATURES = ["id"]
+ONEHOT_FEATURES = [
+    "id",
+]
 
 MULTIHOT_FEATURES = []
+PCA_DESC = 64
+
+
+def get_desc_vectors(series: pd.Series):
+    vectorizer = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
+    description_vectors = vectorizer.encode(series.tolist())
+    description_vectors = StandardScaler().fit_transform(description_vectors)
+    description_vectors = PCA(PCA_DESC).fit_transform(description_vectors)
+    return StandardScaler().fit_transform(description_vectors)
 
 
 ITEMS_PROTOCOLS: List[Protocol] = [
-    *[
-        {"feature": stat_feature, "func": onehot_encode}
-        for stat_feature in ONEHOT_FEATURES
-    ],
-    {"feature_fn": lambda x: x.startswith("fling."), "func": onehot_encode},
-    {"feature_fn": lambda x: x.startswith("on"), "func": onehot_encode},
-    {"feature_fn": lambda x: x.startswith("is"), "func": onehot_encode},
-    {"feature_fn": lambda x: x.startswith("naturalGift."), "func": onehot_encode},
-    *[
-        {"feature": stat_feature, "func": multihot_encode}
-        for stat_feature in MULTIHOT_FEATURES
-    ],
+    *[{"feature": feature, "func": onehot_encode} for feature in ONEHOT_FEATURES],
+    # {"feature_fn": lambda x: x.startswith("fling."), "func": onehot_encode},
+    # {"feature_fn": lambda x: x.startswith("on"), "func": onehot_encode},
+    # {"feature_fn": lambda x: x.startswith("is"), "func": onehot_encode},
+    # {"feature_fn": lambda x: x.startswith("naturalGift."), "func": onehot_encode},
+    # *[{"feature": feature, "func": multihot_encode} for feature in MULTIHOT_FEATURES],
 ]
 
 
@@ -76,12 +87,14 @@ def construct_items_encoding(gen: int):
 
     placeholder = np.zeros((len(ITEMS_STOI), concat_df.shape[-1]))
 
+    valid_indices = []
     for name, row in concat_df.iterrows():
         row_index = ITEMS_STOI[name]
         placeholder[row_index] = row
+        valid_indices.append(row_index)
 
     row_index = ITEMS_STOI["<UNK>"]
-    placeholder[row_index] = concat_df.mean(0).values
+    placeholder[row_index] = placeholder[np.array(valid_indices)].mean(0)
 
     return placeholder.astype(np.float32)
 

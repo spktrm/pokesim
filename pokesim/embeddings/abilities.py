@@ -1,6 +1,12 @@
 import numpy as np
+import pandas as pd
+
+from sentence_transformers import SentenceTransformer
 
 from typing import List
+from sklearn.decomposition import PCA
+
+from sklearn.discriminant_analysis import StandardScaler
 
 from pokesim.data import ABILITIES_STOI, load_gendata
 from pokesim.embeddings.encoding_funcs import (
@@ -11,16 +17,27 @@ from pokesim.embeddings.helpers import to_id, Protocol
 from pokesim.embeddings.moves import get_df
 
 
-ONEHOT_FEATURES = ["id", "suppressWeather"]
+ONEHOT_FEATURES = [
+    "id",
+    # "suppressWeather",
+]
+
+PCA_DESC = 64
+
+
+def get_desc_vectors(series: pd.Series):
+    vectorizer = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
+    description_vectors = vectorizer.encode(series.tolist())
+    description_vectors = StandardScaler().fit_transform(description_vectors)
+    description_vectors = PCA(PCA_DESC).fit_transform(description_vectors)
+    return StandardScaler().fit_transform(description_vectors)
+
 
 ABILITIES_PROTOCOLS: List[Protocol] = [
-    *[
-        {"feature": stat_feature, "func": onehot_encode}
-        for stat_feature in ONEHOT_FEATURES
-    ],
-    {"feature_fn": lambda x: x.startswith("condition."), "func": onehot_encode},
-    {"feature_fn": lambda x: x.startswith("on"), "func": onehot_encode},
-    {"feature_fn": lambda x: x.startswith("is"), "func": onehot_encode},
+    *[{"feature": feature, "func": onehot_encode} for feature in ONEHOT_FEATURES],
+    # {"feature_fn": lambda x: x.startswith("condition."), "func": onehot_encode},
+    # {"feature_fn": lambda x: x.startswith("on"), "func": onehot_encode},
+    # {"feature_fn": lambda x: x.startswith("is"), "func": onehot_encode},
 ]
 
 
@@ -67,12 +84,14 @@ def construct_abilities_encoding(gen: int):
 
     placeholder = np.zeros((len(ABILITIES_STOI), concat_df.shape[-1]))
 
+    valid_indices = []
     for name, row in concat_df.iterrows():
         row_index = ABILITIES_STOI[name]
         placeholder[row_index] = row
+        valid_indices.append(row_index)
 
     row_index = ABILITIES_STOI["<UNK>"]
-    placeholder[row_index] = concat_df.mean(0).values
+    placeholder[row_index] = placeholder[np.array(valid_indices)].mean(0)
 
     return placeholder.astype(np.float32)
 

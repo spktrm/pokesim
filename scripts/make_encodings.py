@@ -19,11 +19,11 @@ func_mapping = {
     "items": construct_items_encoding,
 }
 
-NPC = 64
+NPC = 128
 
 
 def main():
-    bar1 = tqdm(range(3, 10), position=0)
+    bar1 = tqdm(range(3, 4), position=0)
     for gen in bar1:
         bar1.set_description(f"gen{gen}")
 
@@ -34,22 +34,23 @@ def main():
                 encoding = func(gen)
             valid_indices = encoding.sum(-1) != 0
 
-            new = np.zeros((encoding.shape[0], NPC))
+            # new = np.zeros((encoding.shape[0], NPC))
+            new = np.zeros(encoding.shape)
 
             arr = encoding[valid_indices].copy()
-            pca = PCA(NPC)
-            arr = pca.fit_transform(arr)
-            arr = StandardScaler().fit_transform(arr)
-            print(pca.explained_variance_ratio_[:NPC].sum())
-
-            new[valid_indices] = arr
-
-            # new[valid_indices] = pred(
-            #     encoding[valid_indices].copy(),
+            # arr = pred(
+            #     arr,
             #     np.arange(encoding.shape[0]),
-            #     Encoder(encoding.shape[-1], [128, 128]),
+            #     Encoder(
+            #         encoding.shape[-1],
+            #         [256, NPC],
+            #         # use_layer_norm=False,
+            #     ),
             #     10000,
             # )
+            # arr = StandardScaler().fit_transform(arr)
+
+            new[valid_indices] = arr
             np.save(f"src/data/gen{gen}/{name}.npy", new)
 
 

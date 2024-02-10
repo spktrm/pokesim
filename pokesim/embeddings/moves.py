@@ -15,10 +15,10 @@ from pokesim.embeddings.helpers import Protocol, get_df, to_id
 
 
 ONEHOT_FEATURES = [
+    # "name",
     "category",
     "priority",
     "type",
-    "name",
     "target",
     "volatileStatus",
     "status",
@@ -62,7 +62,7 @@ MOVES_PROTOCOLS: List[Protocol] = [
     {"feature_fn": lambda x: x.startswith("selfBoost."), "func": onehot_encode},
     {"feature_fn": lambda x: x.startswith("ignore"), "func": onehot_encode},
     {"feature": "basePower", "func": z_score_scale},
-    # {"feature": "basePower", "func": sqrt_onehot_encode},
+    {"feature": "basePower", "func": sqrt_onehot_encode},
     {
         "feature": "accuracy",
         "func": lambda x: (x.map(lambda v: 100 if isinstance(v, bool) else v) / 100),
@@ -99,23 +99,23 @@ def get_typechart_df(gen: int):
 
 
 def construct_moves_encoding(gen: int):
-    typechart_df = get_typechart_df(gen)
     moves_df = get_moves_df(gen)
 
-    typechart_df = pd.DataFrame(
-        data=np.stack(
-            moves_df["type"]
-            .map(to_id)
-            .map(
-                lambda x: (
-                    np.zeros_like(typechart_df.loc["normal"].values)
-                    if x == ""
-                    else typechart_df.loc[x].values
-                )
-            )
-            .values
-        )
-    )
+    # typechart_df = get_typechart_df(gen)
+    # typechart_df = pd.DataFrame(
+    #     data=np.stack(
+    #         moves_df["type"]
+    #         .map(to_id)
+    #         .map(
+    #             lambda x: (
+    #                 np.zeros_like(typechart_df.loc["normal"].values)
+    #                 if x == ""
+    #                 else typechart_df.loc[x].values
+    #             )
+    #         )
+    #         .values
+    #     )
+    # )
 
     feature_vector_dfs = []  # [typechart_df]
 

@@ -49,6 +49,6 @@ class RNaDConfig:
     eta_reward_transform: float = 0.2
     nerd: NerdConfig = NerdConfig()
     c_vtrace: float = 1
-    rho: float = np.inf
+    rho: float = 1
 
-    enable_regularization: bool = False
+    enable_regularization: bool = True

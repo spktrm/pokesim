@@ -17,7 +17,7 @@ from pokesim.embeddings.moves import get_df
 
 
 ONEHOT_FEATURES = [
-    "name",
+    # "name",
     "nfe",
 ]
 
@@ -35,6 +35,19 @@ STAT_FEATURES = [
     "baseStats.spd",
     "baseStats.spe",
 ]
+
+
+def get_type_data(series: pd.Series):
+    typechart_df = get_typechart_df(3)
+
+    type_encoding = (
+        multihot_encode(series).values[:, None, :] * typechart_df.values[None]
+    )
+    type_encoding = type_encoding.swapaxes(1, 2)
+    type_encoding[type_encoding.sum(-1) == 0] = 1
+    type_encoding = type_encoding.prod(1)
+    return
+
 
 SPECIES_PROTOCOLS: List[Protocol] = [
     # *[
@@ -88,7 +101,7 @@ def get_learnset_df(gen: int, species_df: pd.DataFrame):
                 moves_to_pop.append(move)
             else:
                 pokemon["learnset"][move] = True
-        
+
         for move in moves_to_pop:
             pokemon["learnset"].pop(move)
 
@@ -97,13 +110,29 @@ def get_learnset_df(gen: int, species_df: pd.DataFrame):
 
 def get_typechart_df(gen: int):
     data = load_gendata(gen, "typechart")
-    return get_df(data)
+    df = get_df(data)
+
+    df = df[[c for c in df.columns if c.startswith("damageTaken.")]]
+    if gen < 6:
+        df = df.drop("damageTaken.Fairy", axis=1)
+    if gen < 2:
+        df = df.drop("damageTaken.Steel", axis=1)
+        df = df.drop("damageTaken.Dark", axis=1)
+
+    cols_to_drop = []
+    for col in df.columns:
+        if len(df[col].unique()) == 1:
+            cols_to_drop.append(col)
+
+    df = df[[c for c in df.columns if c not in cols_to_drop]]
+
+    df = df.replace({0: 1, 1: 2, 2: 0.5, 3: 0})
+    return df
 
 
 def construct_species_encoding(gen: int):
-    typechart_df = get_typechart_df(gen)
     species_df = get_species_df(gen)
-    learnset_df = get_learnset_df(gen, species_df)
+    # learnset_df = get_learnset_df(gen, species_df)
 
     feature_vector_dfs = []
 
@@ -117,12 +146,14 @@ def construct_species_encoding(gen: int):
 
     placeholder = np.zeros((len(SPECIES_STOI), concat_df.shape[-1]))
 
+    valid_indices = []
     for name, row in concat_df.iterrows():
         row_index = SPECIES_STOI[name]
         placeholder[row_index] = row
+        valid_indices.append(row_index)
 
     row_index = SPECIES_STOI["<UNK>"]
-    placeholder[row_index] = concat_df.mean(0).values
+    placeholder[row_index] = placeholder[np.array(valid_indices)].mean(0)
 
     return placeholder.astype(np.float32)
 

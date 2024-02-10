@@ -248,11 +248,18 @@ class Learner:
         discounts = torch.from_numpy(batch.valid).to(torch.float32)
         rewards = torch.from_numpy(batch.rewards * batch.valid).squeeze(-1)
 
+        assert torch.all(torch.abs(rewards.sum(0)) == 1)
+        # rewards += torch.where(
+        #     (0 < behavior_policy_logits[..., -6:].sum(-1))
+        #     & (behavior_policy_logits[..., -6:].sum(-1) < 0.1),
+        #     -1e-2,
+        #     0,
+        # )
+        # rewards = rewards * discounts
+
         target_policy_logits = learner_outputs.policy.cpu()
         values = learner_outputs.value.squeeze(-1)
         bootstrap_value = learner_outputs.value[-1].squeeze(-1)
-
-        assert torch.all(torch.abs(rewards.sum(0)) == 1)
 
         with torch.no_grad():
             learner_target_outputs = ModelOutput(*self.params_target(**forward_batch))

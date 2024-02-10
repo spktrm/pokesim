@@ -1,6 +1,9 @@
 import numpy as np
+from sympy import Rel
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from pokesim.data import (
     MOVES_STOI,
@@ -43,24 +46,46 @@ def get_onehot_encoding(num_embeddings: int):
     return nn.Embedding.from_pretrained(torch.eye(num_embeddings))
 
 
-def get_species_encodng(gen: int):
+_FROZEN = False
+
+
+def get_encoding(arr: np.ndarray, entity_size: int):
+    return nn.Sequential(
+        _layer_init(nn.Embedding(arr.shape[0], entity_size)),
+        nn.ReLU(),
+    )
+
+
+def get_species_encodng(gen: int, entity_size: int, frozen: bool = _FROZEN):
     npy_arr = np.load(f"src/data/gen{gen}/species.npy")
-    return nn.Embedding.from_pretrained(torch.from_numpy(npy_arr).to(torch.float32))
+    if frozen:
+        return nn.Embedding.from_pretrained(torch.from_numpy(npy_arr).to(torch.float32))
+    else:
+        return get_encoding(npy_arr, entity_size)
 
 
-def get_moves_encoding(gen: int):
+def get_moves_encoding(gen: int, entity_size: int, frozen: bool = _FROZEN):
     npy_arr = np.load(f"src/data/gen{gen}/moves.npy")
-    return nn.Embedding.from_pretrained(torch.from_numpy(npy_arr).to(torch.float32))
+    if frozen:
+        return nn.Embedding.from_pretrained(torch.from_numpy(npy_arr).to(torch.float32))
+    else:
+        return get_encoding(npy_arr, entity_size)
 
 
-def get_abilities_encoding(gen: int):
+def get_abilities_encoding(gen: int, entity_size: int, frozen: bool = _FROZEN):
     npy_arr = np.load(f"src/data/gen{gen}/abilities.npy")
-    return nn.Embedding.from_pretrained(torch.from_numpy(npy_arr).to(torch.float32))
+    if frozen:
+        return nn.Embedding.from_pretrained(torch.from_numpy(npy_arr).to(torch.float32))
+    else:
+        return get_encoding(npy_arr, entity_size)
 
 
-def get_items_encoding(gen: int):
+def get_items_encoding(gen: int, entity_size: int, frozen: bool = _FROZEN):
     npy_arr = np.load(f"src/data/gen{gen}/items.npy")
-    return nn.Embedding.from_pretrained(torch.from_numpy(npy_arr).to(torch.float32))
+    if frozen:
+        return nn.Embedding.from_pretrained(torch.from_numpy(npy_arr).to(torch.float32))
+    else:
+        return get_encoding(npy_arr, entity_size)
 
 
 class Encoder(nn.Module):
@@ -74,10 +99,22 @@ class Encoder(nn.Module):
     ):
         super().__init__()
 
-        self.species_onehot = get_species_encodng(gen)
-        self.item_onehot = get_items_encoding(gen)
-        self.ability_onehot = get_abilities_encoding(gen)
-        self.moves_onehot = get_moves_encoding(gen)
+        self.species_onehot = get_species_encodng(gen, entity_size)
+        self.species_lin = _layer_init(
+            nn.Linear(self.species_onehot.weight.shape[-1], entity_size)
+        )
+        self.item_onehot = get_items_encoding(gen, entity_size)
+        self.item_lin = _layer_init(
+            nn.Linear(self.item_onehot.weight.shape[-1], entity_size)
+        )
+        self.ability_onehot = get_abilities_encoding(gen, entity_size)
+        self.ability_lin = _layer_init(
+            nn.Linear(self.ability_onehot.weight.shape[-1], entity_size)
+        )
+        self.moves_onehot = get_moves_encoding(gen, entity_size)
+        self.moveset_lin = _layer_init(
+            nn.Linear(self.moves_onehot.weight.shape[-1], entity_size)
+        )
 
         self.hp_onehot = get_onehot_encoding(65)
         self.status_onehot = get_onehot_encoding(NUM_STATUS)
@@ -99,19 +136,17 @@ class Encoder(nn.Module):
             + self.onehot4.weight.shape[-1]
             + self.toxic_turns_onehot.weight.shape[-1]
         )
-        self.rest_lin = _layer_init(
-            nn.Linear(rest_size, self.species_onehot.weight.shape[-1])
-        )
+        self.rest_lin = _layer_init(nn.Linear(rest_size, entity_size))
         self.entity_merge = VectorMerge(
             input_sizes={
-                "species": self.species_onehot.weight.shape[-1],
-                "ability": self.ability_onehot.weight.shape[-1],
-                "item": self.item_onehot.weight.shape[-1],
-                "moveset": self.moves_onehot.weight.shape[-1],
-                "rest": self.species_onehot.weight.shape[-1],
+                "species": entity_size,
+                "ability": entity_size,
+                "item": entity_size,
+                "moveset": entity_size,
+                "rest": entity_size,
             },
             output_size=entity_size,
-            gating_type=GatingType.GLOBAL,
+            gating_type=GatingType.NONE,
             use_layer_norm=use_layer_norm,
             affine_layer_norm=affine_layer_norm,
         )
@@ -218,8 +253,17 @@ class Encoder(nn.Module):
         move_tokens = entities[..., 20:]
 
         species_onehot = self.species_onehot(species_token)
+        species_embedding = self.species_lin(species_onehot)
+
         item_onehot = self.item_onehot(item_token)
+        item_embedding = self.item_lin(item_onehot)
+
         ability_onehot = self.ability_onehot(ability_token)
+        ability_embedding = self.ability_lin(ability_onehot)
+
+        moveset_onehot = self.moves_onehot(move_tokens)
+        moveset_embedding = self.moveset_lin(moveset_onehot).mean(-2)
+
         hp_onehot = self.hp_onehot(hp_bucket)
         active_onehot = self.onehot2(active_token)
         fainted_onehot = self.onehot2(fainted_token)
@@ -229,7 +273,6 @@ class Encoder(nn.Module):
         public_onehot = self.onehot2(public_token)
         sleep_turns_onehot = self.onehot4(sleep_turns_token)
         toxic_turns_onehot = self.toxic_turns_onehot(toxic_turns_token)
-        moveset_onehot = self.moves_onehot(move_tokens).mean(-2)
 
         rest_onehot = torch.cat(
             (
@@ -252,10 +295,10 @@ class Encoder(nn.Module):
         )
         raw_embeddings = self.entity_merge(
             {
-                "species": species_onehot,
-                "ability": ability_onehot,
-                "item": item_onehot,
-                "moveset": moveset_onehot,
+                "species": species_embedding,
+                "ability": ability_embedding,
+                "item": item_embedding,
+                "moveset": moveset_embedding,
                 "rest": self.rest_lin(rest_onehot),
             }
         )
@@ -439,44 +482,45 @@ class Encoder(nn.Module):
         raw_embeddings = self.forward_entities(teams[:, :, -1]).flatten(2, 3)
         entity_embeddings = self.concat_cls_entities(raw_embeddings)
 
-        entity_mask = self.get_entity_mask(teams)
+        # entity_mask = self.get_entity_mask(teams)
         active_token = teams[..., -1, :, :, 4]
 
-        history_context_embeddings = self.embed_context(
-            history_side_conditions[:, :, -1],
-            history_volatile_status[:, :, -1],
-            history_boosts[:, :, -1],
-            history_pseudoweather[:, :, -1],
-            history_weather[:, :, -1],
-            history_terrain[:, :, -1],
-        )
-        history_context_embeddings = self.history_context_mlp(
-            history_context_embeddings
-        )
-        history_entity_embeddings = self.forward_entities(history_entities[:, :, -1])
-        history_user = history_entity_embeddings[..., 0, :]
-        history_target = history_entity_embeddings[..., 1, :]
+        # history_context_embeddings = self.embed_context(
+        #     history_side_conditions[:, :, -1],
+        #     history_volatile_status[:, :, -1],
+        #     history_boosts[:, :, -1],
+        #     history_pseudoweather[:, :, -1],
+        #     history_weather[:, :, -1],
+        #     history_terrain[:, :, -1],
+        # )
+        # history_context_embeddings = self.history_context_mlp(
+        #     history_context_embeddings
+        # )
+        # history_entity_embeddings = self.forward_entities(history_entities[:, :, -1])
+        # history_user = history_entity_embeddings[..., 0, :]
+        # history_target = history_entity_embeddings[..., 1, :]
 
-        history_stats_embedding = self.forward_history_stats(
-            history_stats[:, :, -1, ..., 1:]
-        )
+        # history_stats_embedding = self.forward_history_stats(
+        #     history_stats[:, :, -1, ..., 1:]
+        # )
 
-        history_embeddings = self.forward_history(
-            history_user,
-            history_target,
-            history_context_embeddings,
-            history_stats_embedding,
-        )
+        # history_embeddings = self.forward_history(
+        #     history_user,
+        #     history_target,
+        #     history_context_embeddings,
+        #     history_stats_embedding,
+        # )
 
-        history_mask = self.get_history_mask(history_stats)
+        # history_mask = self.get_history_mask(history_stats)
 
-        entity_embeddings = self.transformer(
-            entity_embeddings, history_embeddings, entity_mask, history_mask
-        )
+        # entity_embeddings = self.transformer(
+        #     entity_embeddings, history_embeddings, entity_mask, history_mask
+        # )
 
         active_weight = active_token[..., 0, :].unsqueeze(-2).float()
         active_embedding = active_weight @ entity_embeddings[..., 4:10, :]
 
+        all_entity_embeddings = entity_embeddings
         entities_embedding = entity_embeddings[..., :4, :].flatten(2)
         entity_embeddings = entity_embeddings[..., 4:10, :]
 
@@ -494,6 +538,7 @@ class Encoder(nn.Module):
             active_weight,
             active_embedding,
             entity_embeddings,
+            all_entity_embeddings,
             entities_embedding,
             context_embedding,
         )
@@ -546,15 +591,15 @@ class PolicyHead(nn.Module):
         switch_tokens = SWITCH_TOKEN * torch.ones(6, dtype=torch.long)
         self.register_buffer("switch_tokens", switch_tokens)
 
-        self.moves_onehot = get_moves_encoding(gen)
+        self.moves_onehot = get_moves_encoding(gen, entity_size)
+        self.moves_lin = _layer_init(
+            nn.Linear(self.moves_onehot.weight.shape[-1], entity_size)
+        )
+
         self.legal_embedding = nn.Embedding(2, entity_size)
 
         self.action_merge = VectorMerge(
-            {
-                "action": self.moves_onehot.weight.shape[-1],
-                "user": entity_size,
-                "legal": entity_size,
-            },
+            {"action": entity_size, "user": entity_size, "legal": entity_size},
             output_size=entity_size,
             gating_type=GatingType.GLOBAL,
             use_layer_norm=use_layer_norm,
@@ -597,7 +642,7 @@ class PolicyHead(nn.Module):
         )
         action_tokens = torch.cat((moveset_tokens, expanded_switch_tokens), dim=-1)
 
-        return self.moves_onehot(action_tokens)
+        return self.moves_lin(self.moves_onehot(action_tokens))
 
     def forward(
         self,
@@ -607,7 +652,11 @@ class PolicyHead(nn.Module):
         active_embedding: torch.Tensor,
         entity_embeddings: torch.Tensor,
         state_embedding: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor,]:
+    ) -> Tuple[
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+    ]:
         action_tokens = self.get_action_tokens(active_weight, teams)
         action_embeddings = self.embed_actions(action_tokens)
 
@@ -650,17 +699,28 @@ class ValueHead(nn.Module):
     ):
         super().__init__()
 
-        self.value_mlp = MLP(
-            [stream_size, stream_size, 1],
-            use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
-        )
+        # self.value_mlp = MLP(
+        #     [stream_size, stream_size, 1],
+        #     use_layer_norm=use_layer_norm,
+        #     affine_layer_norm=affine_layer_norm,
+        # )
 
-    def forward(self, state_embedding: torch.Tensor) -> torch.Tensor:
-        value_hidden = state_embedding
+    def forward(
+        self, state_embedding: torch.Tensor, all_entity_embeddings: torch.Tensor
+    ) -> torch.Tensor:
+        actual = F.layer_norm(
+            all_entity_embeddings[..., 4:, :], (all_entity_embeddings.shape[-1],)
+        )
+        scores = actual @ actual.transpose(-2, -1)
+
+        # value_hidden = state_embedding
         # value_hidden = self.value_resnet(state_embedding)
-        value = self.value_mlp(value_hidden)
-        return value
+        # value = self.value_mlp(value_hidden)
+        return (
+            # value
+            +scores[..., :6, -6:].flatten(2).mean(-1, keepdim=True)
+            - scores[..., -6:, :6].flatten(2).mean(-1, keepdim=True)
+        )
 
 
 class Model(nn.Module):
@@ -730,6 +790,7 @@ class Model(nn.Module):
             active_weight,
             active_embedding,
             entity_embeddings,
+            all_entity_embeddings,
             entities_embedding,
             context_embedding,
         ) = self.encoder.forward(
@@ -764,7 +825,9 @@ class Model(nn.Module):
             state_embedding=state_embedding,
         )
 
-        value = self.value_head.forward(state_embedding=state_embedding)
+        value = self.value_head.forward(
+            state_embedding=state_embedding, all_entity_embeddings=all_entity_embeddings
+        )
 
         return ModelOutput(
             policy=policy,

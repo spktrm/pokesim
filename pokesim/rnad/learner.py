@@ -218,8 +218,9 @@ class Learner:
         ckpt = torch.load(fpath, map_location="cpu")
         if not ignore_config:
             obj.config = ckpt["config"]
+        params = ckpt["params"]
         obj.params.load_state_dict(ckpt["params"])
-        obj.params_actor.load_state_dict(ckpt["params_actor"])
+        obj.params_actor.load_state_dict(ckpt.get("params_actor", params))
         obj.params_target.load_state_dict(ckpt["params_target"])
         obj.optimizer.load_state_dict(ckpt["optimizer"])
         obj.scaler.load_state_dict(ckpt["scaler"])

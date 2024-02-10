@@ -10,7 +10,7 @@ from pokesim.data import MOVES_STOI, SPECIES_STOI
 from pokesim.embeddings.helpers import to_id
 
 
-def main(gen: int = 3, max_similarity: float = 0.25):
+def main(gen: int = 3, max_similarity: float = 0.5):
     data = np.load(f"src/data/gen{gen}/species.npy")
 
     indices = []

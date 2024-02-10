@@ -112,10 +112,10 @@ type GenData = {
     abilities: Ability[];
     items: Item[];
     typechart: Type[];
-    learnsets: {
-        species: SpeciesName;
-        [k: string]: any;
-    }[];
+    // learnsets: {
+    //     species: SpeciesName;
+    //     [k: string]: any;
+    // }[];
 };
 
 async function getGenData(gen: number): Promise<GenData> {
@@ -123,42 +123,22 @@ async function getGenData(gen: number): Promise<GenData> {
     const dex = new ModdedDex(format);
     const species = [...dex.species.all()];
     const allMoves = [...dex.moves.all()];
-    const promises: any[] = [];
-    const validator = new TeamValidator(format);
-    species.map((species) =>
-        allMoves.map((move) =>
-            promises.push(
-                validator.omCheckCanLearn(
-                    move as unknown as DexMove,
-                    species as unknown as DexSpecies,
-                ),
-            ),
-        ),
-    );
-    const learnsets = species.map((_, speciesIndex) => {
-        const datum: { [k: string]: any } = {};
-        allMoves.map((move, moveIndex) => {
-            datum[move.id] =
-                promises[speciesIndex * species.length + moveIndex] === null;
-        });
-        return datum;
-    });
     const data = {
         species: species,
         moves: [...dex.moves.all()],
         abilities: [...dex.abilities.all()],
         items: [...dex.items.all()],
         typechart: [...dex.types.all()],
-        learnsets: species.map((species, index) => ({
-            species: species.name,
-            learnset: learnsets[index],
-        })),
+        // learnsets: species.map((species, index) => ({
+        //     species: species.name,
+        //     learnset: learnsets[index],
+        // })),
     };
     return data;
 }
 
 function mapId<T extends { id: string; [key: string]: any }>(
-    arr: T[],
+    arr: T[]
 ): string[] {
     return arr.map((item) => item.id);
 }
@@ -294,7 +274,7 @@ async function main(): Promise<void> {
     // Write the data to a JSON file
     fs.writeFileSync(
         `${parentDataDir}/data.json`,
-        JSON.stringify(data, null, 2),
+        JSON.stringify(data, null, 2)
     );
 
     for (const genNo of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {

@@ -1,4 +1,5 @@
 import os
+from typing import Tuple
 import torch
 import torch.nn as nn
 import numpy as np
@@ -178,7 +179,28 @@ def finetune(policy: torch.Tensor, mask: torch.Tensor):
     return policy
 
 
-def print_rounded_numbers(numbers, n: int):
+def get_color(
+    value: float, max_value: int = 3, min_value: int = -3
+) -> Tuple[int, int, int]:
+    r, g, b = 255, 255, 255
+
+    # value = (value - min_value) / (max_value - min_value)
+    # ratio = max(0, min(1, value))
+    # ratio *= 255
+    # r, b = int(ratio), int(ratio)
+
+    return (r, g, b)
+
+
+def get_coloured_text(text: str, colour: Tuple[int, int, int]) -> str:
+    r, g, b = colour
+
+    color_code = f"38;2;{r};{g};{b}"
+
+    return f"\033[{color_code}m{text}\033[0m"
+
+
+def print_rounded_numbers(numbers, n: int, max_value: int, min_value: int):
     # Round the numbers to n decimal places and convert them to strings
     rounded_numbers = [f"{num:.{n}f}" for num in numbers]
 
@@ -188,16 +210,24 @@ def print_rounded_numbers(numbers, n: int):
 
     # Create a format string for even spacing
     format_string = "{:>" + str(max_length) + "}"
+    colours = [get_color(value, max_value, min_value) for value in numbers]
 
     # Print the numbers on a single line with even spacing
-    print(" ".join(format_string.format(num) for num in rounded_numbers))
+    print(
+        " ".join(
+            get_coloured_text(format_string.format(num), colour)
+            for colour, num in zip(colours, rounded_numbers)
+        )
+    )
 
 
 def handle_verbose(
     n: int, pi: np.ndarray, logit: np.ndarray, action: int, value: np.ndarray
 ):
     logit = logit - logit.mean(-1, keepdims=True)
-    print_rounded_numbers(pi.tolist(), 2)
-    print_rounded_numbers(logit.tolist(), 2)
-    print(value.item())
+    print_rounded_numbers(pi.tolist(), 2, 1, 0)
+    print_rounded_numbers(logit.tolist(), 2, 3, -3)
+
+    value_colour = get_color(value, max_value=1, min_value=-1)
+    print(get_coloured_text(f"{value.item()}", value_colour))
     print(action)
