@@ -515,56 +515,33 @@ class ToVector(nn.Module):
         self._vector_stream_size = vector_stream_size
         self._use_layer_norm = use_layer_norm
 
-        hidden_layer_sizes = [self._units_stream_size] + self._units_hidden_sizes
-        self._hidden_layers = nn.ModuleList()
-        for input_size, output_size in zip(
-            hidden_layer_sizes[:-1], hidden_layer_sizes[1:]
-        ):
-            if use_layer_norm:
-                self._hidden_layers.append(
-                    nn.LayerNorm(input_size, elementwise_affine=affine_layer_norm)
-                )
-            self._hidden_layers.append(nn.ReLU())
-            self._hidden_layers.append(_layer_init(nn.Linear(input_size, output_size)))
+        hidden_size = units_hidden_sizes[0]
 
-        final_hidden_size = self._units_hidden_sizes[-1]
-        self._final_layers = nn.ModuleList()
+        mod_layers = [nn.ReLU()]
         if use_layer_norm:
-            self._final_layers.append(
-                nn.LayerNorm(final_hidden_size, elementwise_affine=affine_layer_norm)
+            mod_layers.insert(
+                0, nn.LayerNorm(units_stream_size, elementwise_affine=affine_layer_norm)
             )
-        self._final_layers.append(nn.ReLU())
-        self._final_layers.append(
-            _layer_init(nn.Linear(final_hidden_size, self._vector_stream_size))
-        )
+        self._pre_layer = nn.Sequential(*mod_layers)
+        self._hidden_layer = _layer_init(nn.Linear(units_stream_size, hidden_size))
+        self._gate_layer = _layer_init(nn.Linear(units_stream_size, 1))
 
-        self._gate_layers = nn.ModuleList()
-        if use_layer_norm:
-            self._gate_layers.append(
-                nn.LayerNorm(final_hidden_size, elementwise_affine=affine_layer_norm)
-            )
-        self._gate_layers.append(nn.ReLU())
-        self._gate_layers.append(
-            _layer_init(nn.Linear(final_hidden_size, 1), mean=0.005)
-        )
+        self.out_ln = nn.LayerNorm(hidden_size, elementwise_affine=affine_layer_norm)
+        self.out_lin = _layer_init(nn.Linear(hidden_size, vector_stream_size))
 
-    def forward(
-        self, entity_embeddings: torch.Tensor, mask: torch.Tensor = None
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        if mask is None:
-            mask = torch.ones_like(entity_embeddings[..., 0], dtype=torch.bool)
+    def forward(self, entity_embeddings: torch.Tensor) -> torch.Tensor:
         x = entity_embeddings
-        for layer in self._hidden_layers:
-            x = layer(x)
-        gate = x
-        for layer in self._gate_layers:
-            gate = layer(gate)
-        mask[..., 0] = True
-        gate = torch.where(mask.unsqueeze(-1), gate, float("-inf")).softmax(-2)
-        x = (x * gate).sum(-2)
-        for layer in self._final_layers:
-            x = layer(x)
-        return x
+
+        pre = self._pre_layer(x)
+        gate = self._gate_layer(pre).softmax(-2)
+        hidden = self._hidden_layer(pre)
+
+        x = (gate.transpose(-2, -1) @ hidden).squeeze(-2)
+
+        if self._use_layer_norm:
+            x = self.out_ln(x)
+        x = F.relu(x)
+        return self.out_lin(x)
 
 
 class GatingType(Enum):

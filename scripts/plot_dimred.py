@@ -81,7 +81,8 @@ def plot_pca_3d(data: np.ndarray, title: str = "3D PCA Plot", **kwargs) -> None:
 
 
 def main(gen: int = 3, ndims: int = 2):
-    data = np.load(f"src/data/gen{gen}/species.npy")
+    # data = np.load(f"src/data/gen{gen}/species.npy")
+    data = construct_species_encoding(gen)
 
     indices = []
     names = []
@@ -93,7 +94,9 @@ def main(gen: int = 3, ndims: int = 2):
 
     transformed_data = data[np.array(indices)]
 
-    # transformed_data = perform_pca(transformed_data, n_components=min(data.shape[-1], 3))
+    transformed_data = perform_pca(
+        transformed_data, n_components=min(data.shape[-1], 3)
+    )
 
     transformed_data = transformed_data[..., :ndims]
 

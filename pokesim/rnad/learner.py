@@ -23,10 +23,12 @@ def get_loss_v(
     v_list: List[torch.Tensor],
     v_target_list: List[torch.Tensor],
     mask_list: List[torch.Tensor],
+    clip_target: int = 2,
 ) -> torch.Tensor:
     """Define the loss function for the critic."""
     loss_v_list = []
     for v_n, v_target, mask in zip(v_list, v_target_list, mask_list):
+        # v_target = v_target.clip(max=clip_target, min=-clip_target)
         loss_v = torch.unsqueeze(mask, dim=-1) * (v_n - v_target.detach()) ** 2
         normalization = torch.sum(mask)
         loss_v = torch.sum(loss_v) / (normalization + (normalization == 0.0))

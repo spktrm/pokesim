@@ -1,3 +1,4 @@
+from functools import partial
 import numpy as np
 import pandas as pd
 
@@ -15,10 +16,10 @@ from pokesim.embeddings.helpers import Protocol, get_df, to_id
 
 
 ONEHOT_FEATURES = [
+    "name",
     "category",
     "priority",
     "type",
-    "name",
     "target",
     "volatileStatus",
     "status",
@@ -45,6 +46,20 @@ ONEHOT_FEATURES = [
 
 MULTIHOT_FEATURES = []
 
+
+def encode_continuous_values(series: pd.Series, n_bins):
+    values = series.values
+    range = series.max() - series.min()
+    arr = np.arange(n_bins)[None] < np.floor(n_bins * values / range)[:, None]
+    arr = arr.astype(float)
+    extra = (values % (range / n_bins)) / (range / n_bins)
+    extra_mask = (
+        np.arange(n_bins)[None] <= np.floor(n_bins * values / range)[:, None]
+    ) - arr
+    arr = arr + extra_mask * extra[:, None]
+    return pd.DataFrame(data=arr)
+
+
 MOVES_PROTOCOLS: List[Protocol] = [
     *[
         {"feature": stat_feature, "func": onehot_encode}
@@ -62,10 +77,15 @@ MOVES_PROTOCOLS: List[Protocol] = [
     {"feature_fn": lambda x: x.startswith("selfBoost."), "func": onehot_encode},
     {"feature_fn": lambda x: x.startswith("ignore"), "func": onehot_encode},
     {"feature": "basePower", "func": z_score_scale},
-    # {"feature": "basePower", "func": sqrt_onehot_encode},
+    {
+        "feature": "basePower",
+        "func": partial(encode_continuous_values, n_bins=10),
+    },
     {
         "feature": "accuracy",
-        "func": lambda x: (x.map(lambda v: 100 if isinstance(v, bool) else v) / 100),
+        "func": lambda x: partial(encode_continuous_values, n_bins=10)(
+            x.map(lambda v: 100 if isinstance(v, bool) else v)
+        ),
     },
     {
         "feature": "accuracy",
@@ -152,7 +172,7 @@ def construct_moves_encoding(gen: int):
         row_index = MOVES_STOI[name]
         placeholder[row_index, 1:] = row
 
-    placeholder[row_index, 1:] = placeholder[MOVES_STOI["return102"], 1:]
+    placeholder[MOVES_STOI["return102"], 1:] = placeholder[MOVES_STOI["return"], 1:]
 
     row_index = MOVES_STOI["<UNK>"]
     placeholder[row_index, 1:] = concat_df.mean(0).values

@@ -115,7 +115,7 @@ class EnvironmentNoStackSingleStep:
         )
         state = state_stack.dense()
 
-        state["legal"] = self.observation.get_legal_moves_raw()
+        state["legal"] = self.observation.get_legal_moves()
 
         reward = reward.reshape((1,))
         return (

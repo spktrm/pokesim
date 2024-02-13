@@ -5,13 +5,28 @@ from tabulate import tabulate
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import StandardScaler
 from sklearn.metrics import pairwise_distances
+import torch
 
 from pokesim.data import MOVES_STOI, SPECIES_STOI
 from pokesim.embeddings.helpers import to_id
+from pokesim.nn.model import Model
+from pokesim.utils import get_most_recent_file
 
 
-def main(gen: int = 3, max_similarity: float = 0.25):
-    data = np.load(f"src/data/gen{gen}/species.npy")
+def main(gen: int = 3, max_similarity: float = 0.5):
+    data_npy = np.load(f"src/data/gen{gen}/species.npy")
+
+    fpath = get_most_recent_file("ckpts")
+    data_torch = torch.load(fpath)["params"]
+
+    model = Model(32, 128, 8, True, True)
+    model.load_state_dict(data_torch)
+
+    data = (
+        model.encoder.species_onehot(torch.arange(data_npy.shape[0], dtype=torch.long))
+        .detach()
+        .numpy()
+    )
 
     indices = []
     names = []
@@ -21,7 +36,7 @@ def main(gen: int = 3, max_similarity: float = 0.25):
 
     n = 0
     for key, value in SPECIES_STOI.items():
-        if data[value].sum() != 0:
+        if data_npy[value].sum() != 0:
             names.append(key)
             indices.append(value)
 

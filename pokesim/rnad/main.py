@@ -113,6 +113,8 @@ def learn_loop(
 def main(ctx: ForkContext = ForkContext(), debug: bool = False):
     # fpath = get_most_recent_file("ckpts")
     # print(fpath)
+
+    # fpath = "ckpts/018633.pt"
     # init = torch.load(fpath, map_location="cpu")
     # init = init["params"]
 

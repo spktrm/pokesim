@@ -312,7 +312,7 @@ class State(NamedTuple):
         pseudoweather_enc = self.get_pseudoweather(leading_dims)
         weather_enc = self.get_weather(leading_dims)
         terrain_enc = self.get_terrain(leading_dims)
-        history_enc = self.get_history(leading_dims)
+        # history_enc = self.get_history(leading_dims)
         return {
             "raw": self.raw,
             "turn": turn_enc,
@@ -324,7 +324,7 @@ class State(NamedTuple):
             "pseudoweather": pseudoweather_enc,
             "weather": weather_enc,
             "terrain": terrain_enc,
-            **history_enc,
+            # **history_enc,
         }
 
 
@@ -334,31 +334,8 @@ class Observation(NamedTuple):
     def get_state(self):
         return self.raw[..., 4:-10]
 
-    def get_legal_moves_raw(self):
+    def get_legal_moves(self):
         return self.raw[..., -10:].copy().astype(np.bool_)
-
-    def get_legal_moves(self, policy_select: np.ndarray):
-        mask = self.raw[..., -10:].copy()
-        move_mask = mask[..., :4]
-        switch_mask = mask[..., 4:]
-        action_type_mask = np.concatenate(
-            (
-                move_mask.any(-1, keepdims=True),
-                switch_mask.any(-1, keepdims=True),
-            ),
-            axis=-1,
-        )
-        move_mask += ~action_type_mask[..., 0, None]
-        switch_mask += ~action_type_mask[..., 1, None]
-        mask = np.concatenate(
-            (
-                action_type_mask * (policy_select == 0),
-                move_mask * (policy_select == 1),
-                switch_mask * (policy_select == 2),
-            ),
-            axis=-1,
-        )
-        return mask.astype(np.bool_)
 
     def get_worker_index(self):
         return self.raw[..., 0]

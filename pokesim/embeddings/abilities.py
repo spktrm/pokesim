@@ -11,7 +11,10 @@ from pokesim.embeddings.helpers import to_id, Protocol
 from pokesim.embeddings.moves import get_df
 
 
-ONEHOT_FEATURES = ["id", "suppressWeather"]
+ONEHOT_FEATURES = [
+    "id",
+    "suppressWeather",
+]
 
 ABILITIES_PROTOCOLS: List[Protocol] = [
     *[

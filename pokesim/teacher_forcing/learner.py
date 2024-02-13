@@ -122,10 +122,10 @@ def compute_baseline_loss(advantages: torch.Tensor) -> torch.Tensor:
 
 
 def compute_policy_gradient_loss(
-    logits: torch.Tensor, actions: torch.Tensor, legal: torch.Tensor
+    log_policy: torch.Tensor, actions: torch.Tensor
 ) -> torch.Tensor:
-    cross_entropy = F.cross_entropy(
-        torch.flatten(torch.where(legal, logits, float("-inf")), 0, 1),
+    cross_entropy = F.nll_loss(
+        torch.flatten(log_policy, 0, 1),
         target=torch.flatten(actions, 0, 1),
         reduction="none",
     )
@@ -275,21 +275,22 @@ class Learner:
         action = action.to(self.config.learner_device)
 
         pg_loss = compute_policy_gradient_loss(
-            learner_outputs.logits - learner_outputs.logits.mean(-1, keepdim=True),
-            heuristic_action.to(self.config.learner_device),
-            forward_batch["legal"],
-        )
-        baseline_loss = compute_baseline_loss(vs - values)
-        entropy_loss = get_loss_entropy(
-            learner_outputs.policy,
             learner_outputs.log_policy,
-            forward_batch["legal"],
+            heuristic_action.to(self.config.learner_device),
         )
+
+        with torch.no_grad():
+            baseline_loss = compute_baseline_loss(vs - values)
+            entropy_loss = get_loss_entropy(
+                learner_outputs.policy,
+                learner_outputs.log_policy,
+                forward_batch["legal"],
+            )
 
         discounts_sum = discounts.sum()
         loss = (
             pg_loss
-            + baseline_loss
+            # + baseline_loss
             # + 1e-2 * (entropy_loss + torch.norm(learner_outputs.logits, dim=-1))
         )
         loss = (loss * discounts).sum()

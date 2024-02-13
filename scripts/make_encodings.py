@@ -5,8 +5,9 @@ from sklearn.discriminant_analysis import StandardScaler
 from tqdm import tqdm
 from contextlib import redirect_stdout
 
-from pokesim.embeddings.abilities import construct_abilities_encoding
 from pokesim.embeddings.helpers import Encoder, pred
+
+from pokesim.embeddings.abilities import construct_abilities_encoding
 from pokesim.embeddings.items import construct_items_encoding
 from pokesim.embeddings.moves import construct_moves_encoding
 from pokesim.embeddings.species import construct_species_encoding
@@ -34,13 +35,13 @@ def main():
                 encoding = func(gen)
             valid_indices = encoding.sum(-1) != 0
 
-            new = np.zeros((encoding.shape[0], NPC))
+            new = np.zeros(encoding.shape)
 
             arr = encoding[valid_indices].copy()
-            pca = PCA(NPC)
-            arr = pca.fit_transform(arr)
-            arr = StandardScaler().fit_transform(arr)
-            print(pca.explained_variance_ratio_[:NPC].sum())
+            # pca = PCA(NPC)
+            # arr = pca.fit_transform(arr)
+            # arr = StandardScaler().fit_transform(arr)
+            # print(pca.explained_variance_ratio_[:NPC].sum())
 
             new[valid_indices] = arr
 

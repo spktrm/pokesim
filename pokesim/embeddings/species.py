@@ -1,3 +1,4 @@
+from functools import partial
 import math
 import numpy as np
 import pandas as pd
@@ -36,15 +37,32 @@ STAT_FEATURES = [
     "baseStats.spe",
 ]
 
+
+def encode_continuous_values(series: pd.Series, n_bins):
+    values = series.values
+    range = series.max() - series.min()
+    arr = np.arange(n_bins)[None] < np.floor(n_bins * values / range)[:, None]
+    arr = arr.astype(float)
+    extra = (values % (range / n_bins)) / (range / n_bins)
+    extra_mask = (
+        np.arange(n_bins)[None] <= np.floor(n_bins * values / range)[:, None]
+    ) - arr
+    arr = arr + extra_mask * extra[:, None]
+    return pd.DataFrame(data=arr)
+
+
 SPECIES_PROTOCOLS: List[Protocol] = [
-    # *[
-    #     {"feature": stat_feature, "func": sqrt_onehot_encode}
-    #     for stat_feature in STAT_FEATURES
-    # ],
     *[
-        {"feature": stat_feature, "func": z_score_scale}
+        {
+            "feature": stat_feature,
+            "func": partial(encode_continuous_values, n_bins=16),
+        }
         for stat_feature in STAT_FEATURES
     ],
+    # *[
+    #     {"feature": stat_feature, "func": z_score_scale}
+    #     for stat_feature in STAT_FEATURES
+    # ],
     {
         "feature": "weightkg",
         "func": lambda series: z_score_scale(series.map(math.log)),
@@ -88,7 +106,7 @@ def get_learnset_df(gen: int, species_df: pd.DataFrame):
                 moves_to_pop.append(move)
             else:
                 pokemon["learnset"][move] = True
-        
+
         for move in moves_to_pop:
             pokemon["learnset"].pop(move)
 
@@ -101,9 +119,9 @@ def get_typechart_df(gen: int):
 
 
 def construct_species_encoding(gen: int):
-    typechart_df = get_typechart_df(gen)
+    # typechart_df = get_typechart_df(gen)
     species_df = get_species_df(gen)
-    learnset_df = get_learnset_df(gen, species_df)
+    # learnset_df = get_learnset_df(gen, species_df)
 
     feature_vector_dfs = []
 

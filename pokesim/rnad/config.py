@@ -18,7 +18,7 @@ class NerdConfig:
     """Nerd related params."""
 
     beta: float = 2.0
-    clip: float = 10_000
+    clip: float = 10
 
 
 @dataclass
@@ -51,4 +51,4 @@ class RNaDConfig:
     c_vtrace: float = 1
     rho: float = np.inf
 
-    enable_regularization: bool = False
+    enable_regularization: bool = True
