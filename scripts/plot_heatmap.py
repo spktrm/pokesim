@@ -15,7 +15,7 @@ from pokesim.utils import get_most_recent_file
 
 
 def main(gen: int = 3):
-    data_npy = np.load(f"src/data/gen{gen}/species.npy")
+    data_npy = np.load(f"src/data/gen{gen}/moves.npy")
     data = data_npy
 
     fpath = get_most_recent_file("ckpts")
@@ -25,7 +25,9 @@ def main(gen: int = 3):
     model.load_state_dict(data_torch)
 
     data = (
-        model.encoder.species_onehot(torch.arange(data_npy.shape[0], dtype=torch.long))
+        model.policy_head.moves_onehot(
+            torch.arange(data_npy.shape[0], dtype=torch.long)
+        )
         .detach()
         .numpy()
     )
@@ -33,15 +35,15 @@ def main(gen: int = 3):
     indices = []
     names = []
 
-    for key, value in SPECIES_STOI.items():
+    for key, value in MOVES_STOI.items():
         if data_npy[value].sum() != 0:
             names.append(key)
             indices.append(value)
 
     data = data[np.array(indices)]
 
-    # data = PCA(128).fit_transform(data)
-    # data = StandardScaler().fit_transform(data)
+    data = PCA(128).fit_transform(data)
+    data = StandardScaler().fit_transform(data)
 
     pairwise = 1 - pairwise_distances(data, metric="cosine")
 

@@ -356,8 +356,8 @@ class Learner:
 
         # heuristic_action = torch.from_numpy(state["heuristic_action"][..., -1])
         # heuristic_action = heuristic_action.to(self.config.learner_device)
-        # heurisitc_loss = F.cross_entropy(
-        #     torch.flatten(params.logits, 0, 1),
+        # heurisitc_loss = F.nll_loss(
+        #     torch.flatten(params.log_policy, 0, 1),
         #     torch.flatten(heuristic_action, 0, 1),
         #     reduction="none",
         # ).view_as(heuristic_action)

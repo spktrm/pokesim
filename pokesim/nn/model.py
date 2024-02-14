@@ -164,7 +164,7 @@ class Encoder(nn.Module):
         self.entities_cls = nn.Parameter(
             torch.randn(1, 1, 4, entity_size) / (entity_size**0.5)
         )
-        self.transformer = TransformerEncoder(
+        self.entity_transformer = TransformerEncoder(
             units_stream_size=entity_size,
             transformer_num_layers=1,
             transformer_num_heads=2,
@@ -334,7 +334,7 @@ class Encoder(nn.Module):
             ),
             dim=-2,
         )
-        entity_embeddings_flat = self.transformer(
+        entity_embeddings_flat = self.entity_transformer(
             entity_embeddings_flat,
             torch.ones_like(entity_embeddings_flat[..., 0], dtype=torch.bool),
         )
@@ -417,13 +417,13 @@ class PolicyHead(nn.Module):
         self.register_buffer("switch_tokens", switch_tokens)
 
         self.moves_onehot = CustomEmbedding(gen, "moves", entity_size)
-        # self.legal_embedding = nn.Embedding(2, entity_size)
+        self.legal_embedding = nn.Embedding(2, entity_size)
 
         self.action_merge = VectorMerge(
             {
                 "action": entity_size,
                 "user": entity_size,
-                # "legal": entity_size,
+                "legal": entity_size,
             },
             output_size=entity_size,
             gating_type=GatingType.NONE,
@@ -431,18 +431,24 @@ class PolicyHead(nn.Module):
             affine_layer_norm=affine_layer_norm,
         )
 
-        # self.action_self_attn = MultiHeadAttention(
-        #     num_heads=2,
-        #     key_size=entity_size // 2,
-        #     value_size=entity_size // 2,
-        #     model_size=entity_size,
-        # )
+        self.action_transformer = TransformerEncoder(
+            units_stream_size=entity_size,
+            transformer_num_layers=1,
+            transformer_num_heads=2,
+            transformer_key_size=entity_size // 2,
+            transformer_value_size=entity_size // 2,
+            resblocks_num_before=1,
+            resblocks_num_after=1,
+            resblocks_hidden_size=entity_size // 2,
+            use_layer_norm=use_layer_norm,
+            affine_layer_norm=affine_layer_norm,
+        )
 
         self.action_logits = PointerLogits(
             stream_size,
             entity_size,
             num_layers_query=1,
-            num_layers_keys=3,
+            num_layers_keys=0,
             key_size=entity_size,
             use_layer_norm=use_layer_norm,
             affine_layer_norm=affine_layer_norm,
@@ -489,21 +495,22 @@ class PolicyHead(nn.Module):
             (active_embedding.expand(-1, -1, 4, -1), my_entity_embeddings), dim=-2
         )
 
-        # legal_embedding = self.legal_embedding(legal.to(torch.long))
+        legal_embedding = self.legal_embedding(legal.to(torch.long))
 
         # action_query = self.action_query_resnet(action_query)
         action_embeddings = self.action_merge(
             {
                 "action": action_embeddings,
                 "user": user_embeddings,
-                # "legal": legal_embedding,
+                "legal": legal_embedding,
             }
         )
 
         # action_embeddings = self.action_keys_resnet(action_embeddings)
-        # action_embeddings = self.action_self_attn(
-        #     action_embeddings, action_embeddings, action_embeddings
-        # )
+        action_embeddings = self.action_transformer(
+            action_embeddings,
+            torch.ones_like(action_embeddings[..., 0], dtype=torch.bool),
+        )
 
         # logits = self.action_logits(action_embeddings).flatten(2)
         logits = self.action_logits(
@@ -568,7 +575,7 @@ class Model(nn.Module):
         stream_size: int = 128,
         scale: int = 8,
         use_layer_norm: bool = True,
-        affine_layer_norm: bool = False,
+        affine_layer_norm: bool = True,
     ):
         super().__init__()
 
