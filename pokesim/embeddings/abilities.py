@@ -13,7 +13,7 @@ from pokesim.embeddings.moves import get_df
 
 ONEHOT_FEATURES = [
     "id",
-    "suppressWeather",
+    # "suppressWeather",
 ]
 
 ABILITIES_PROTOCOLS: List[Protocol] = [
@@ -21,9 +21,9 @@ ABILITIES_PROTOCOLS: List[Protocol] = [
         {"feature": stat_feature, "func": onehot_encode}
         for stat_feature in ONEHOT_FEATURES
     ],
-    {"feature_fn": lambda x: x.startswith("condition."), "func": onehot_encode},
-    {"feature_fn": lambda x: x.startswith("on"), "func": onehot_encode},
-    {"feature_fn": lambda x: x.startswith("is"), "func": onehot_encode},
+    # {"feature_fn": lambda x: x.startswith("condition."), "func": onehot_encode},
+    # {"feature_fn": lambda x: x.startswith("on"), "func": onehot_encode},
+    # {"feature_fn": lambda x: x.startswith("is"), "func": onehot_encode},
 ]
 
 
@@ -75,7 +75,7 @@ def construct_abilities_encoding(gen: int):
         placeholder[row_index] = row
 
     row_index = ABILITIES_STOI["<UNK>"]
-    placeholder[row_index] = concat_df.mean(0).values
+    placeholder[row_index] = 1
 
     return placeholder.astype(np.float32)
 

@@ -22,14 +22,14 @@ ITEMS_PROTOCOLS: List[Protocol] = [
         {"feature": stat_feature, "func": onehot_encode}
         for stat_feature in ONEHOT_FEATURES
     ],
-    {"feature_fn": lambda x: x.startswith("fling."), "func": onehot_encode},
-    {"feature_fn": lambda x: x.startswith("on"), "func": onehot_encode},
-    {"feature_fn": lambda x: x.startswith("is"), "func": onehot_encode},
-    {"feature_fn": lambda x: x.startswith("naturalGift."), "func": onehot_encode},
-    *[
-        {"feature": stat_feature, "func": multihot_encode}
-        for stat_feature in MULTIHOT_FEATURES
-    ],
+    # {"feature_fn": lambda x: x.startswith("fling."), "func": onehot_encode},
+    # {"feature_fn": lambda x: x.startswith("on"), "func": onehot_encode},
+    # {"feature_fn": lambda x: x.startswith("is"), "func": onehot_encode},
+    # {"feature_fn": lambda x: x.startswith("naturalGift."), "func": onehot_encode},
+    # *[
+    #     {"feature": stat_feature, "func": multihot_encode}
+    #     for stat_feature in MULTIHOT_FEATURES
+    # ],
 ]
 
 
@@ -81,7 +81,7 @@ def construct_items_encoding(gen: int):
         placeholder[row_index] = row
 
     row_index = ITEMS_STOI["<UNK>"]
-    placeholder[row_index] = concat_df.mean(0).values
+    placeholder[row_index] = 1
 
     return placeholder.astype(np.float32)
 

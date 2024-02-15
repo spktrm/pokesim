@@ -648,8 +648,8 @@ class PointerLogits(nn.Module):
         self,
         query_input_size: int,
         keys_input_size: int,
-        num_layers_query: int = 2,
-        num_layers_keys: int = 2,
+        num_layers_query: int = 1,
+        num_layers_keys: int = 3,
         key_size: int = 64,
         use_layer_norm: bool = True,
         affine_layer_norm: bool = False,
@@ -658,14 +658,14 @@ class PointerLogits(nn.Module):
 
         self.query_mlp = MLP(
             [query_input_size]
-            + [query_input_size for _ in range(num_layers_query - 1)]
+            + [query_input_size for _ in range(max(0, num_layers_query - 1))]
             + [key_size],
             use_layer_norm=use_layer_norm,
             affine_layer_norm=affine_layer_norm,
         )
         self.keys_mlp = MLP(
             [keys_input_size]
-            + [keys_input_size for _ in range(num_layers_keys - 1)]
+            + [keys_input_size for _ in range(max(0, num_layers_keys - 1))]
             + [key_size],
             use_layer_norm=use_layer_norm,
             affine_layer_norm=affine_layer_norm,

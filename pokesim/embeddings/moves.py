@@ -17,31 +17,31 @@ from pokesim.embeddings.helpers import Protocol, get_df, to_id
 
 ONEHOT_FEATURES = [
     "name",
-    "category",
-    "priority",
-    "type",
-    "target",
-    "volatileStatus",
-    "status",
-    "breaksProtect",
-    "weather",
-    "stallingMove",
-    "sleepUsable",
-    "selfdestruct",
-    "struggleRecoil",
-    "smartTarget",
-    "slotCondition",
-    "stealsBoosts",
-    "terrain",
-    "forceSwitch",
-    "hasCrashDamage",
-    "hasSheerForce",
-    "mindBlownRecoil",
-    "onDamagePriority",
-    "onTry",
-    "recoil",
-    "heal",
-    "ohko",
+    # "category",
+    # "priority",
+    # "type",
+    # "target",
+    # "volatileStatus",
+    # "status",
+    # "breaksProtect",
+    # "weather",
+    # "stallingMove",
+    # "sleepUsable",
+    # "selfdestruct",
+    # "struggleRecoil",
+    # "smartTarget",
+    # "slotCondition",
+    # "stealsBoosts",
+    # "terrain",
+    # "forceSwitch",
+    # "hasCrashDamage",
+    # "hasSheerForce",
+    # "mindBlownRecoil",
+    # "onDamagePriority",
+    # "onTry",
+    # "recoil",
+    # "heal",
+    # "ohko",
 ]
 
 MULTIHOT_FEATURES = []
@@ -65,32 +65,32 @@ MOVES_PROTOCOLS: List[Protocol] = [
         {"feature": stat_feature, "func": onehot_encode}
         for stat_feature in ONEHOT_FEATURES
     ],
-    *[
-        {"feature": stat_feature, "func": multihot_encode}
-        for stat_feature in MULTIHOT_FEATURES
-    ],
-    {"feature_fn": lambda x: x.startswith("flags."), "func": lambda x: x.fillna(0)},
-    {"feature_fn": lambda x: x.startswith("condition."), "func": onehot_encode},
-    {"feature_fn": lambda x: x.startswith("boosts."), "func": onehot_encode},
-    {"feature_fn": lambda x: x.startswith("secondary."), "func": onehot_encode},
-    {"feature_fn": lambda x: x.startswith("self."), "func": onehot_encode},
-    {"feature_fn": lambda x: x.startswith("selfBoost."), "func": onehot_encode},
-    {"feature_fn": lambda x: x.startswith("ignore"), "func": onehot_encode},
-    {"feature": "basePower", "func": z_score_scale},
-    {
-        "feature": "basePower",
-        "func": partial(encode_continuous_values, n_bins=10),
-    },
-    {
-        "feature": "accuracy",
-        "func": lambda x: partial(encode_continuous_values, n_bins=10)(
-            x.map(lambda v: 100 if isinstance(v, bool) else v)
-        ),
-    },
-    {
-        "feature": "accuracy",
-        "func": lambda x: x.map(lambda v: 1 if isinstance(v, bool) else 0),
-    },
+    # *[
+    #     {"feature": stat_feature, "func": multihot_encode}
+    #     for stat_feature in MULTIHOT_FEATURES
+    # ],
+    # {"feature_fn": lambda x: x.startswith("flags."), "func": lambda x: x.fillna(0)},
+    # {"feature_fn": lambda x: x.startswith("condition."), "func": onehot_encode},
+    # {"feature_fn": lambda x: x.startswith("boosts."), "func": onehot_encode},
+    # {"feature_fn": lambda x: x.startswith("secondary."), "func": onehot_encode},
+    # {"feature_fn": lambda x: x.startswith("self."), "func": onehot_encode},
+    # {"feature_fn": lambda x: x.startswith("selfBoost."), "func": onehot_encode},
+    # {"feature_fn": lambda x: x.startswith("ignore"), "func": onehot_encode},
+    # {"feature": "basePower", "func": z_score_scale},
+    # {
+    #     "feature": "basePower",
+    #     "func": partial(encode_continuous_values, n_bins=10),
+    # },
+    # {
+    #     "feature": "accuracy",
+    #     "func": lambda x: partial(encode_continuous_values, n_bins=10)(
+    #         x.map(lambda v: 100 if isinstance(v, bool) else v)
+    #     ),
+    # },
+    # {
+    #     "feature": "accuracy",
+    #     "func": lambda x: x.map(lambda v: 1 if isinstance(v, bool) else 0),
+    # },
 ]
 
 
@@ -175,7 +175,7 @@ def construct_moves_encoding(gen: int):
     placeholder[MOVES_STOI["return102"], 1:] = placeholder[MOVES_STOI["return"], 1:]
 
     row_index = MOVES_STOI["<UNK>"]
-    placeholder[row_index, 1:] = concat_df.mean(0).values
+    placeholder[row_index, 1:] = 1
 
     row_index = MOVES_STOI["<SWITCH>"]
     placeholder[row_index, 0] = 1

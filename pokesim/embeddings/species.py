@@ -19,22 +19,22 @@ from pokesim.embeddings.moves import get_df
 
 ONEHOT_FEATURES = [
     "name",
-    "nfe",
+    # "nfe",
 ]
 
 MULTIHOT_FEATURES = [
     # "abilities",
-    "types",
+    # "types",
 ]
 
 
 STAT_FEATURES = [
-    "baseStats.hp",
-    "baseStats.atk",
-    "baseStats.def",
-    "baseStats.spa",
-    "baseStats.spd",
-    "baseStats.spe",
+    # "baseStats.hp",
+    # "baseStats.atk",
+    # "baseStats.def",
+    # "baseStats.spa",
+    # "baseStats.spd",
+    # "baseStats.spe",
 ]
 
 
@@ -140,7 +140,7 @@ def construct_species_encoding(gen: int):
         placeholder[row_index] = row
 
     row_index = SPECIES_STOI["<UNK>"]
-    placeholder[row_index] = concat_df.mean(0).values
+    placeholder[row_index] = 1
 
     return placeholder.astype(np.float32)
 
