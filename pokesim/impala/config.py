@@ -31,7 +31,7 @@ class ImpalaConfig:
     # The batch size to use when learning/improving parameters.
     batch_size: int = 8
     # The learning rate for `params`.
-    learning_rate: float = 5e-5
+    learning_rate: float = 1e-2
     # The config related to the ADAM optimizer used for updating `params`.
     adam: AdamConfig = AdamConfig()
     # All gradients values are clipped to [-clip_gradient, clip_gradient].

@@ -33,7 +33,7 @@ def get_loss_v(
         normalization = torch.sum(mask)
         loss_v = torch.sum(loss_v) / (normalization + (normalization == 0.0))
         loss_v_list.append(loss_v)
-    return sum(loss_v_list)
+    return loss_v_list
 
 
 def apply_force_with_threshold(
@@ -103,7 +103,7 @@ def get_loss_nerd(
 
         nerd_loss = -renormalize(nerd_loss, valid * (player_ids == k))
         loss_pi_list.append(nerd_loss)
-    return sum(loss_pi_list)
+    return loss_pi_list
 
 
 class Learner:
@@ -327,20 +327,20 @@ class Learner:
             has_played_list.append(has_played)
             v_trace_policy_target_list.append(policy_target_)
 
-        loss_v = get_loss_v(
+        p1_loss_v, p2_loss_v = get_loss_v(
             [params.value] * NUM_PLAYERS, v_target_list, has_played_list
         )
 
-        policy_ratio = np.array(
-            _policy_ratio(_policy_pprocessed, batch.policy, action_oh, batch.valid)
-        )
-        is_vector = torch.unsqueeze(self._to_torch(policy_ratio), axis=-1)
-        is_vector = is_vector.clamp(max=1)
-        # is_vector = torch.unsqueeze(torch.ones_like(valid), axis=-1)
+        # policy_ratio = np.array(
+        #     _policy_ratio(_policy_pprocessed, batch.policy, action_oh, batch.valid)
+        # )
+        # is_vector = torch.unsqueeze(self._to_torch(policy_ratio), axis=-1)
+        # is_vector = is_vector.clamp(max=1)
+        is_vector = torch.unsqueeze(torch.ones_like(valid), axis=-1)
         importance_sampling_correction = [is_vector] * NUM_PLAYERS
 
         # Uses v-trace to define q-values for Nerd
-        loss_nerd = get_loss_nerd(
+        p1_loss_nerd, p2_loss_nerd = get_loss_nerd(
             [params.logits] * NUM_PLAYERS,
             [params.policy] * NUM_PLAYERS,
             v_trace_policy_target_list,
@@ -363,12 +363,6 @@ class Learner:
         # ).view_as(heuristic_action)
         # heurisitc_loss = (heurisitc_loss * valid).sum() / valid_sum
 
-        loss = (
-            loss_v
-            + loss_nerd
-            # + max(0, (1 - self.learner_steps / 10000)) * heurisitc_loss
-        )
-
         if not self.config.enable_regularization:
             loss_entropy = get_loss_entropy(params.policy, params.log_policy, legal)
             loss_entropy = (loss_entropy * valid).sum() / valid_sum
@@ -379,9 +373,11 @@ class Learner:
                 loss_entropy = get_loss_entropy(params.policy, params.log_policy, legal)
                 loss_entropy = (loss_entropy * valid).sum() / valid_sum
 
+        loss_v = p1_loss_v + p2_loss_v
+        loss_nerd = p1_loss_nerd + p2_loss_nerd
         # loss = loss / self.config.accum_steps
 
-        self.scaler.scale(loss).backward()
+        self.scaler.scale((loss_v + loss_nerd) / self.config.accum_steps).backward()
 
         return {
             "v_loss": loss_v.item(),
@@ -393,17 +389,11 @@ class Learner:
         """A jitted pure-functional part of the `step`."""
 
         loss_vals = self.loss(batch, alpha)
-        self.scale_factor += batch.valid.sum()
 
         if (
             self.learner_steps % self.config.accum_steps == 0
         ) and self.learner_steps > 0:
             self.scaler.unscale_(self.optimizer)
-
-            # for param in self.params.parameters():
-            #     if param.grad is not None:
-            #         param.grad.data /= self.scale_factor
-            self.scale_factor = 0
 
             nn.utils.clip_grad.clip_grad_value_(
                 self.params.parameters(), self.config.clip_gradient
