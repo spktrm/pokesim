@@ -51,4 +51,4 @@ class RNaDConfig:
     c_vtrace: float = 1
     rho: float = np.inf
 
-    enable_regularization: bool = True
+    enable_regularization: bool = False

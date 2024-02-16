@@ -83,8 +83,14 @@ MOVES_PROTOCOLS: List[Protocol] = [
     },
     {
         "feature": "accuracy",
-        "func": lambda x: partial(encode_continuous_values, n_bins=10)(
+        "func": lambda x: partial(encode_continuous_values, n_bins=16)(
             x.map(lambda v: 100 if isinstance(v, bool) else v)
+        ),
+    },
+    {
+        "feature": "pp",
+        "func": lambda x: partial(encode_continuous_values, n_bins=16)(
+            x.map(lambda v: int(v * 8 / 5))
         ),
     },
     {

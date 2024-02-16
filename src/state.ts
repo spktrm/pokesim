@@ -18,255 +18,13 @@ import {
 } from "./data";
 import { SideConditions } from "./types";
 import { BoostID } from "@pkmn/dex";
-import { BattlesHandler, historyVectorSize } from "./helpers";
+import {
+    BattlesHandler,
+    historyVectorSize,
+    paddedPokemonArray,
+} from "./helpers";
 
 let stateSize: number | undefined = undefined;
-
-function formatKey(key: string): string {
-    return key.startsWith("<") ? key : key.toLowerCase().replace(/[\W_]+/g, "");
-}
-
-function getMappingValue(
-    pokemon: AnyObject,
-    mapping: AnyObject,
-    key: string
-): number {
-    let suffix: string = "";
-    if (key === "asone") {
-        if (pokemon.baseSpeciesForme === "Calyrex-Shadow") {
-            suffix = "spectrier";
-        } else if (pokemon.baseSpeciesForme === "Calyrex-Ice") {
-            suffix = "glastrier";
-        }
-        key = key + suffix;
-    }
-    return mapping[key];
-}
-
-function getMappingValueWrapper(
-    pokemon: AnyObject,
-    mapping: AnyObject,
-    key: string
-): number {
-    const mappedValue = getMappingValue(pokemon, mapping, key);
-    if (mappedValue === undefined) {
-        throw new Error(
-            `${key} not in ${JSON.stringify(mapping).slice(0, 20)}`
-        );
-    }
-
-    return mappedValue;
-}
-
-export function getPublicPokemon(
-    battle: Battle | undefined,
-    pokemon: AnyObject,
-    active: boolean,
-    sideToken: number,
-    buckets: number = 1023
-): Int8Array {
-    let moveTokens = [];
-    let movePpLeft = [];
-    let movePpMax = Array(4);
-    movePpMax.fill(0);
-
-    const moveSlots = pokemon.moveSlots ?? [];
-    const moves = pokemon.moves ?? [];
-
-    for (let i = 0; i < 4; i++) {
-        moveTokens.push(
-            getMappingValueWrapper(pokemon, moveMapping, moves[i] ?? "<UNK>")
-        );
-        const ppUsed = (moveSlots[i] ?? {})?.ppUsed ?? 0;
-        movePpLeft.push(ppUsed);
-        if (battle !== undefined) {
-            movePpMax[i] = ~~battle.gen.dex.moves.get(moves[i]).pp * (8 / 5);
-        }
-    }
-
-    const lastMove =
-        (pokemon.lastMove === "" && !!pokemon.newlySwitched) ||
-        pokemon.lastMove === "switch-in"
-            ? "<SWITCH>"
-            : pokemon.lastMove === "" || pokemon.lastMove === undefined
-            ? "<NONE>"
-            : pokemon.lastMove;
-    const lastMoveToken = getMappingValueWrapper(
-        pokemon,
-        moveMapping,
-        lastMove
-    );
-
-    const formatedPokemonName =
-        pokemon.name === undefined ? "<UNK>" : formatKey(pokemon.name);
-    const speciesToken = getMappingValueWrapper(
-        pokemon,
-        pokemonMapping,
-        formatedPokemonName
-    );
-
-    const item =
-        pokemon.item === "" || pokemon.item === undefined
-            ? "<UNK>"
-            : pokemon.item;
-    const itemToken = getMappingValueWrapper(pokemon, itemMapping, item);
-
-    const ability =
-        pokemon.ability === "" || pokemon.ability === undefined
-            ? "<UNK>"
-            : pokemon.ability;
-    const abilityToken = getMappingValueWrapper(
-        pokemon,
-        abilityMapping,
-        ability
-    );
-
-    const hpToken =
-        pokemon.maxhp !== undefined && pokemon.maxhp > 0
-            ? Math.floor(buckets * (pokemon.hp / pokemon.maxhp))
-            : buckets;
-
-    const pokemonArray = [
-        speciesToken,
-        itemToken,
-        abilityToken,
-        hpToken,
-        active ? 1 : 0,
-        pokemon.fainted ? 1 : 0,
-        statusMapping[pokemon.status],
-        lastMoveToken,
-        1,
-        sideToken,
-        pokemon?.statusState?.sleepTurns ?? 0,
-        pokemon?.statusState?.toxicTurns ?? 0,
-        ...movePpLeft,
-        ...movePpMax,
-        ...moveTokens,
-    ];
-    return new Int8Array(new Int16Array(pokemonArray).buffer);
-}
-
-export function getPrivatePokemon(
-    battle: Battle | undefined,
-    pokemon: AnyObject,
-    buckets: number = 1023
-): Int8Array {
-    let moveTokens = [];
-    let movePpLeft = [];
-    let movePpMax = Array(4);
-    movePpMax.fill(0);
-
-    const moveSlots = pokemon.moveSlots ?? [];
-    const moves = pokemon.moves ?? [];
-
-    for (let i = 0; i < 4; i++) {
-        moveTokens.push(
-            getMappingValueWrapper(pokemon, moveMapping, moves[i] ?? "<PAD>")
-        );
-        const ppUsed = (moveSlots[i] ?? {})?.ppUsed ?? 0;
-        movePpLeft.push(ppUsed);
-        if (battle !== undefined) {
-            movePpMax[i] = ~~battle.gen.dex.moves.get(moves[i]).pp * (8 / 5);
-        }
-    }
-
-    const lastMove =
-        (pokemon.lastMove === "" && !!pokemon.newlySwitched) ||
-        pokemon.lastMove === "switch-in"
-            ? "<SWITCH>"
-            : pokemon.lastMove === "" || pokemon.lastMove === undefined
-            ? "<NONE>"
-            : pokemon.lastMove;
-    const lastMoveToken = getMappingValueWrapper(
-        pokemon,
-        moveMapping,
-        lastMove
-    );
-
-    const formatedPokemonName =
-        pokemon.name === undefined ? "<UNK>" : formatKey(pokemon.name);
-    const speciesToken = getMappingValueWrapper(
-        pokemon,
-        pokemonMapping,
-        formatedPokemonName
-    );
-
-    const item =
-        pokemon.item === "" || pokemon.item === undefined
-            ? "<UNK>"
-            : pokemon.item;
-    const itemToken = getMappingValueWrapper(pokemon, itemMapping, item);
-
-    const ability =
-        pokemon.ability === "" || pokemon.ability === undefined
-            ? "<UNK>"
-            : pokemon.ability;
-    const abilityToken = getMappingValueWrapper(
-        pokemon,
-        abilityMapping,
-        ability
-    );
-
-    const hpToken =
-        pokemon.maxhp !== undefined
-            ? Math.floor(buckets * (pokemon.hp / pokemon.maxhp))
-            : buckets;
-
-    const pokemonArray = [
-        speciesToken,
-        itemToken,
-        abilityToken,
-        hpToken,
-        pokemon.active ? 1 : 0,
-        pokemon.fainted ? 1 : 0,
-        statusMapping[pokemon.status],
-        lastMoveToken,
-        0,
-        1,
-        pokemon?.statusState?.sleepTurns ?? 0,
-        pokemon?.statusState?.toxicTurns ?? 0,
-        ...movePpLeft,
-        ...movePpMax,
-        ...moveTokens,
-    ];
-    return new Int8Array(new Int16Array(pokemonArray).buffer);
-}
-
-const paddedPokemonObj = {
-    name: "<PAD>",
-    item: "<PAD>",
-    ability: "<PAD>",
-    lastMove: "<PAD>",
-    status: "<NULL>",
-    moves: ["<PAD>", "<PAD>", "<PAD>", "<PAD>"],
-};
-const paddedPokemonArray = getPublicPokemon(
-    undefined,
-    paddedPokemonObj,
-    false,
-    1
-);
-
-const unknownPokemonObj = {
-    name: "<UNK>",
-    item: "<UNK>",
-    ability: "<UNK>",
-    lastMove: "<UNK>",
-    status: "<NULL>",
-    moves: ["<UNK>", "<UNK>", "<UNK>", "<UNK>"],
-};
-const unknownPokemonArray0 = getPublicPokemon(
-    undefined,
-    unknownPokemonObj,
-    false,
-    0
-);
-const unknownPokemonArray1 = getPublicPokemon(
-    undefined,
-    unknownPokemonObj,
-    false,
-    1
-);
 
 const boostsEntries = Object.entries(boostsMapping);
 
@@ -469,61 +227,33 @@ export class Int8State {
 
     getMyPublicTeam(): Int8Array {
         const side = this.getMyPublicSide();
-        return this.getPublicTeam(side);
+        return this.getPublicTeam(side, true);
     }
 
     getOppTeam(): Int8Array {
         const side = this.getOppSide();
-        return this.getPublicTeam(side);
+        return this.getPublicTeam(side, false);
     }
 
-    getPublicTeam(side: Side): Int8Array {
-        const request = this.getMyPrivateSide();
-        const isMe = request.side?.name === side.name ? 1 : 0;
+    getPublicTeam(side: Side, is_me: boolean): Int8Array {
         const team = side.team;
-        const actives = side.active;
-
         const teamArray = new Int8Array(paddedPokemonArray.length * 6);
-        const activeIdents = [];
 
-        for (let i = 0; i < actives.length; i++) {
-            const ident = (actives[i] ?? {}).ident ?? "";
-            if (ident !== undefined) {
-                activeIdents.push(ident);
+        for (let i = 0; i < side.totalPokemon; i++) {
+            const ident = team[i]?.ident;
+            const vectorPokemon = this.handler.getVectorPokemon({
+                ident,
+                is_me,
+                is_public: true,
+            });
+            const vector = vectorPokemon.getVector();
+            if (vector.length !== paddedPokemonArray.length) {
+                throw new Error(JSON.stringify(vectorPokemon));
             }
+            teamArray.set(vector, i * paddedPokemonArray.length);
         }
-        for (let i = 0; i < 6; i++) {
-            if (team[i] === undefined) {
-                if (i < side.totalPokemon) {
-                    if (isMe) {
-                        teamArray.set(
-                            unknownPokemonArray1,
-                            i * paddedPokemonArray.length
-                        );
-                    } else {
-                        teamArray.set(
-                            unknownPokemonArray0,
-                            i * paddedPokemonArray.length
-                        );
-                    }
-                } else {
-                    teamArray.set(
-                        paddedPokemonArray,
-                        i * paddedPokemonArray.length
-                    );
-                }
-            } else {
-                const ident = team[i].ident;
-                teamArray.set(
-                    getPublicPokemon(
-                        this.handler.getMyBattle(),
-                        team[i],
-                        activeIdents.includes(ident),
-                        isMe
-                    ),
-                    i * paddedPokemonArray.length
-                );
-            }
+        for (let i = side.totalPokemon; i < 6; i++) {
+            teamArray.set(paddedPokemonArray, i * paddedPokemonArray.length);
         }
         return teamArray;
     }
@@ -532,21 +262,18 @@ export class Int8State {
         const requestSide = (request?.side ?? { pokemon: [] }).pokemon;
         const teamArray = new Int8Array(paddedPokemonArray.length * 6);
 
-        const privateId =
-            (this.handler.getMyBattle().request?.side ?? {})?.id ?? "";
-        const privateIndex = parseInt(privateId.slice(1)) - 1;
-
         for (let i = 0; i < 6; i++) {
-            const entity = requestSide[i];
-            const ident = (entity ?? {}).ident ?? "";
-            const amalgam = {
-                ...paddedPokemonObj,
-                ...(entity === undefined ? {} : this.handler.getPokemon(ident)),
-            };
-            teamArray.set(
-                getPrivatePokemon(this.handler.getMyBattle(), amalgam),
-                i * paddedPokemonArray.length
-            );
+            const ident = requestSide[i]?.ident ?? "";
+            const vectorPokemon = this.handler.getVectorPokemon({
+                ident,
+                is_me: true,
+                is_public: false,
+            });
+            const vector = vectorPokemon.getVector();
+            if (vector.length !== paddedPokemonArray.length) {
+                throw new Error(JSON.stringify(vectorPokemon));
+            }
+            teamArray.set(vector, i * paddedPokemonArray.length);
         }
         return teamArray;
     }
@@ -627,73 +354,73 @@ export class Int8State {
         return mask;
     }
 
-    updatetHistoryVectors(): void {
-        // let offset = 0;
+    // updatetHistoryVectors(): void {
+    //     // let offset = 0;
 
-        for (const [key, moveStore] of Object.entries(
-            this.handler.damageInfos
-        )) {
-            if (moveStore.hasVector) {
-                continue;
-            }
-            const {
-                // user,
-                // target,
-                // userSide,
-                // targetSide,
-                order,
-                isCritical,
-                damage,
-                effectiveness,
-                missed,
-                moveName,
-                targetFainted,
-                moveCounter,
-                switchCounter,
-            } = moveStore.context;
-            // const isMe = this.playerIndex === userSide ? 1 : 0;
-            // const userProps = this.handler.getPokemon(userSide, user);
-            // const targetProps = this.handler.getPokemon(targetSide, target);
+    //     for (const [key, moveStore] of Object.entries(
+    //         this.handler.damageInfos
+    //     )) {
+    //         if (moveStore.hasVector) {
+    //             continue;
+    //         }
+    //         const {
+    //             // user,
+    //             // target,
+    //             // userSide,
+    //             // targetSide,
+    //             order,
+    //             isCritical,
+    //             damage,
+    //             effectiveness,
+    //             missed,
+    //             moveName,
+    //             targetFainted,
+    //             moveCounter,
+    //             switchCounter,
+    //         } = moveStore.context;
+    //         // const isMe = this.playerIndex === userSide ? 1 : 0;
+    //         // const userProps = this.handler.getPokemon(userSide, user);
+    //         // const targetProps = this.handler.getPokemon(targetSide, target);
 
-            const action =
-                moveName === "switch-in"
-                    ? "<SWITCH>"
-                    : formatKey(moveName ?? "") ?? "";
+    //         const action =
+    //             moveName === "switch-in"
+    //                 ? "<SWITCH>"
+    //                 : formatKey(moveName ?? "") ?? "";
 
-            const moveArray = new Int8Array(
-                new Int16Array([
-                    1,
-                    isCritical ? 1 : 0,
-                    effectiveness,
-                    missed ? 1 : 0,
-                    targetFainted ? 1 : 0,
-                    Math.floor(2047 * (1 + Math.max(-1, Math.min(1, damage)))),
-                    moveCounter,
-                    switchCounter,
-                    moveMapping[action],
-                    order,
-                ]).buffer
-            );
-            // const history: Array<Int8Array> = [
-            //     contextVector,
-            //     userSide === this.playerIndex
-            //         ? getPublicPokemon(userProps, true, isMe)
-            //         : getPrivatePokemon(userProps),
-            //     targetSide === this.playerIndex
-            //         ? getPublicPokemon(targetProps, true, isMe)
-            //         : getPrivatePokemon(targetProps),
-            //     moveArray,
-            // ];
-            // offset = 0;
-            // for (const datum of history) {
-            //     this.handler.damageInfos[key].vector.set(datum, offset);
-            //     offset += datum.length;
-            // }
-            const offset = historyVectorSize - moveArray.length;
-            this.handler.damageInfos[key].vector.set(moveArray, offset);
-            moveStore.hasVector = true;
-        }
-    }
+    //         const moveArray = new Int8Array(
+    //             new Int16Array([
+    //                 1,
+    //                 isCritical ? 1 : 0,
+    //                 effectiveness,
+    //                 missed ? 1 : 0,
+    //                 targetFainted ? 1 : 0,
+    //                 Math.floor(2047 * (1 + Math.max(-1, Math.min(1, damage)))),
+    //                 moveCounter,
+    //                 switchCounter,
+    //                 moveMapping[action],
+    //                 order,
+    //             ]).buffer
+    //         );
+    //         // const history: Array<Int8Array> = [
+    //         //     contextVector,
+    //         //     userSide === this.playerIndex
+    //         //         ? getPublicPokemon(userProps, true, isMe)
+    //         //         : getPrivatePokemon(userProps),
+    //         //     targetSide === this.playerIndex
+    //         //         ? getPublicPokemon(targetProps, true, isMe)
+    //         //         : getPrivatePokemon(targetProps),
+    //         //     moveArray,
+    //         // ];
+    //         // offset = 0;
+    //         // for (const datum of history) {
+    //         //     this.handler.damageInfos[key].vector.set(datum, offset);
+    //         //     offset += datum.length;
+    //         // }
+    //         const offset = historyVectorSize - moveArray.length;
+    //         this.handler.damageInfos[key].vector.set(moveArray, offset);
+    //         moveStore.hasVector = true;
+    //     }
+    // }
 
     getContextVectors(): Int8Array[] {
         return [

@@ -168,20 +168,17 @@ const unkToken = "<UNK>";
 const nullToken = "<NULL>";
 const extraTokens = [padToken, unkToken];
 
+function formatKey(key: string): string {
+    return key.startsWith("<") ? key : key.toLowerCase().replace(/[\W_]+/g, "");
+}
+
 function formatData(data: GenData) {
     const moveIds = [
         ...data.moves.map((item) => {
-            if (item.id === "hiddenpower") {
-                const moveType = item.type.toLowerCase();
-                if (moveType === "normal") {
-                    return item.id;
-                } else {
-                    return `${item.id}${moveType}`;
-                }
-            } else if (item.id === "return") {
+            if (item.id === "return") {
                 return `${item.id}102`;
             } else {
-                return item.id;
+                return formatKey(item.name);
             }
         }),
         "return",
@@ -282,6 +279,13 @@ async function main(): Promise<void> {
             "spe",
             "accuracy",
             "evasion",
+        ]),
+        types: enumerate([
+            "<PAD>",
+            "<UNK>",
+            ...genData.typechart.flatMap((type) =>
+                type.isNonstandard === "Future" ? [] : type.id,
+            ),
         ]),
     };
 

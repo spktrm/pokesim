@@ -1,6 +1,11 @@
-import { Pokemon, Side, Battle as clientBattle } from "@pkmn/client";
-import { AnyObject } from "@pkmn/sim";
-import { Int8State, getPrivatePokemon, getPublicPokemon } from "./state";
+import {
+    Pokemon as ClientPokemon,
+    Side,
+    Battle as ClientBattle,
+} from "@pkmn/client";
+import { Protocol } from "@pkmn/protocol";
+import { AnyObject, Pokemon as ServerPokemon } from "@pkmn/sim";
+import { Int8State } from "./state";
 import {
     arange,
     getRandomAction,
@@ -10,9 +15,16 @@ import {
 import { BoostID } from "@pkmn/data";
 import { createHash } from "node:crypto";
 import {
+    abilityMapping,
     boostsMapping,
     contextVectorSize,
+    itemMapping,
+    maxPP,
+    moveMapping,
+    pokemonMapping,
     sideConditionsMapping,
+    statusMapping,
+    typeMapping,
     volatileStatusMapping,
 } from "./data";
 
@@ -44,7 +56,7 @@ function getProperMoveName(moveName: string): string {
 }
 
 function processMulthitValue(
-    multhitValue: number | number[] | undefined,
+    multhitValue: number | number[] | undefined
 ): number {
     if (multhitValue === undefined) {
         return 1;
@@ -82,26 +94,26 @@ class SimpleHeuristicPlayer {
         this.playerIndex = playerIndex;
     }
 
-    _getType(battle: clientBattle, atkType: string) {
+    _getType(battle: ClientBattle, atkType: string) {
         const type = battle.gen.types.get(atkType);
         return type;
     }
 
-    _getSpecies(battle: clientBattle, name: string): any {
+    _getSpecies(battle: ClientBattle, name: string): any {
         return battle.gen.species.get(name);
     }
 
-    _getMove(battle: clientBattle, name: string): any {
+    _getMove(battle: ClientBattle, name: string): any {
         return battle.gen.moves.get(getProperMoveName(name));
     }
 
     _getMoveScore(
-        battle: clientBattle,
-        active: Pokemon,
-        opponent: Pokemon,
+        battle: ClientBattle,
+        active: ClientPokemon,
+        opponent: ClientPokemon,
         name: string,
         physicalRatio: number,
-        specialRatio: number,
+        specialRatio: number
     ): number {
         const moveData = this._getMove(battle, name);
         const speciesData = this._getSpecies(battle, active.name);
@@ -113,7 +125,7 @@ class SimpleHeuristicPlayer {
         const damageMultiplier = this._damageMultiplier(
             battle,
             opponent,
-            moveData.type,
+            moveData.type
         );
         return (
             moveData.basePower *
@@ -126,9 +138,9 @@ class SimpleHeuristicPlayer {
     }
 
     _damageMultiplier(
-        battle: clientBattle,
-        entity: Pokemon,
-        type: string,
+        battle: ClientBattle,
+        entity: ClientPokemon,
+        type: string
     ): number {
         const multipliers = entity.types.map((entityType: string) => {
             const typeData = this._getType(battle, entityType) as any;
@@ -138,7 +150,10 @@ class SimpleHeuristicPlayer {
         return multipliers.reduce((a: number, b: number) => a * b);
     }
 
-    _estimateMatchup(mon: Pokemon | null, opponent: Pokemon | null): number {
+    _estimateMatchup(
+        mon: ClientPokemon | null,
+        opponent: ClientPokemon | null
+    ): number {
         if (mon === null) {
             return -1;
         }
@@ -151,13 +166,13 @@ class SimpleHeuristicPlayer {
         const opponentSpecies = this._getSpecies(battle, opponent.name);
         let score = Math.max(
             ...opponentSpecies.types.map((opponentType: string) =>
-                this._damageMultiplier(battle, monSpecies, opponentType),
-            ),
+                this._damageMultiplier(battle, monSpecies, opponentType)
+            )
         );
         score -= Math.max(
             ...monSpecies.types.map((monType: string) =>
-                this._damageMultiplier(battle, opponentSpecies, monType),
-            ),
+                this._damageMultiplier(battle, opponentSpecies, monType)
+            )
         );
 
         if (monSpecies.baseStats.spe > opponentSpecies.baseStats.spe) {
@@ -172,7 +187,10 @@ class SimpleHeuristicPlayer {
         return score;
     }
 
-    _statEstimation(mon: Pokemon, stat: "atk" | "def" | "spa" | "spd" | "spe") {
+    _statEstimation(
+        mon: ClientPokemon,
+        stat: "atk" | "def" | "spa" | "spd" | "spe"
+    ) {
         let boost: number;
 
         const statValue = mon.boosts[stat] ?? 0;
@@ -187,9 +205,9 @@ class SimpleHeuristicPlayer {
     }
 
     _shouldSwitchOut(
-        switches: Pokemon[],
-        active: Pokemon | null,
-        opponent: Pokemon | null,
+        switches: ClientPokemon[],
+        active: ClientPokemon | null,
+        opponent: ClientPokemon | null
     ): boolean {
         if (opponent === null) {
             return false;
@@ -200,7 +218,7 @@ class SimpleHeuristicPlayer {
 
         const isBadMatchup = switches.filter(
             (potenialSwitch) =>
-                this._estimateMatchup(potenialSwitch, opponent) > 0,
+                this._estimateMatchup(potenialSwitch, opponent) > 0
         );
 
         const boosts: AnyObject = active.boosts;
@@ -231,11 +249,14 @@ class SimpleHeuristicPlayer {
         return false;
     }
 
-    getSwitchIndex(switches: Pokemon[], opponent: Pokemon | null): number {
+    getSwitchIndex(
+        switches: ClientPokemon[],
+        opponent: ClientPokemon | null
+    ): number {
         const switchScores = switches.map((switchValue) =>
             switchValue.fainted ?? false
                 ? -10000
-                : this._estimateMatchup(switchValue, opponent),
+                : this._estimateMatchup(switchValue, opponent)
         );
         const switchArgmax = indexOfMax(switchScores);
         return 4 + 1 + switchArgmax;
@@ -300,7 +321,7 @@ class SimpleHeuristicPlayer {
 
             if (active !== null) {
                 const oppSideConditionKeys = Object.keys(
-                    oppSide.sideConditions,
+                    oppSide.sideConditions
                 );
                 for (const [moveIndex, move] of requestActive.moves.entries()) {
                     const isDisabled = move.disabled ?? false;
@@ -325,7 +346,7 @@ class SimpleHeuristicPlayer {
                 }
 
                 // setup moves
-                const hpRatio = privateActive.hp / privateActive.maxhp;
+                const hpRatio = privateActive.hp / privateActive.max_hp;
                 const opponentMatchup = this._estimateMatchup(active, opponent);
                 if (hpRatio >= 0.99 && opponentMatchup > 0) {
                     for (const [
@@ -338,23 +359,23 @@ class SimpleHeuristicPlayer {
                         }
                         const moveData = this._getMove(
                             battle,
-                            getProperMoveName(move.id),
+                            getProperMoveName(move.id)
                         );
                         if (moveData.boosts !== undefined) {
                             const boostValues = Object.values(
-                                moveData.boosts,
+                                moveData.boosts
                             ) as Array<number>;
                             const boostSum = boostValues.reduce(
-                                (a, b) => a + b,
+                                (a, b) => a + b
                             );
                             const moveTarget = moveData.target;
                             const currentBoosts = Object.entries(
-                                moveData.boosts,
+                                moveData.boosts
                             )
                                 .filter(([_, value]) => (value as number) > 0)
                                 .map(
                                     ([key, _]) =>
-                                        active.boosts[key as BoostID] ?? 0,
+                                        active.boosts[key as BoostID] ?? 0
                                 );
 
                             if (
@@ -379,8 +400,8 @@ class SimpleHeuristicPlayer {
                                       opponent,
                                       move.id,
                                       physicalRatio,
-                                      specialRatio,
-                                  ),
+                                      specialRatio
+                                  )
                     );
                     const moveArgmax = indexOfMax(moveScores);
                     return moveArgmax;
@@ -395,7 +416,7 @@ class SimpleHeuristicPlayer {
         const [randIndex] = weightedRandomSample(
             numArange,
             new Array(...legalMask),
-            1,
+            1
         );
         return randIndex;
     }
@@ -409,7 +430,7 @@ class MaxdmgPlayer {
     constructor(
         handler: BattlesHandler,
         playerIndex: number,
-        legalMask: Int8Array,
+        legalMask: Int8Array
     ) {
         this.handler = handler;
         this.playerIndex = playerIndex;
@@ -425,7 +446,7 @@ class MaxdmgPlayer {
         let maxMoveIndex: number = -1;
         if (active !== undefined && canMove) {
             const moves: string[] = active.moves.map(
-                (value: { id: any }) => value.id,
+                (value: { id: any }) => value.id
             );
             const basePowers = moves.map((moveId, moveIndex) => {
                 const valid = this.legalMask[moveIndex];
@@ -447,7 +468,7 @@ class MaxdmgPlayer {
             maxMoveIndex = basePowers.reduce(
                 (maxIndex, currentValue, currentIndex, array) =>
                     currentValue > array[maxIndex] ? currentIndex : maxIndex,
-                0,
+                0
             );
         }
 
@@ -498,9 +519,183 @@ class moveInfo {
 }
 
 export const historyVectorSize = contextVectorSize + 2 * 48 + 20;
+
+export const padString = "<PAD>";
+export const unkString = "<UNK>";
+export const nullString = "<NULL>";
+export const noneString = "<NONE>";
+
+function formatKey(key: string): string {
+    return key.startsWith("<") ? key : key.toLowerCase().replace(/[\W_]+/g, "");
+}
+
+export class VectorPokemon {
+    species: string;
+    item: string;
+    ability: string;
+    hp: number;
+    max_hp: number;
+    active: number;
+    fainted: number;
+    status: string;
+    last_move: string;
+    is_public: number;
+    side: number;
+    sleep_turns: number;
+    toxic_turns: number;
+    types: string[];
+    moves: string[];
+    pp_left: number[];
+    pp_max: number[];
+
+    constructor() {
+        this.species = unkString;
+        this.item = unkString;
+        this.ability = unkString;
+        this.hp = 100;
+        this.max_hp = 100;
+        this.active = 0;
+        this.fainted = 0;
+        this.status = nullString;
+        this.last_move = noneString;
+        this.is_public = 0;
+        this.side = 1;
+        this.sleep_turns = 0;
+        this.toxic_turns = 0;
+        this.moves = [unkString, unkString, unkString, unkString];
+        this.pp_left = [0, 0, 0, 0];
+        this.pp_max = [0, 0, 0, 0];
+        this.types = [unkString, unkString];
+    }
+
+    getHpToken() {
+        return Math.floor((1023 * this.hp) / this.max_hp);
+    }
+
+    updatePublicEntity(pokemon: ClientPokemon) {
+        this.species = formatKey(pokemon.name);
+        this.item = pokemon.item === "" ? unkString : pokemon.item;
+        this.ability = pokemon.ability === "" ? unkString : pokemon.ability;
+        this.hp = pokemon.hp;
+        this.max_hp = pokemon.maxhp;
+        this.fainted = pokemon.hp === 0 ? 1 : 0;
+
+        for (const [typeIndex, type] of pokemon.types.entries()) {
+            this.types[typeIndex] = formatKey(type);
+        }
+        if (pokemon.types.length <= 1) {
+            this.types[1] = padString;
+        }
+
+        const { sleepTurns, toxicTurns } = pokemon.statusState;
+        this.sleep_turns = sleepTurns;
+        this.toxic_turns = toxicTurns;
+
+        for (const [moveIndex, move] of pokemon.moveSlots.slice(-4).entries()) {
+            const { id, ppUsed } = move;
+            const formattedMove = formatKey(id);
+            this.moves[moveIndex] = formattedMove;
+            this.pp_left[moveIndex] = ppUsed;
+            this.pp_max[moveIndex] = maxPP[formattedMove];
+        }
+
+        let last_move_string: string = "";
+        if (
+            (pokemon.lastMove === "" && !!pokemon.newlySwitched) ||
+            pokemon.lastMove === "switch-in"
+        ) {
+            last_move_string = "<SWITCH>";
+        } else {
+            if (pokemon.lastMove === "" || pokemon.lastMove === undefined) {
+                last_move_string = "<NONE>";
+            } else {
+                last_move_string = formatKey(pokemon.lastMove);
+            }
+        }
+        this.last_move = last_move_string;
+
+        return;
+    }
+
+    updatePrivateEntity(pokemon: Protocol.Request.Pokemon) {
+        this.species = formatKey(pokemon.name);
+        this.item = pokemon.item === "" ? nullString : pokemon.item;
+        this.ability = pokemon.ability;
+        this.hp = pokemon.hp;
+        this.max_hp = pokemon.maxhp;
+        this.active = pokemon.active ? 1 : 0;
+        this.fainted = pokemon.hp === 0 ? 1 : 0;
+
+        const ppMapping: { [k: string]: number[] } = {};
+        for (const [moveIndex, move] of this.moves.entries()) {
+            ppMapping[move] = [
+                this.pp_left[moveIndex] ?? 0,
+                this.pp_max[moveIndex] ?? 0,
+            ];
+        }
+        this.moves = pokemon.moves;
+        for (let i = this.moves.length; i < 4; i++) {
+            this.moves.push("<NONE>");
+        }
+
+        for (const [moveIndex, move] of pokemon.moves.entries()) {
+            const formattedMove = formatKey(move);
+            const [ppUsed, ppMax] = ppMapping[formattedMove] ?? [];
+            this.pp_left[moveIndex] = ppUsed ?? 0;
+            this.pp_max[moveIndex] = ppMax ?? maxPP[formattedMove] ?? 0;
+        }
+
+        return;
+    }
+
+    getVector(): Int8Array {
+        const moveTokens: number[] = [];
+        for (let i = 0; i < 4; i++) {
+            moveTokens.push(moveMapping[this.moves[i]]);
+        }
+        const arr = [
+            pokemonMapping[this.species],
+            itemMapping[this.item],
+            abilityMapping[this.ability],
+            this.getHpToken(),
+            this.active,
+            this.fainted,
+            statusMapping[this.status],
+            moveMapping[this.last_move],
+            this.is_public,
+            this.side,
+            this.sleep_turns,
+            this.toxic_turns,
+            typeMapping[this.types[0]],
+            typeMapping[this.types[1]],
+            ...this.pp_left,
+            ...this.pp_max,
+            ...moveTokens,
+        ];
+        for (const token of arr) {
+            if (token === undefined) {
+                throw new Error(JSON.stringify(this));
+            }
+        }
+        return new Int8Array(new Int16Array(arr).buffer);
+    }
+}
+
+const paddedPokemonObj = new VectorPokemon();
+paddedPokemonObj.species = padString;
+export const paddedPokemonArray = paddedPokemonObj.getVector();
+
+const unknownPokemonObj = new VectorPokemon();
+
+unknownPokemonObj.side = 0;
+export const unknownPokemonArray0 = unknownPokemonObj.getVector();
+
+unknownPokemonObj.side = 1;
+export const unknownPokemonArray1 = unknownPokemonObj.getVector();
+
 export class BattlesHandler {
     playerIndex: number;
-    battles: clientBattle[];
+    battles: ClientBattle[];
     turn: number;
     turns: AnyObject;
     damage: AnyObject;
@@ -513,7 +708,7 @@ export class BattlesHandler {
         };
     };
 
-    constructor(playerIndex: number, battles: clientBattle[]) {
+    constructor(playerIndex: number, battles: ClientBattle[]) {
         this.playerIndex = playerIndex;
         this.battles = battles;
         this.turn = 0;
@@ -565,6 +760,60 @@ export class BattlesHandler {
         return {
             ...privatePokemon,
         };
+    }
+
+    getVectorPokemon(args: {
+        ident: string | undefined;
+        is_me: boolean;
+        is_public: boolean;
+    }): VectorPokemon {
+        const { ident, is_me, is_public } = args;
+        let _ident = ident;
+
+        const placeholder = new VectorPokemon();
+        const battle = this.getMyBattle();
+        const request = battle.request;
+        placeholder.side = is_me ? 1 : 0;
+
+        if (_ident !== undefined) {
+            if (_ident.startsWith("p1a") || _ident.startsWith("p2a")) {
+                _ident = _ident.slice(0, 2) + _ident.slice(3);
+            }
+            const requestSidePokemon = request?.side?.pokemon ?? [];
+            const privatePokemon = requestSidePokemon.filter(
+                (x) => x?.ident === _ident
+            )[0];
+
+            let shouldBreak = false;
+
+            for (const side of battle.sides) {
+                const team = side.team;
+                const activeIdents = side.active.map(
+                    (value) => value?.originalIdent
+                );
+                for (const member of team) {
+                    if (member.originalIdent === _ident) {
+                        placeholder.updatePublicEntity(member);
+                        placeholder.active = activeIdents.includes(
+                            member.originalIdent
+                        )
+                            ? 1
+                            : 0;
+
+                        shouldBreak = true;
+                        break;
+                    }
+                }
+                if (shouldBreak) {
+                    break;
+                }
+            }
+            if (is_me && !is_public && _ident !== "") {
+                placeholder.updatePrivateEntity(privatePokemon);
+            }
+        }
+        placeholder.is_public = is_public ? 1 : 0;
+        return placeholder;
     }
 
     getMyBattle() {
@@ -716,119 +965,119 @@ export class BattlesHandler {
         return this.damageInfos;
     }
 
-    appendTurnLine(
-        playerIndex: number,
-        workerIndex: number,
-        line: string,
-    ): void {
-        if (this.turns[this.turn] === undefined) {
-            this.turns[this.turn] = [];
-            this.damage[this.turn] = {};
-            this.entityVectors[this.turn] = {};
-        }
-        this.turns[this.turn].push(line);
-        const battle = this.getMyBattle();
-        if (line.startsWith("|move")) {
-            let [_, __, user, ___, target] = line.split("|");
-            const userSide = parseInt(user.slice(1, 2)) - 1;
-            const targetCorrect = target === "" ? user : target ?? user;
-            const targetSide = parseInt(targetCorrect.slice(1, 2)) - 1;
+    // appendTurnLine(
+    //     playerIndex: number,
+    //     workerIndex: number,
+    //     line: string
+    // ): void {
+    //     if (this.turns[this.turn] === undefined) {
+    //         this.turns[this.turn] = [];
+    //         this.damage[this.turn] = {};
+    //         this.entityVectors[this.turn] = {};
+    //     }
+    //     this.turns[this.turn].push(line);
+    //     const battle = this.getMyBattle();
+    //     if (line.startsWith("|move")) {
+    //         let [_, __, user, ___, target] = line.split("|");
+    //         const userSide = parseInt(user.slice(1, 2)) - 1;
+    //         const targetCorrect = target === "" ? user : target ?? user;
+    //         const targetSide = parseInt(targetCorrect.slice(1, 2)) - 1;
 
-            const userIsMe = this.playerIndex === userSide ? 1 : 0;
-            const targetIsMe = this.playerIndex === targetSide ? 1 : 0;
+    //         const userIsMe = this.playerIndex === userSide ? 1 : 0;
+    //         const targetIsMe = this.playerIndex === targetSide ? 1 : 0;
 
-            const userProps = this.getPokemon(user);
-            const targetProps = this.getPokemon(target);
-            const userVector = userIsMe
-                ? getPrivatePokemon(this.getMyBattle(), userProps)
-                : getPublicPokemon(
-                      this.getMyBattle(),
-                      userProps,
-                      true,
-                      userIsMe,
-                  );
-            const targetVector = targetIsMe
-                ? getPrivatePokemon(this.getMyBattle(), targetProps)
-                : getPublicPokemon(
-                      this.getMyBattle(),
-                      targetProps,
-                      true,
-                      targetIsMe,
-                  );
-            const stateHandler = new Int8State({
-                handler: this,
-                playerIndex: playerIndex,
-                workerIndex: workerIndex ?? 0,
-                done: 0,
-                reward: 0,
-            });
-            this.entityVectors[this.turn][this.turns[this.turn].length] = [
-                ...stateHandler.getContextVectors(),
-                userVector,
-                targetVector,
-            ];
-        } else if (line.startsWith("|switch")) {
-            let [_, __, target, ...___] = line.split("|");
-            const targetSide = parseInt(target.slice(1, 2)) - 1;
-            const user =
-                this.getMyBattle().sides[targetSide].active[0]?.originalIdent ??
-                target;
-            const userSide = targetSide;
+    //         const userProps = this.getPokemon(user);
+    //         const targetProps = this.getPokemon(target);
+    //         const userVector = userIsMe
+    //             ? getPrivatePokemon(this.getMyBattle(), userProps)
+    //             : getPublicPokemon(
+    //                   this.getMyBattle(),
+    //                   userProps,
+    //                   true,
+    //                   userIsMe
+    //               );
+    //         const targetVector = targetIsMe
+    //             ? getPrivatePokemon(this.getMyBattle(), targetProps)
+    //             : getPublicPokemon(
+    //                   this.getMyBattle(),
+    //                   targetProps,
+    //                   true,
+    //                   targetIsMe
+    //               );
+    //         const stateHandler = new Int8State({
+    //             handler: this,
+    //             playerIndex: playerIndex,
+    //             workerIndex: workerIndex ?? 0,
+    //             done: 0,
+    //             reward: 0,
+    //         });
+    //         this.entityVectors[this.turn][this.turns[this.turn].length] = [
+    //             ...stateHandler.getContextVectors(),
+    //             userVector,
+    //             targetVector,
+    //         ];
+    //     } else if (line.startsWith("|switch")) {
+    //         let [_, __, target, ...___] = line.split("|");
+    //         const targetSide = parseInt(target.slice(1, 2)) - 1;
+    //         const user =
+    //             this.getMyBattle().sides[targetSide].active[0]?.originalIdent ??
+    //             target;
+    //         const userSide = targetSide;
 
-            const userIsMe = this.playerIndex === userSide ? 1 : 0;
-            const targetIsMe = this.playerIndex === targetSide ? 1 : 0;
+    //         const userIsMe = this.playerIndex === userSide ? 1 : 0;
+    //         const targetIsMe = this.playerIndex === targetSide ? 1 : 0;
 
-            const userProps = this.getPokemon(user);
-            const targetProps = this.getPokemon(target);
-            const userVector = userIsMe
-                ? getPrivatePokemon(this.getMyBattle(), userProps)
-                : getPublicPokemon(
-                      this.getMyBattle(),
-                      userProps,
-                      true,
-                      userIsMe,
-                  );
-            const targetVector = targetIsMe
-                ? getPrivatePokemon(this.getMyBattle(), targetProps)
-                : getPublicPokemon(
-                      this.getMyBattle(),
-                      targetProps,
-                      true,
-                      targetIsMe,
-                  );
-            const stateHandler = new Int8State({
-                handler: this,
-                playerIndex: playerIndex,
-                workerIndex: workerIndex ?? 0,
-                done: 0,
-                reward: 0,
-            });
-            this.entityVectors[this.turn][this.turns[this.turn].length] = [
-                ...stateHandler.getContextVectors(),
-                userVector,
-                targetVector,
-            ];
-        } else if (line.startsWith("|-damage") || line.startsWith("|-heal")) {
-            let prevHp: number;
-            const [_, __, user, healthRatio] = line.split("|");
-            const originalIdent = user.slice(0, 2) + user.slice(3);
-            const [numerator, denominator] = healthRatio.split("/");
-            const currentHp = healthRatio.startsWith("0")
-                ? 0
-                : parseInt(numerator) / parseInt(denominator);
-            for (const publicPokemon of [
-                ...battle.p1.team,
-                ...battle.p2.team,
-            ]) {
-                if (originalIdent === publicPokemon.originalIdent) {
-                    prevHp = publicPokemon.hp / publicPokemon.maxhp;
-                    const damage = currentHp - prevHp;
-                    this.damage[this.turn][this.turns[this.turn].length] =
-                        damage;
-                }
-            }
-        }
-    }
+    //         const userProps = this.getPokemon(user);
+    //         const targetProps = this.getPokemon(target);
+    //         const userVector = userIsMe
+    //             ? getPrivatePokemon(this.getMyBattle(), userProps)
+    //             : getPublicPokemon(
+    //                   this.getMyBattle(),
+    //                   userProps,
+    //                   true,
+    //                   userIsMe
+    //               );
+    //         const targetVector = targetIsMe
+    //             ? getPrivatePokemon(this.getMyBattle(), targetProps)
+    //             : getPublicPokemon(
+    //                   this.getMyBattle(),
+    //                   targetProps,
+    //                   true,
+    //                   targetIsMe
+    //               );
+    //         const stateHandler = new Int8State({
+    //             handler: this,
+    //             playerIndex: playerIndex,
+    //             workerIndex: workerIndex ?? 0,
+    //             done: 0,
+    //             reward: 0,
+    //         });
+    //         this.entityVectors[this.turn][this.turns[this.turn].length] = [
+    //             ...stateHandler.getContextVectors(),
+    //             userVector,
+    //             targetVector,
+    //         ];
+    //     } else if (line.startsWith("|-damage") || line.startsWith("|-heal")) {
+    //         let prevHp: number;
+    //         const [_, __, user, healthRatio] = line.split("|");
+    //         const originalIdent = user.slice(0, 2) + user.slice(3);
+    //         const [numerator, denominator] = healthRatio.split("/");
+    //         const currentHp = healthRatio.startsWith("0")
+    //             ? 0
+    //             : parseInt(numerator) / parseInt(denominator);
+    //         for (const publicPokemon of [
+    //             ...battle.p1.team,
+    //             ...battle.p2.team,
+    //         ]) {
+    //             if (originalIdent === publicPokemon.originalIdent) {
+    //                 prevHp = publicPokemon.hp / publicPokemon.maxhp;
+    //                 const damage = currentHp - prevHp;
+    //                 this.damage[this.turn][this.turns[this.turn].length] =
+    //                     damage;
+    //             }
+    //         }
+    //     }
+    // }
 
     getEntityProperties(callables: { [k: string]: (entity: any) => any }) {
         const entities = [
@@ -842,9 +1091,9 @@ export class BattlesHandler {
                     Object.entries(callables).map(([feature, callable]) => [
                         feature,
                         callable(entity),
-                    ]),
+                    ])
                 ),
-            ]),
+            ])
         );
     }
 
@@ -900,7 +1149,7 @@ export class BattlesHandler {
 
     getHeuristicActionString(
         playerIndex: number,
-        workerIndex?: number,
+        workerIndex?: number
     ): string {
         const simpleHeuristic = new SimpleHeuristicPlayer(this, playerIndex);
         const actionIndex = simpleHeuristic.getActionIndex();
@@ -941,7 +1190,7 @@ export function isAction(line: string): boolean {
     }
 }
 
-export function isActionRequired(battle: clientBattle, chunk: string): boolean {
+export function isActionRequired(battle: ClientBattle, chunk: string): boolean {
     const request = (battle.request ?? {}) as AnyObject;
     if (request === undefined) {
         return false;
@@ -963,7 +1212,7 @@ export function isActionRequired(battle: clientBattle, chunk: string): boolean {
 
 export function formatTeamPreviewAction(
     action: string,
-    totalPokemon: number,
+    totalPokemon: number
 ): string {
     const actionIndex = parseInt(action.split(" ")[1]);
     const remainder = arange(1, totalPokemon + 1)

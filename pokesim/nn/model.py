@@ -66,13 +66,41 @@ class CustomEmbedding(nn.Module):
         super().__init__()
 
         npy_arr = np.load(f"src/data/gen{gen}/{category}.npy")
-        self._embedding = nn.Embedding.from_pretrained(
+        self._encoding = nn.Embedding.from_pretrained(
             torch.from_numpy(npy_arr).to(torch.float32)
         )
         self._linear = _layer_init(nn.Linear(npy_arr.shape[-1], entity_size))
 
     def forward(self, x: torch.Tensor):
-        x = self._embedding(x)
+        x = self._encoding(x)
+        return self._linear(x)
+
+
+class CustomMoveEmbedding(nn.Module):
+    def __init__(self, gen: int, entity_size: int):
+        super().__init__()
+
+        npy_arr = np.load(f"src/data/gen{gen}/moves.npy")
+        self._encoding = nn.Embedding.from_pretrained(
+            torch.from_numpy(npy_arr).to(torch.float32)
+        )
+        self._pp_encoding = get_multihot_scalar_encoding(1024, 32)
+        self._linear = _layer_init(
+            nn.Linear(
+                self._encoding.weight.shape[-1] + self._pp_encoding.weight.shape[-1],
+                entity_size,
+            )
+        )
+
+    def forward(
+        self, tokens: torch.Tensor, pp_used: torch.Tensor, pp_max: torch.Tensor
+    ):
+        pp_ratio_token = torch.floor(
+            31 * (1 - (pp_used / pp_max.clamp(min=1)).clamp(max=1))
+        ).to(torch.long)
+        x = torch.cat(
+            (self._encoding(tokens), self._pp_encoding(pp_ratio_token)), dim=-1
+        )
         return self._linear(x)
 
 
@@ -90,16 +118,19 @@ class Encoder(nn.Module):
         self.species_onehot = CustomEmbedding(gen, "species", entity_size)
         self.item_onehot = CustomEmbedding(gen, "items", entity_size)
         self.ability_onehot = CustomEmbedding(gen, "abilities", entity_size)
-        self.moves_onehot = CustomEmbedding(gen, "moves", entity_size)
+        self.moves_onehot = CustomMoveEmbedding(gen, entity_size)
 
         self.hp_onehot = get_multihot_scalar_encoding(1024, 64)
         self.status_onehot = get_onehot_encoding(NUM_STATUS)
         self.onehot2 = get_onehot_encoding(2)
         self.onehot4 = get_onehot_encoding(4)
         self.toxic_turns_onehot = get_onehot_encoding(6)
+        self.prev_move_onehot = _layer_init(
+            nn.Linear(self.moves_onehot._encoding.weight.shape[-1], 64)
+        )
 
         rest_size = (
-            entity_size
+            self.prev_move_onehot.out_features
             + self.hp_onehot.weight.shape[-1]
             + self.status_onehot.weight.shape[-1]
             + self.onehot2.weight.shape[-1]
@@ -190,9 +221,10 @@ class Encoder(nn.Module):
         side_token = entities[..., 9]
         sleep_turns_token = entities[..., 10].clamp(min=0, max=3)
         toxic_turns_token = entities[..., 11].clamp(min=0, max=5)
-        move_pp_left = entities[..., 12:16]
-        move_pp_max = entities[..., 16:20]
-        move_tokens = entities[..., 20:]
+        types = entities[..., 12:14]
+        move_pp_left = entities[..., 14:18]
+        move_pp_max = entities[..., 18:22]
+        move_tokens = entities[..., 22:]
 
         species_onehot = self.species_onehot(species_token)
         item_onehot = self.item_onehot(item_token)
@@ -201,12 +233,15 @@ class Encoder(nn.Module):
         active_onehot = self.onehot2(active_token)
         fainted_onehot = self.onehot2(fainted_token)
         status_onehot = self.status_onehot(status_token)
-        last_move_onehot = self.moves_onehot(last_move_token)
+        last_move_onehot = self.prev_move_onehot(
+            self.moves_onehot._encoding(last_move_token)
+        )
         side_onehot = self.onehot2(side_token)
         public_onehot = self.onehot2(public_token)
         sleep_turns_onehot = self.onehot4(sleep_turns_token)
         toxic_turns_onehot = self.toxic_turns_onehot(toxic_turns_token)
-        moveset_onehot = self.moves_onehot(move_tokens).mean(-2)
+        moves_onehot = self.moves_onehot(move_tokens, move_pp_left, move_pp_max)
+        moveset_onehot = moves_onehot.mean(-2)
 
         rest_onehot = torch.cat(
             (
@@ -413,10 +448,10 @@ class PolicyHead(nn.Module):
     ):
         super().__init__()
 
-        switch_tokens = SWITCH_TOKEN * torch.ones(6, dtype=torch.long)
+        switch_tokens = SWITCH_TOKEN * torch.ones(6, dtype=torch.long).view(1, 1, -1)
         self.register_buffer("switch_tokens", switch_tokens)
 
-        self.moves_onehot = CustomEmbedding(gen, "moves", entity_size)
+        self.moves_onehot = CustomMoveEmbedding(gen, entity_size)
         self.legal_embedding = nn.Embedding(2, entity_size)
 
         self.action_merge = VectorMerge(
@@ -468,12 +503,30 @@ class PolicyHead(nn.Module):
         moveset_pp_max = active_movesets[..., 4:8]
         moveset_tokens = active_movesets[..., 8:]
 
-        expanded_switch_tokens = self.switch_tokens.view(1, 1, -1).expand(
+        expanded_switch_tokens = self.switch_tokens.expand(
             *active_movesets.shape[:2], 6
         )
         action_tokens = torch.cat((moveset_tokens, expanded_switch_tokens), dim=-1)
+        moveset_pp_left = torch.cat(
+            (
+                moveset_pp_left,
+                torch.zeros_like(moveset_pp_left[..., :1]).expand(
+                    *active_movesets.shape[:2], 6
+                ),
+            ),
+            dim=-1,
+        )
+        moveset_pp_max = torch.cat(
+            (
+                moveset_pp_max,
+                torch.zeros_like(moveset_pp_max[..., :1]).expand(
+                    *active_movesets.shape[:2], 6
+                ),
+            ),
+            dim=-1,
+        )
 
-        return self.moves_onehot(action_tokens)
+        return self.moves_onehot(action_tokens, moveset_pp_left, moveset_pp_max)
 
     def forward(
         self,

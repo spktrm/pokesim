@@ -179,7 +179,7 @@ def finetune(policy: torch.Tensor, mask: torch.Tensor):
 
 
 def print_rounded_numbers(numbers, n: int):
-    # Round the numbers to n decimal places and convert them to strings
+    # Round the numbers to n decima l places and convert them to strings
     rounded_numbers = [f"{num:.{n}f}" for num in numbers]
 
     # Find the length of the longest number (as a string)

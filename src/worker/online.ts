@@ -66,7 +66,7 @@ function isEvalPlayer(workerIndex: number, playerIndex: number): boolean {
 function getEvalAction(
     workerIndex: number,
     playerIndex: number,
-    handler: BattlesHandler
+    handler: BattlesHandler,
 ): string {
     switch (workerIndex) {
         case defaultWorkerIndex:
@@ -86,7 +86,7 @@ async function runPlayer(
     stream: ObjectReadWriteStream<string>,
     playerIndex: number,
     p1battle: clientBattle,
-    p2battle: clientBattle
+    p2battle: clientBattle,
 ) {
     // const handler = new BattlesHandler([p1battle, p2battle]);
     const handler = new BattlesHandler(playerIndex, [p1battle]);
@@ -148,16 +148,15 @@ async function runPlayer(
             } else {
                 state = handler.getState({ done: 0, playerIndex, workerIndex }); //, reward);
                 parentPort?.postMessage(state, [state.buffer]);
-                const actionChar = await queueManager.queues[
-                    playerIndex
-                ].dequeue();
+                const actionChar =
+                    await queueManager.queues[playerIndex].dequeue();
                 action = actionCharToString(actionChar);
             }
 
             if (isTeamPreview && action != "default") {
                 action = formatTeamPreviewAction(
                     action,
-                    p1battle.sides[playerIndex].totalPokemon
+                    p1battle.sides[playerIndex].totalPokemon,
                 );
             }
 
@@ -166,7 +165,7 @@ async function runPlayer(
         }
     }
     const hp_count = p1battle.sides.map((side) =>
-        side.team.map((x) => x.hp / x.maxhp).reduce((a, b) => a + b)
+        side.team.map((x) => x.hp / x.maxhp).reduce((a, b) => a + b),
     );
     reward = hp_count[playerIndex] > hp_count[1 - playerIndex] ? 1 : -1;
     // reward = winner === p1battle.sides[playerIndex].name ? 1 : -1;

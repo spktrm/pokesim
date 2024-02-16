@@ -14,19 +14,6 @@ const maxPP = Object.fromEntries(
         .map((move: { id: any; pp: number }) => [move.id, (move.pp * 8) / 5]),
 );
 
-const typeMapping = Object.fromEntries(
-    ((formatDex.types as any).all() as dex.Type[])
-        .sort((a, b) => a.id.localeCompare(b.id))
-        .filter((type) => type.isNonstandard !== "Future")
-        .map(({ id, damageTaken }, index) => [
-            id,
-            {
-                index,
-                damageTaken,
-            },
-        ]),
-);
-
 const data = fs.readFileSync("./src/data/data.json");
 const {
     sideConditions: sideConditionsMapping,
@@ -40,6 +27,7 @@ const {
     moves: moveMapping,
     statuses: statusMapping,
     boosts: boostsMapping,
+    types: typeMapping,
 } = JSON.parse(data.toString());
 
 const pseudoWeatherVectorSize = 3 * Object.values(pseudoWeatherMapping).length;
@@ -52,6 +40,11 @@ const contextVectorSize =
             Object.keys(sideConditionsMapping).length +
             Object.keys(boostsMapping).length) +
     (pseudoWeatherVectorSize + weatherVectorSize + terrainVectorSize);
+
+for (const type of Object.keys(typeMapping)) {
+    maxPP[`hiddenpower${type}`] = maxPP["hiddenpower"];
+}
+maxPP["return102"] = maxPP["return"];
 
 export {
     pokemonMapping,
@@ -70,4 +63,5 @@ export {
     pseudoWeatherVectorSize,
     weatherVectorSize,
     terrainVectorSize,
+    typeMapping,
 };

@@ -73,11 +73,11 @@ def learn_loop(learner: Learner, queue: mp.Queue, debug: bool = False):
 
 
 def main(debug):
-    fpath = get_most_recent_file("ckpts")
-    print(fpath)
-    init = torch.load(fpath, map_location="cpu")
-    init = init["params"]
-    # init = None
+    # fpath = get_most_recent_file("ckpts")
+    # print(fpath)
+    # init = torch.load(fpath, map_location="cpu")
+    # init = init["params"]
+    init = None
     learner = Learner(init=init, debug=debug, trace_nets=False)  # not debug)
     # learner = Learner.from_fpath("ckpts/129303.pt", trace_nets=False)
 

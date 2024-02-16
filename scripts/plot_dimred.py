@@ -81,13 +81,12 @@ def plot_pca_3d(data: np.ndarray, title: str = "3D PCA Plot", **kwargs) -> None:
 
 
 def main(gen: int = 3, ndims: int = 2):
-    # data = np.load(f"src/data/gen{gen}/species.npy")
-    data = construct_species_encoding(gen)
+    data = np.load(f"src/data/gen{gen}/moves.npy")
 
     indices = []
     names = []
 
-    for key, value in SPECIES_STOI.items():
+    for key, value in MOVES_STOI.items():
         if data[value].sum() != 0:
             names.append(key)
             indices.append(value)
