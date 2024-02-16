@@ -18,6 +18,7 @@ import {
     abilityMapping,
     boostsMapping,
     contextVectorSize,
+    genderMapping,
     itemMapping,
     maxPP,
     moveMapping,
@@ -534,6 +535,10 @@ export class VectorPokemon {
     item: string;
     ability: string;
     hp: number;
+    gender: string;
+    level: number;
+    being_called_back: number;
+    hurt_this_turn: number;
     max_hp: number;
     active: number;
     fainted: number;
@@ -553,9 +558,13 @@ export class VectorPokemon {
         this.item = unkString;
         this.ability = unkString;
         this.hp = 100;
+        this.level = 100;
+        this.gender = unkString;
         this.max_hp = 100;
         this.active = 0;
         this.fainted = 0;
+        this.being_called_back = 0;
+        this.hurt_this_turn = 0;
         this.status = nullString;
         this.last_move = noneString;
         this.is_public = 0;
@@ -572,13 +581,23 @@ export class VectorPokemon {
         return Math.floor((1023 * this.hp) / this.max_hp);
     }
 
-    updatePublicEntity(pokemon: ClientPokemon) {
+    updatePublicEntity(candidate: ClientPokemon) {
+        let pokemon: ClientPokemon;
+
+        if (candidate.volatiles.transform !== undefined) {
+            pokemon = candidate.volatiles.transform.pokemon as ClientPokemon;
+        } else {
+            pokemon = candidate;
+        }
+
         this.species = formatKey(pokemon.name);
         this.item = pokemon.item === "" ? unkString : pokemon.item;
         this.ability = pokemon.ability === "" ? unkString : pokemon.ability;
         this.hp = pokemon.hp;
         this.max_hp = pokemon.maxhp;
         this.fainted = pokemon.hp === 0 ? 1 : 0;
+        this.level = pokemon.level;
+        this.gender = pokemon.gender;
 
         for (const [typeIndex, type] of pokemon.types.entries()) {
             this.types[typeIndex] = formatKey(type);
@@ -625,6 +644,8 @@ export class VectorPokemon {
         this.max_hp = pokemon.maxhp;
         this.active = pokemon.active ? 1 : 0;
         this.fainted = pokemon.hp === 0 ? 1 : 0;
+        this.level = pokemon.level;
+        this.gender = pokemon.gender ?? "N";
 
         const ppMapping: { [k: string]: number[] } = {};
         for (const [moveIndex, move] of this.moves.entries()) {
@@ -660,6 +681,10 @@ export class VectorPokemon {
             this.getHpToken(),
             this.active,
             this.fainted,
+            this.level,
+            genderMapping[this.gender],
+            this.being_called_back,
+            this.hurt_this_turn,
             statusMapping[this.status],
             moveMapping[this.last_move],
             this.is_public,

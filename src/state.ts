@@ -69,14 +69,14 @@ export class Int8State {
 
     getBoosts(actives: (Pokemon | null)[]): Int8Array {
         const boostsVector = new Int8Array(
-            actives.length * boostsEntries.length
+            actives.length * boostsEntries.length,
         );
         boostsVector.fill(0);
 
         for (const [activeIndex, activePokemon] of actives.entries()) {
             if (activePokemon !== null) {
                 for (const [boost, value] of Object.entries(
-                    activePokemon.boosts
+                    activePokemon.boosts,
                 )) {
                     boostsVector[
                         activeIndex + boostsMapping[boost as BoostID]
@@ -151,14 +151,14 @@ export class Int8State {
 
     getVolatileStatus(actives: (Pokemon | null)[]): Int8Array {
         const volatileStatusVector = new Int8Array(
-            actives.length * Object.values(volatileStatusMapping).length
+            actives.length * Object.values(volatileStatusMapping).length,
         );
         volatileStatusVector.fill(0);
         for (const [activeIndex, activePokemon] of actives.entries()) {
             if (activePokemon !== null) {
                 if (Object.keys(activePokemon.volatiles).length > 0) {
                     for (const volatileStatus of Object.values(
-                        activePokemon.volatiles
+                        activePokemon.volatiles,
                     )) {
                         const vectorIndex =
                             volatileStatusMapping[volatileStatus.id];
@@ -188,12 +188,12 @@ export class Int8State {
 
     getSideConditions(sideConditions: SideConditions): Int8Array {
         const sideConditionVector = new Int8Array(
-            Object.keys(sideConditionsMapping).length
+            Object.keys(sideConditionsMapping).length,
         );
         sideConditionVector.fill(0);
         if (Object.keys(sideConditions).length > 0) {
             for (const [name, sideCondition] of Object.entries(
-                sideConditions
+                sideConditions,
             )) {
                 const vectorIndex = sideConditionsMapping[name];
                 if (vectorIndex === undefined) {
@@ -442,7 +442,7 @@ export class Int8State {
             ? -1
             : this.handler.getHeuristicActionIndex(
                   this.playerIndex,
-                  this.workerIndex
+                  this.workerIndex,
               );
         const legalMask = this.getLegalMask();
 
@@ -490,7 +490,7 @@ export class Int8State {
             stateSize = data.reduce(
                 (accumulator, currentValue) =>
                     accumulator + currentValue.length,
-                0
+                0,
             );
         }
         const state = new Int8Array(stateSize);

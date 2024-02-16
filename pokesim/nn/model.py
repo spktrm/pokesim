@@ -120,6 +120,7 @@ class Encoder(nn.Module):
         self.ability_onehot = CustomEmbedding(gen, "abilities", entity_size)
         self.moves_onehot = CustomMoveEmbedding(gen, entity_size)
 
+        self.level_onehot = get_multihot_scalar_encoding(100, 32)
         self.hp_onehot = get_multihot_scalar_encoding(1024, 64)
         self.status_onehot = get_onehot_encoding(NUM_STATUS)
         self.onehot2 = get_onehot_encoding(2)
@@ -139,6 +140,10 @@ class Encoder(nn.Module):
             + self.onehot2.weight.shape[-1]
             + self.onehot4.weight.shape[-1]
             + self.toxic_turns_onehot.weight.shape[-1]
+            + self.onehot4.weight.shape[-1]
+            + self.level_onehot.weight.shape[-1]
+            + self.onehot2.weight.shape[-1]
+            + self.onehot2.weight.shape[-1]
         )
         self.rest_lin = _layer_init(nn.Linear(rest_size, entity_size))
         self.entity_merge = VectorMerge(
@@ -215,16 +220,20 @@ class Encoder(nn.Module):
         hp_token = entities[..., 3]
         active_token = entities[..., 4]
         fainted_token = entities[..., 5]
-        status_token = entities[..., 6]
-        last_move_token = entities[..., 7]
-        public_token = entities[..., 8]
-        side_token = entities[..., 9]
-        sleep_turns_token = entities[..., 10].clamp(min=0, max=3)
-        toxic_turns_token = entities[..., 11].clamp(min=0, max=5)
-        types = entities[..., 12:14]
-        move_pp_left = entities[..., 14:18]
-        move_pp_max = entities[..., 18:22]
-        move_tokens = entities[..., 22:]
+        level_token = entities[..., 6]
+        gender_token = entities[..., 7]
+        being_called_back_token = entities[..., 8]
+        hurt_this_turn_token = entities[..., 9]
+        status_token = entities[..., 10]
+        last_move_token = entities[..., 11]
+        public_token = entities[..., 12]
+        side_token = entities[..., 13]
+        sleep_turns_token = entities[..., 14].clamp(min=0, max=3)
+        toxic_turns_token = entities[..., 15].clamp(min=0, max=5)
+        types = entities[..., 16:18]
+        move_pp_left = entities[..., 18:22]
+        move_pp_max = entities[..., 22:26]
+        move_tokens = entities[..., 26:]
 
         species_onehot = self.species_onehot(species_token)
         item_onehot = self.item_onehot(item_token)
@@ -237,6 +246,10 @@ class Encoder(nn.Module):
             self.moves_onehot._encoding(last_move_token)
         )
         side_onehot = self.onehot2(side_token)
+        gender_onehot = self.onehot4(gender_token)
+        level_onehot = self.level_onehot(level_token - 1)
+        hurt_this_turn_onehot = self.onehot2(hurt_this_turn_token)
+        being_called_back_onehot = self.onehot2(being_called_back_token)
         public_onehot = self.onehot2(public_token)
         sleep_turns_onehot = self.onehot4(sleep_turns_token)
         toxic_turns_onehot = self.toxic_turns_onehot(toxic_turns_token)
@@ -259,6 +272,10 @@ class Encoder(nn.Module):
                 sleep_turns_onehot,
                 toxic_turns_onehot,
                 # moveset_onehot,
+                gender_onehot,
+                level_onehot,
+                hurt_this_turn_onehot,
+                being_called_back_onehot,
             ),
             dim=-1,
         )

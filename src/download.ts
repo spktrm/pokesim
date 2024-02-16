@@ -281,12 +281,13 @@ async function main(): Promise<void> {
             "evasion",
         ]),
         types: enumerate([
-            "<PAD>",
-            "<UNK>",
+            padToken,
+            unkToken,
             ...genData.typechart.flatMap((type) =>
                 type.isNonstandard === "Future" ? [] : type.id,
             ),
         ]),
+        genders: enumerate([unkToken, "M", "F", "N"]),
     };
 
     const parentDataDir = `src/data/`;

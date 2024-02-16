@@ -28,6 +28,7 @@ const {
     statuses: statusMapping,
     boosts: boostsMapping,
     types: typeMapping,
+    genders: genderMapping,
 } = JSON.parse(data.toString());
 
 const pseudoWeatherVectorSize = 3 * Object.values(pseudoWeatherMapping).length;
@@ -59,6 +60,7 @@ export {
     statusMapping,
     boostsMapping,
     maxPP,
+    genderMapping,
     contextVectorSize,
     pseudoWeatherVectorSize,
     weatherVectorSize,
