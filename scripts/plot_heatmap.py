@@ -14,34 +14,34 @@ from pokesim.nn.model import Model
 from pokesim.utils import get_most_recent_file
 
 
-def main(gen: int = 4):
-    data_npy = np.load(f"src/data/gen{gen}/moves.npy")
+def main(gen: int = 3):
+    data_npy = np.load(f"src/data/gen{gen}/species.npy")
     data = data_npy
 
-    # fpath = get_most_recent_file("ckpts")
-    # data_torch = torch.load(fpath)["params"]
+    fpath = get_most_recent_file("ckpts")
+    data_torch = torch.load(fpath)["params"]
 
-    # model = Model(32, 128, 8, True, True)
-    # model.load_state_dict(data_torch)
+    model = Model(32, 128, 8, True, True, gen)
+    model.load_state_dict(data_torch)
 
-    # data = (
-    #     model.encoder.item_onehot(torch.arange(data_npy.shape[0], dtype=torch.long))
-    #     .detach()
-    #     .numpy()
-    # )
+    data = (
+        model.encoder.species_onehot(torch.arange(data_npy.shape[0], dtype=torch.long))
+        .detach()
+        .numpy()
+    )
 
     indices = []
     names = []
 
-    for key, value in MOVES_STOI.items():
+    for key, value in SPECIES_STOI.items():
         if data_npy[value].sum() != 0:
             names.append(key)
             indices.append(value)
 
     data = data[np.array(indices)]
 
-    data = PCA(64).fit_transform(data)
-    data = StandardScaler().fit_transform(data)
+    # data = PCA(64).fit_transform(data)
+    # data = StandardScaler().fit_transform(data)
 
     pairwise = 1 - pairwise_distances(data, metric="cosine")
 

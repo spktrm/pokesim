@@ -34,11 +34,8 @@ VTraceReturns = collections.namedtuple("VTraceReturns", "vs pg_advantages")
 
 
 def action_log_probs(policy_logits, actions):
-    return torch.log(
-        torch.gather(
-            torch.flatten(policy_logits, 0, -2), -1, actions.view(-1, 1)
-        ).view_as(actions)
-    )
+    policy = torch.flatten(policy_logits, 0, -2)
+    return torch.log(torch.gather(policy, -1, actions.view(-1, 1)).view_as(actions))
 
 
 def get_loss_entropy(
@@ -122,15 +119,12 @@ def compute_baseline_loss(advantages: torch.Tensor) -> torch.Tensor:
 
 
 def compute_policy_gradient_loss(
-    log_policy: torch.Tensor, actions: torch.Tensor
+    log_policy: torch.Tensor, target: torch.Tensor
 ) -> torch.Tensor:
-    cross_entropy = F.nll_loss(
-        torch.flatten(log_policy, 0, 1),
-        target=torch.flatten(actions, 0, 1),
-        reduction="none",
-    )
-    cross_entropy = cross_entropy.view_as(actions)
-    return cross_entropy
+    cross_entropy = -(
+        torch.flatten(log_policy, 0, 1) * torch.flatten(target, 0, 1)
+    ).sum(-1)
+    return cross_entropy.view(*log_policy.shape[:-1])
 
 
 class Learner:
@@ -147,11 +141,9 @@ class Learner:
 
         # Create initial parameters.
         self.params = Model()
-        self.params_target = Model()
 
         if init is not None:
             self.params.load_state_dict(init)
-            self.params_target.load_state_dict(init)
 
         self.extra_config = {
             "num_params": _print_params(self.params)[0],
@@ -162,11 +154,9 @@ class Learner:
         self.params_actor = deepcopy(self.params).share_memory()
 
         self.params.train()
-        self.params_target.train()
         self.params_actor.eval()
 
         self.params.to(self.config.learner_device)
-        self.params_target.to(self.config.learner_device)
         self.params_actor.to(self.config.actor_device)
 
         if not debug and trace_nets:
@@ -179,17 +169,14 @@ class Learner:
                 enabled=self.use_amp,
             ):
                 learner_example = get_example(1, 1, device=self.config.learner_device)
-
                 self.params = torch.jit.trace(self.params, learner_example)
-                self.params_target = torch.jit.trace(
-                    self.params_target, learner_example
-                )
 
         # Parameter optimizers.
         self.optimizer = optim.Adam(
             self.params.parameters(),
             lr=self.config.learning_rate,
             betas=(self.config.adam.b1, self.config.adam.b2),
+            weight_decay=self.config.weight_decay,
         )
 
         self.scaler = torch.cuda.amp.GradScaler()
@@ -200,7 +187,6 @@ class Learner:
             {
                 "config": self.config,
                 "params": self.params.state_dict(),
-                "params_target": self.params_target.state_dict(),
                 "optimizer": self.optimizer.state_dict(),
                 "scaler": self.scaler.state_dict(),
                 "learner_steps": self.learner_steps,
@@ -215,7 +201,6 @@ class Learner:
         if not ignore_config:
             obj.config = ckpt["config"]
         obj.params.load_state_dict(ckpt["params"])
-        obj.params_target.load_state_dict(ckpt["params_target"])
         obj.params_actor.load_state_dict(ckpt["params"])
         obj.optimizer.load_state_dict(ckpt["optimizer"])
         obj.scaler.load_state_dict(ckpt["scaler"])
@@ -246,23 +231,33 @@ class Learner:
 
         learner_outputs = ModelOutput(*self.params(**forward_batch))
 
-        behavior_policy_logits = torch.from_numpy(batch.policy)
+        behavior_policy = torch.from_numpy(batch.policy)
         action = torch.from_numpy(batch.action)
         discounts = torch.from_numpy(batch.valid).to(torch.float32)
         rewards = torch.from_numpy(batch.rewards * batch.valid).squeeze(-1)
 
-        target_policy_logits = learner_outputs.policy.cpu()
+        legal = self._to_torch(batch.legal)
         values = learner_outputs.value.squeeze(-1)
         bootstrap_value = learner_outputs.value[-1].squeeze(-1)
+
+        threshold = 0.65
+        target_policy = torch.where(
+            heuristic_policy.to(self.config.learner_device) > 0,
+            threshold,
+            legal
+            * (1 - threshold)
+            * torch.ones_like(learner_outputs.log_policy).detach()
+            / (legal.sum(-1, keepdim=True) - 1).clamp(min=1),
+        )
+        target_policy = target_policy / target_policy.sum(-1, keepdim=True)
 
         assert torch.all(torch.abs(rewards.sum(0)) == 1)
 
         with torch.no_grad():
-            learner_target_outputs = ModelOutput(*self.params_target(**forward_batch))
-            target_values = learner_target_outputs.value.cpu().squeeze(-1)
+            target_values = learner_outputs.value.cpu().squeeze(-1)
             vtrace_returns = from_logits(
-                behavior_policy_logits=behavior_policy_logits,
-                target_policy_logits=heuristic_policy,
+                behavior_policy_logits=behavior_policy,
+                target_policy_logits=target_policy.cpu(),
                 actions=action,
                 discounts=discounts,
                 rewards=rewards,
@@ -275,8 +270,7 @@ class Learner:
         action = action.to(self.config.learner_device)
 
         pg_loss = compute_policy_gradient_loss(
-            learner_outputs.log_policy,
-            heuristic_action.to(self.config.learner_device),
+            learner_outputs.log_policy, target_policy
         )
 
         with torch.no_grad():
@@ -290,7 +284,7 @@ class Learner:
         discounts_sum = discounts.sum()
         loss = (
             pg_loss
-            # + baseline_loss
+            + baseline_loss
             # + 1e-2 * (entropy_loss + torch.norm(learner_outputs.logits, dim=-1))
         )
         loss = (loss * discounts).sum()
@@ -322,17 +316,5 @@ class Learner:
         self.optimizer.zero_grad(set_to_none=True)
 
         self.params_actor.load_state_dict(self.params.state_dict())
-
-        state_dict = self.params.state_dict()
-        target_state_dict = self.params_target.state_dict()
-
-        for (key, value), (_, value_target) in zip(
-            state_dict.items(), target_state_dict.items()
-        ):
-            target_state_dict[key] = (
-                value_target * (1 - self.config.tau) + value * self.config.tau
-            )
-
-        self.params_target.load_state_dict(target_state_dict)
 
         return loss_vals

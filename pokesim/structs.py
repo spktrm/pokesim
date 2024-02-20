@@ -40,7 +40,6 @@ class EnvStep(NamedTuple):
     rewards: np.ndarray
     valid: np.ndarray
     legal: np.ndarray
-    history_mask: np.ndarray = None
 
 
 class ModelOutput(NamedTuple):

@@ -23,12 +23,12 @@ def get_loss_v(
     v_list: List[torch.Tensor],
     v_target_list: List[torch.Tensor],
     mask_list: List[torch.Tensor],
-    clip_target: int = 2,
+    clip_target: int = 5,
 ) -> torch.Tensor:
     """Define the loss function for the critic."""
     loss_v_list = []
     for v_n, v_target, mask in zip(v_list, v_target_list, mask_list):
-        # v_target = v_target.clip(max=clip_target, min=-clip_target)
+        v_target = v_target.clip(max=clip_target, min=-clip_target)
         loss_v = torch.unsqueeze(mask, dim=-1) * (v_n - v_target.detach()) ** 2
         normalization = torch.sum(mask)
         loss_v = torch.sum(loss_v) / (normalization + (normalization == 0.0))
@@ -164,7 +164,9 @@ class Learner:
 
         if not debug and trace_nets:
             actor_example = get_example(1, 1, device=self.config.actor_device)
-            self.params_actor = torch.jit.trace(self.params_actor, actor_example)
+            self.params_actor = torch.jit.trace(
+                self.params_actor, example_kwarg_inputs=actor_example
+            )
 
             with torch.autocast(
                 device_type=self.config.learner_device,
@@ -173,7 +175,9 @@ class Learner:
             ):
                 learner_example = get_example(1, 1, device=self.config.learner_device)
 
-                self.params = torch.jit.trace(self.params, learner_example)
+                self.params = torch.jit.trace(
+                    self.params, example_kwarg_inputs=learner_example
+                )
                 self.params_target = torch.jit.trace(
                     self.params_target, learner_example
                 )
@@ -331,12 +335,12 @@ class Learner:
             [params.value] * NUM_PLAYERS, v_target_list, has_played_list
         )
 
-        # policy_ratio = np.array(
-        #     _policy_ratio(_policy_pprocessed, batch.policy, action_oh, batch.valid)
-        # )
-        # is_vector = torch.unsqueeze(self._to_torch(policy_ratio), axis=-1)
-        # is_vector = is_vector.clamp(max=1)
-        is_vector = torch.unsqueeze(torch.ones_like(valid), axis=-1)
+        policy_ratio = np.array(
+            _policy_ratio(_policy_pprocessed, batch.policy, action_oh, batch.valid)
+        )
+        is_vector = torch.unsqueeze(self._to_torch(policy_ratio), axis=-1)
+        is_vector = is_vector.clamp(max=1)
+        # is_vector = torch.unsqueeze(torch.ones_like(valid), axis=-1)
         importance_sampling_correction = [is_vector] * NUM_PLAYERS
 
         # Uses v-trace to define q-values for Nerd
@@ -362,22 +366,22 @@ class Learner:
         #     reduction="none",
         # ).view_as(heuristic_action)
         # heurisitc_loss = (heurisitc_loss * valid).sum() / valid_sum
+        loss_v = p1_loss_v + p2_loss_v
+        loss_nerd = p1_loss_nerd + p2_loss_nerd
+
+        loss = loss_v + loss_nerd
 
         if not self.config.enable_regularization:
             loss_entropy = get_loss_entropy(params.policy, params.log_policy, legal)
             loss_entropy = (loss_entropy * valid).sum() / valid_sum
-            # loss = loss + 1e-3 * loss_entropy
+            loss = loss + 1e-3 * loss_entropy
 
         else:
             with torch.no_grad():
                 loss_entropy = get_loss_entropy(params.policy, params.log_policy, legal)
                 loss_entropy = (loss_entropy * valid).sum() / valid_sum
 
-        loss_v = p1_loss_v + p2_loss_v
-        loss_nerd = p1_loss_nerd + p2_loss_nerd
-        # loss = loss / self.config.accum_steps
-
-        self.scaler.scale((loss_v + loss_nerd) / self.config.accum_steps).backward()
+        self.scaler.scale(loss / self.config.accum_steps).backward()
 
         return {
             "v_loss": loss_v.item(),

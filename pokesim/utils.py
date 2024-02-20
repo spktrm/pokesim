@@ -5,7 +5,7 @@ import numpy as np
 
 from tabulate import tabulate
 
-from pokesim.data import NUM_HISTORY
+from pokesim.data import ENTITY_SIZE, NUM_HISTORY
 
 
 def get_most_recent_file(dir_path):
@@ -27,22 +27,19 @@ def get_most_recent_file(dir_path):
 
 def get_example(T: int, B: int, H: int = NUM_HISTORY, device: str = "cpu"):
     mask = torch.ones(T, B, 10, dtype=torch.bool, device=device)
-    return (
-        torch.zeros(T, B, H, dtype=torch.long, device=device),
-        torch.zeros(T, B, H, 4, dtype=torch.long, device=device),
-        torch.zeros(T, B, H, 3, 6, 17, dtype=torch.long, device=device),
-        torch.zeros(T, B, H, 2, 15, dtype=torch.long, device=device),
-        torch.zeros(T, B, H, 2, 10, 2, dtype=torch.long, device=device),
-        torch.zeros(T, B, H, 2, 7, dtype=torch.long, device=device),
-        torch.zeros(T, B, H, 5, 3, dtype=torch.long, device=device),
-        mask,
-        torch.zeros(T, B, H, 20, 2, 15, dtype=torch.long, device=device),
-        torch.zeros(T, B, H, 20, 2, 10, 2, dtype=torch.long, device=device),
-        torch.zeros(T, B, H, 20, 2, 7, dtype=torch.long, device=device),
-        torch.zeros(T, B, H, 20, 5, 3, dtype=torch.long, device=device),
-        torch.zeros(T, B, H, 20, 2, 18, dtype=torch.long, device=device),
-        torch.zeros(T, B, H, 20, 7, dtype=torch.long, device=device),
-    )
+    return {
+        "turn": torch.ones(T, B, H, dtype=torch.long, device=device),
+        "teams": torch.ones(
+            T, B, H, 3, 6, ENTITY_SIZE // 2, dtype=torch.long, device=device
+        ),
+        "side_conditions": torch.ones(T, B, H, 2, 16, dtype=torch.long, device=device),
+        "volatile_status": torch.ones(T, B, H, 2, 113, dtype=torch.long, device=device),
+        "boosts": torch.ones(T, B, H, 2, 7, dtype=torch.long, device=device),
+        "pseudoweather": torch.ones(T, B, H, 9, 3, dtype=torch.long, device=device),
+        "weather": torch.ones(T, B, H, 3, dtype=torch.long, device=device),
+        "terrain": torch.ones(T, B, H, 3, dtype=torch.long, device=device),
+        "legal": mask,
+    }
 
 
 class SGDTowardsModel:

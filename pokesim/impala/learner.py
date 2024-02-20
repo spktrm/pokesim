@@ -171,7 +171,9 @@ class Learner:
 
         if not debug and trace_nets:
             actor_example = get_example(1, 1, device=self.config.actor_device)
-            self.params_actor = torch.jit.trace(self.params_actor, actor_example)
+            self.params_actor = torch.jit.trace(
+                self.params_actor, example_kwarg_inputs=actor_example
+            )
 
             with torch.autocast(
                 device_type=self.config.learner_device,
@@ -180,7 +182,9 @@ class Learner:
             ):
                 learner_example = get_example(1, 1, device=self.config.learner_device)
 
-                self.params = torch.jit.trace(self.params, learner_example)
+                self.params = torch.jit.trace(
+                    self.params, example_kwarg_inputs=learner_example
+                )
                 self.params_target = torch.jit.trace(
                     self.params_target, learner_example
                 )

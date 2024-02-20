@@ -26,7 +26,7 @@ def stacknpad(array_stack: Sequence[np.ndarray], num_padding: int):
 
 
 class EnvironmentNoStackSingleStep:
-    _NUM_HISTORY = 2
+    _NUM_HISTORY = NUM_HISTORY
 
     worker_index: int
     act_fn: Callable

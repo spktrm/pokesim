@@ -586,13 +586,15 @@ export class VectorPokemon {
 
         if (candidate.volatiles.transform !== undefined) {
             pokemon = candidate.volatiles.transform.pokemon as ClientPokemon;
+            this.ability =
+                candidate.ability === "" ? unkString : candidate.ability;
         } else {
             pokemon = candidate;
+            this.ability = pokemon.ability === "" ? unkString : pokemon.ability;
         }
 
         this.species = formatKey(pokemon.name);
         this.item = pokemon.item === "" ? unkString : pokemon.item;
-        this.ability = pokemon.ability === "" ? unkString : pokemon.ability;
         this.hp = pokemon.hp;
         this.max_hp = pokemon.maxhp;
         this.fainted = pokemon.hp === 0 ? 1 : 0;

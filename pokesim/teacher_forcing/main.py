@@ -1,7 +1,8 @@
 import os
 
-
 os.environ["OMP_NUM_THREADS"] = "1"
+
+import torch
 
 import time
 import wandb
@@ -18,6 +19,7 @@ from pokesim.structs import Batch, Trajectory
 
 from pokesim.teacher_forcing.learner import Learner
 from pokesim.teacher_forcing.actor import run_environment
+from pokesim.utils import get_most_recent_file
 
 
 def run_environment_wrapper(*args, **kwargs):
@@ -72,7 +74,7 @@ def learn_loop(learner: Learner, queue: mp.Queue, debug: bool = False):
 
 
 def main(debug):
-    # init = torch.load("ckpts/093855.pt", map_location="cpu")
+    # init = torch.load(get_most_recent_file("ckpts"), map_location="cpu")
     # init = init["params"]
     init = None
     learner = Learner(init=init, debug=debug, trace_nets=False)  # not debug)
