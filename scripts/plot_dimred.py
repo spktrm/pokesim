@@ -1,6 +1,8 @@
 import numpy as np
 
-import plotly.graph_objects as go
+import plotly.express as px
+
+from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 
 from sklearn.manifold import TSNE
@@ -54,10 +56,7 @@ def plot_pca_2d(data: np.ndarray, title: str = "2D PCA Plot", **kwargs) -> None:
     - data: np.ndarray, the transformed data array of shape (n_samples, 2).
     - title: str, the title of the plot.
     """
-    fig = go.Figure(
-        data=go.Scatter(x=data[:, 0], y=data[:, 1], mode="markers", **kwargs)
-    )
-    fig.update_layout(title=title, xaxis_title="PC1", yaxis_title="PC2")
+    fig = px.scatter(x=data[..., 0], y=data[..., 1], title=title, **kwargs)
     fig.show()
 
 
@@ -69,24 +68,19 @@ def plot_pca_3d(data: np.ndarray, title: str = "3D PCA Plot", **kwargs) -> None:
     - data: np.ndarray, the transformed data array of shape (n_samples, 3).
     - title: str, the title of the plot.
     """
-    fig = go.Figure(
-        data=go.Scatter3d(
-            x=data[:, 0], y=data[:, 1], z=data[:, 2], mode="markers", **kwargs
-        )
-    )
-    fig.update_layout(
-        title=title, scene=dict(xaxis_title="PC1", yaxis_title="PC2", zaxis_title="PC3")
+    fig = px.scatter(
+        x=data[..., 0], y=data[..., 1], z=data[..., 2], title=title, **kwargs
     )
     fig.show()
 
 
 def main(gen: int = 3, ndims: int = 2):
-    data = np.load(f"src/data/gen{gen}/moves.npy")
+    data = np.load(f"src/data/gen{gen}/species.npy")
 
     indices = []
     names = []
 
-    for key, value in MOVES_STOI.items():
+    for key, value in SPECIES_STOI.items():
         if data[value].sum() != 0:
             names.append(key)
             indices.append(value)
@@ -94,15 +88,16 @@ def main(gen: int = 3, ndims: int = 2):
     transformed_data = data[np.array(indices)]
 
     transformed_data = perform_pca(
-        transformed_data, n_components=min(data.shape[-1], 3)
+        transformed_data, n_components=min(data.shape[-1], 64)
     )
+    labels = KMeans(n_clusters=16).fit_predict(transformed_data)
 
     transformed_data = transformed_data[..., :ndims]
 
     if ndims == 2:
-        plot_pca_2d(transformed_data, text=names)
+        plot_pca_2d(transformed_data, text=names, color=labels.astype(str))
     elif ndims == 3:
-        plot_pca_3d(transformed_data, text=names)
+        plot_pca_3d(transformed_data, text=names, color=labels.astype(str))
     return
 
 

@@ -46,7 +46,7 @@ class RNaDConfig:
     entropy_schedule_repeats: List[int] = (1,)
     entropy_schedule_size: List[int] = (20000,)
     # The weight of the reward regularisation term in RNaD.
-    eta_reward_transform: float = 0.2
+    eta_reward_transform: float = 0.05
     nerd: NerdConfig = NerdConfig()
     c_vtrace: float = 1
     rho: float = np.inf

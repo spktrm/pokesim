@@ -129,7 +129,7 @@ def _legal_log_policy(
 
 
 def _threshold(
-    policy: torch.Tensor, mask: torch.Tensor, threshold: float = 0.02
+    policy: torch.Tensor, mask: torch.Tensor, threshold: float = 0.03
 ) -> torch.Tensor:
     """Remove from the support the actions 'a' where policy(a) < threshold."""
     if threshold <= 0:
@@ -170,7 +170,7 @@ def _discretize(policy: torch.Tensor, n_disc: float = 16) -> torch.Tensor:
 
 
 def finetune(policy: torch.Tensor, mask: torch.Tensor):
-    # policy = _threshold(policy, mask)
+    policy = _threshold(policy, mask)
     # policy = _discretize(policy)
     return policy
 
