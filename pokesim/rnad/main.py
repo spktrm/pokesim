@@ -117,9 +117,9 @@ def main(ctx: ForkContext = ForkContext(), debug: bool = False):
     init = init["params"]
 
     # init = None
-    # learner = Learner(init=init, debug=debug, trace_nets=False)  # not debug)
+    learner = Learner(init=init, debug=debug, trace_nets=False)  # not debug)
 
-    learner = Learner.from_fpath(fpath, trace_nets=False)
+    # learner = Learner.from_fpath(fpath, trace_nets=False)
 
     if not debug:
         config = learner.get_config()

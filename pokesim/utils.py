@@ -170,7 +170,7 @@ def _discretize(policy: torch.Tensor, n_disc: float = 16) -> torch.Tensor:
 
 
 def finetune(policy: torch.Tensor, mask: torch.Tensor):
-    policy = _threshold(policy, mask)
+    # policy = _threshold(policy, mask)
     # policy = _discretize(policy)
     return policy
 

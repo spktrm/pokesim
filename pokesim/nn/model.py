@@ -126,7 +126,6 @@ class Encoder(nn.Module):
         entity_size: int,
         stream_size: int,
         use_layer_norm: bool,
-        affine_layer_norm: bool,
         gen: int = 3,
     ):
         super().__init__()
@@ -146,13 +145,13 @@ class Encoder(nn.Module):
         self.onehot4 = get_onehot_encoding(4)
         self.types_onehot = get_onehot_encoding(NUM_TYPES)
         self.toxic_turns_onehot = get_onehot_encoding(6)
-        self.prev_move_onehot = _layer_init(
-            nn.Linear(self.moves_onehot._encoding.weight.shape[-1], 64)
-        )
+        # self.prev_move_onehot = _layer_init(
+        #     nn.Linear(self.moves_onehot._encoding.weight.shape[-1], 64)
+        # )
 
         rest_size = (
-            self.prev_move_onehot.out_features
-            + self.types_onehot.weight.shape[-1]
+            # self.prev_move_onehot.out_features
+            +self.types_onehot.weight.shape[-1]
             + self.hp_onehot.weight.shape[-1]
             + self.status_onehot.weight.shape[-1]
             + self.onehot2.weight.shape[-1]
@@ -178,7 +177,6 @@ class Encoder(nn.Module):
             output_size=entity_size,
             gating_type=GatingType.NONE,
             use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
         )
 
         self.boosts_onehot = get_onehot_encoding(13)
@@ -231,7 +229,6 @@ class Encoder(nn.Module):
             resblocks_num_after=1,
             resblocks_hidden_size=entity_size // 2,
             use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
         )
 
     def forward_entities(self, entities: torch.Tensor) -> torch.Tensor:
@@ -246,7 +243,7 @@ class Encoder(nn.Module):
         being_called_back_token = entities[..., 8]
         hurt_this_turn_token = entities[..., 9]
         status_token = entities[..., 10]
-        last_move_token = entities[..., 11]
+        # last_move_token = entities[..., 11]
         public_token = entities[..., 12]
         side_token = entities[..., 13]
         sleep_turns_token = entities[..., 14].clamp(min=0, max=3)
@@ -263,9 +260,9 @@ class Encoder(nn.Module):
         active_onehot = self.onehot2(active_token)
         fainted_onehot = self.onehot2(fainted_token)
         status_onehot = self.status_onehot(status_token)
-        last_move_onehot = self.prev_move_onehot(
-            self.moves_onehot._encoding(last_move_token)
-        )
+        # last_move_onehot = self.prev_move_onehot(
+        #     self.moves_onehot._encoding(last_move_token)
+        # )
         types_onehot = self.types_onehot(types).sum(-2).clamp(max=1)
         side_onehot = self.onehot2(side_token)
         gender_onehot = self.onehot4(gender_token)
@@ -283,7 +280,7 @@ class Encoder(nn.Module):
                 # species_onehot,
                 # item_onehot,
                 # ability_onehot,
-                last_move_onehot,
+                # last_move_onehot,
                 hp_onehot,
                 # prev_hp_onehot,
                 active_onehot,
@@ -494,36 +491,42 @@ class Torso(nn.Module):
         self,
         stream_size: int,
         use_layer_norm: bool,
-        affine_layer_norm: bool,
     ):
         super().__init__()
 
         self.torso_merge = VectorMerge(
-            input_sizes={"entities": stream_size, "context": stream_size},
+            input_sizes={
+                "entities": stream_size,
+                "context": stream_size,
+            },
             output_size=stream_size,
             gating_type=GatingType.NONE,
             use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
         )
-        self.state_mlp = MLP([2 * stream_size, stream_size])
+        self.entities_gate = MLP([stream_size, stream_size])
+        self.context_gate = MLP([stream_size, stream_size])
+
         self.torso_resnet = Resnet(
             input_size=stream_size,
             num_resblocks=2,
             use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
         )
 
     def forward(
         self, entities_embeddings: torch.Tensor, context_embeddings: torch.Tensor
     ) -> torch.Tensor:
+        entities_gate = self.entities_gate(
+            (entities_embeddings[:, :, 1:] - entities_embeddings[:, :, :-1]).squeeze(-2)
+        )
+        context_gate = self.context_gate(
+            (context_embeddings[:, :, 1:] - context_embeddings[:, :, :-1]).squeeze(-2)
+        )
         state_embedding = self.torso_merge(
-            {"entities": entities_embeddings, "context": context_embeddings}
+            {
+                "entities": entities_embeddings[:, :, 0] * torch.sigmoid(entities_gate),
+                "context": context_embeddings[:, :, 0] * torch.sigmoid(context_gate),
+            }
         )
-        history_embeddings = state_embedding[:, :, 1:] - state_embedding[:, :, :-1]
-        state_action_embedding = torch.cat(
-            (state_embedding[:, :, -1], history_embeddings.squeeze(-2)), dim=-1
-        )
-        state_embedding = self.state_mlp(state_action_embedding)
         return self.torso_resnet(state_embedding)
 
 
@@ -533,7 +536,6 @@ class PolicyHead(nn.Module):
         entity_size: int,
         stream_size: int,
         use_layer_norm: bool,
-        affine_layer_norm: bool,
     ):
         super().__init__()
 
@@ -548,7 +550,6 @@ class PolicyHead(nn.Module):
             output_size=entity_size,
             gating_type=GatingType.NONE,
             use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
         )
 
         self.action_transformer = TransformerEncoder(
@@ -561,7 +562,6 @@ class PolicyHead(nn.Module):
             resblocks_num_after=1,
             resblocks_hidden_size=entity_size // 2,
             use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
         )
 
         self.action_logits = PointerLogits(
@@ -571,7 +571,6 @@ class PolicyHead(nn.Module):
             num_layers_keys=0,
             key_size=entity_size,
             use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
         )
 
     def forward(
@@ -619,13 +618,12 @@ class PolicyHead(nn.Module):
 
 
 class ValueHead(nn.Module):
-    def __init__(self, stream_size: int, use_layer_norm: bool, affine_layer_norm: bool):
+    def __init__(self, stream_size: int, use_layer_norm: bool):
         super().__init__()
 
         self.value_mlp = MLP(
             [stream_size, stream_size, 1],
             use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
         )
 
     def forward(
@@ -644,7 +642,6 @@ class Model(nn.Module):
         stream_size: int = 128,
         scale: int = 8,
         use_layer_norm: bool = True,
-        affine_layer_norm: bool = True,
         gen: int = 3,
     ):
         super().__init__()
@@ -659,27 +656,19 @@ class Model(nn.Module):
             entity_size=entity_size,
             stream_size=stream_size,
             use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
             gen=gen,
         )
 
-        self.torso = Torso(
-            stream_size=stream_size,
-            use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
-        )
+        self.torso = Torso(stream_size=stream_size, use_layer_norm=use_layer_norm)
 
         self.policy_head = PolicyHead(
             entity_size=entity_size,
             stream_size=stream_size,
             use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
         )
 
         self.value_head = ValueHead(
-            stream_size=stream_size,
-            use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
+            stream_size=stream_size, use_layer_norm=use_layer_norm
         )
 
     def forward(

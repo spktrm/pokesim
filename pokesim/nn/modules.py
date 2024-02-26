@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Dict, Optional, Sequence, Tuple
 from functools import partial
 
-from pokesim.nn.helpers import _layer_init
+from pokesim.nn.helpers import _layer_init, get_layer_norm
 
 
 class Resblock(nn.Module):
@@ -21,7 +21,6 @@ class Resblock(nn.Module):
         num_layers: int = 2,
         hidden_size: Optional[int] = None,
         use_layer_norm: bool = True,
-        affine_layer_norm: bool = False,
     ):
         """Initializes VectorResblock module.
 
@@ -51,9 +50,7 @@ class Resblock(nn.Module):
 
         for input_size, output_size in zip(layer_sizes[:-1], layer_sizes[1:]):
             if use_layer_norm:
-                self.layers.append(
-                    nn.LayerNorm(input_size, elementwise_affine=affine_layer_norm)
-                )
+                self.layers.append(get_layer_norm(input_size))
             self.layers.append(nn.ReLU())
             self.layers.append(layer_init(nn.Linear(input_size, output_size)))
 
@@ -70,7 +67,6 @@ class Resnet(nn.Module):
         input_size: int,
         num_resblocks: int,
         use_layer_norm: bool = True,
-        affine_layer_norm: bool = False,
     ):
         super().__init__()
         self.resblocks = nn.ModuleList()
@@ -78,7 +74,6 @@ class Resnet(nn.Module):
             resblock = Resblock(
                 input_size=input_size,
                 use_layer_norm=use_layer_norm,
-                affine_layer_norm=affine_layer_norm,
             )
             self.resblocks.append(resblock)
 
@@ -93,7 +88,6 @@ class MLP(nn.Module):
         self,
         layer_sizes: Sequence[int] = None,
         use_layer_norm: bool = True,
-        affine_layer_norm: bool = False,
     ):
         super().__init__()
         self.layer_sizes = layer_sizes
@@ -101,9 +95,7 @@ class MLP(nn.Module):
 
         for input_size, output_size in zip(layer_sizes[:-1], layer_sizes[1:]):
             if use_layer_norm:
-                self.layers.append(
-                    nn.LayerNorm(input_size, elementwise_affine=affine_layer_norm)
-                )
+                self.layers.append(get_layer_norm(input_size))
             self.layers.append(nn.ReLU())
             self.layers.append(_layer_init(nn.Linear(input_size, output_size)))
 
@@ -230,7 +222,6 @@ class TransformerEncoder(nn.Module):
         resblocks_num_after: int,
         resblocks_hidden_size: Optional[int] = None,
         use_layer_norm: bool = True,
-        affine_layer_norm: bool = True,
     ):
         super().__init__()
 
@@ -251,7 +242,6 @@ class TransformerEncoder(nn.Module):
                     input_size=units_stream_size,
                     hidden_size=self._resblocks_hidden_size,
                     use_layer_norm=self._use_layer_norm,
-                    affine_layer_norm=affine_layer_norm,
                 )
                 for _ in range(self._resblocks_num_before)
             ]
@@ -259,9 +249,7 @@ class TransformerEncoder(nn.Module):
         if self._use_layer_norm:
             self._layernorms = nn.ModuleList(
                 [
-                    nn.LayerNorm(
-                        self._units_stream_size, elementwise_affine=affine_layer_norm
-                    )
+                    get_layer_norm(self._units_stream_size)
                     for _ in range(self._transformer_num_layers)
                 ]
             )
@@ -282,7 +270,6 @@ class TransformerEncoder(nn.Module):
                     input_size=units_stream_size,
                     hidden_size=self._resblocks_hidden_size,
                     use_layer_norm=self._use_layer_norm,
-                    affine_layer_norm=affine_layer_norm,
                 )
                 for _ in range(self._resblocks_num_after)
             ]
@@ -318,7 +305,6 @@ class TransformerDecoder(nn.Module):
         resblocks_num_after: int,
         resblocks_hidden_size: Optional[int] = None,
         use_layer_norm: bool = True,
-        affine_layer_norm: bool = True,
     ):
         super().__init__()
 
@@ -339,7 +325,6 @@ class TransformerDecoder(nn.Module):
                     input_size=units_stream_size,
                     hidden_size=self._resblocks_hidden_size,
                     use_layer_norm=self._use_layer_norm,
-                    affine_layer_norm=affine_layer_norm,
                 )
                 for _ in range(self._resblocks_num_before)
             ]
@@ -347,17 +332,13 @@ class TransformerDecoder(nn.Module):
         if self._use_layer_norm:
             self._layernorms1 = nn.ModuleList(
                 [
-                    nn.LayerNorm(
-                        self._units_stream_size, elementwise_affine=affine_layer_norm
-                    )
+                    get_layer_norm(self._units_stream_size)
                     for _ in range(self._transformer_num_layers)
                 ]
             )
             self._layernorms2 = nn.ModuleList(
                 [
-                    nn.LayerNorm(
-                        self._units_stream_size, elementwise_affine=affine_layer_norm
-                    )
+                    get_layer_norm(self._units_stream_size)
                     for _ in range(self._transformer_num_layers)
                 ]
             )
@@ -389,7 +370,6 @@ class TransformerDecoder(nn.Module):
                     input_size=units_stream_size,
                     hidden_size=self._resblocks_hidden_size,
                     use_layer_norm=self._use_layer_norm,
-                    affine_layer_norm=affine_layer_norm,
                 )
                 for _ in range(self._resblocks_num_after)
             ]
@@ -443,7 +423,6 @@ class Transformer(nn.Module):
         resblocks_num_after: int,
         resblocks_hidden_size: Optional[int] = None,
         use_layer_norm: bool = True,
-        affine_layer_norm: bool = True,
     ):
         super().__init__()
 
@@ -457,7 +436,6 @@ class Transformer(nn.Module):
             resblocks_num_after=resblocks_num_after,
             resblocks_hidden_size=resblocks_hidden_size,
             use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
         )
         self.decoder = TransformerDecoder(
             units_stream_size=units_stream_size,
@@ -469,7 +447,6 @@ class Transformer(nn.Module):
             resblocks_num_after=resblocks_num_after,
             resblocks_hidden_size=resblocks_hidden_size,
             use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
         )
 
     def forward(
@@ -506,7 +483,6 @@ class ToVector(nn.Module):
         units_hidden_sizes: Sequence[int],
         vector_stream_size: int,
         use_layer_norm: bool = True,
-        affine_layer_norm: bool = False,
     ):
         super().__init__()
 
@@ -519,14 +495,12 @@ class ToVector(nn.Module):
 
         mod_layers = [nn.ReLU()]
         if use_layer_norm:
-            mod_layers.insert(
-                0, nn.LayerNorm(units_stream_size, elementwise_affine=affine_layer_norm)
-            )
+            mod_layers.insert(0, get_layer_norm(units_stream_size))
         self._pre_layer = nn.Sequential(*mod_layers)
         self._hidden_layer = _layer_init(nn.Linear(units_stream_size, hidden_size))
         self._gate_layer = _layer_init(nn.Linear(units_stream_size, 1))
 
-        self.out_ln = nn.LayerNorm(hidden_size, elementwise_affine=affine_layer_norm)
+        self.out_ln = get_layer_norm(hidden_size)
         self.out_lin = _layer_init(nn.Linear(hidden_size, vector_stream_size))
 
     def forward(self, entity_embeddings: torch.Tensor) -> torch.Tensor:
@@ -557,7 +531,6 @@ class VectorMerge(nn.Module):
         output_size: int,
         gating_type: GatingType = GatingType.GLOBAL,
         use_layer_norm: bool = True,
-        affine_layer_norm: bool = False,
     ):
         super().__init__()
 
@@ -598,9 +571,7 @@ class VectorMerge(nn.Module):
         if use_layer_norm:
             self._layernorms = nn.ModuleDict(
                 {
-                    input_name: nn.LayerNorm(
-                        input_size, elementwise_affine=affine_layer_norm
-                    )
+                    input_name: get_layer_norm(input_size)
                     for input_name, input_size in input_sizes.items()
                 }
             )
@@ -652,7 +623,6 @@ class PointerLogits(nn.Module):
         num_layers_keys: int = 2,
         key_size: int = 64,
         use_layer_norm: bool = True,
-        affine_layer_norm: bool = False,
     ):
         super().__init__()
 
@@ -661,14 +631,12 @@ class PointerLogits(nn.Module):
             + [query_input_size for _ in range(num_layers_query - 1)]
             + [key_size],
             use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
         )
         self.keys_mlp = MLP(
             [keys_input_size]
             + [keys_input_size for _ in range(num_layers_keys - 1)]
             + [key_size],
             use_layer_norm=use_layer_norm,
-            affine_layer_norm=affine_layer_norm,
         )
         self.denom = 1 / math.sqrt(key_size)
 

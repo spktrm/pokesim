@@ -121,10 +121,12 @@ def compute_baseline_loss(advantages: torch.Tensor) -> torch.Tensor:
 def compute_policy_gradient_loss(
     log_policy: torch.Tensor, target: torch.Tensor
 ) -> torch.Tensor:
-    cross_entropy = -(
-        torch.flatten(log_policy, 0, 1) * torch.flatten(target, 0, 1)
+    kl_div = F.kl_div(
+        torch.flatten(log_policy, 0, 1),
+        torch.flatten(target, 0, 1),
+        reduction="none",
     ).sum(-1)
-    return cross_entropy.view(*log_policy.shape[:-1])
+    return kl_div.view(*log_policy.shape[:-1])
 
 
 class Learner:
@@ -240,7 +242,7 @@ class Learner:
         values = learner_outputs.value.squeeze(-1)
         bootstrap_value = learner_outputs.value[-1].squeeze(-1)
 
-        threshold = 0.65
+        threshold = 0.85
         target_policy = torch.where(
             heuristic_policy.to(self.config.learner_device) > 0,
             threshold,
